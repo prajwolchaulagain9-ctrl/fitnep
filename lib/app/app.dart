@@ -12,7 +12,8 @@ class FitNepApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'FitNEP',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.lightTheme,
+      themeMode: ThemeMode.light,
       routerConfig: router,
     );
   }

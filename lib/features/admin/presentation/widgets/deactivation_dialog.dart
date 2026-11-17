@@ -4,7 +4,7 @@ import '../../../../app/theme/app_theme.dart';
 Future<String?> showDeactivationDialog(BuildContext context) {
   return showDialog<String>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.7),
+    barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (ctx) => const _DeactivationDialog(),
   );
 }

@@ -5,62 +5,63 @@ import 'package:google_fonts/google_fonts.dart';
 class AppColors {
   AppColors._();
 
-  // Brand
-  static const primary = Color(0xFF1DB386);
-  static const primaryLight = Color(0xFF25D4A0);
-  static const primaryDark = Color(0xFF158A67);
-  static const primaryContainer = Color(0xFF0D3D30);
+  // Brand palette inspired by the FitNep Figma design.
+  static const primary = Color(0xFFFF6B00);
+  static const primaryLight = Color(0xFFFF8A33);
+  static const primaryDark = Color(0xFFD95700);
+  static const primaryContainer = Color(0xFFFFF0E6);
 
   // Backgrounds
-  static const background = Color(0xFF0A0F0D);
-  static const surface = Color(0xFF131A17);
-  static const surfaceVariant = Color(0xFF1C2820);
-  static const surfaceElevated = Color(0xFF1E2922);
-  static const cardBackground = Color(0xFF162119);
-  static const divider = Color(0xFF243029);
+  static const background = Color(0xFFFFFFFF);
+  static const surface = Color(0xFFFFFFFF);
+  static const surfaceVariant = Color(0xFFF7F8FA);
+  static const surfaceElevated = Color(0xFFFFFFFF);
+  static const cardBackground = Color(0xFFFFFFFF);
+  static const divider = Color(0xFFE2E6E9);
+  static const fieldBorder = Color(0xFF26343D);
 
   // Text
-  static const textPrimary = Color(0xFFF0F5F2);
-  static const textSecondary = Color(0xFF8FA898);
-  static const textDisabled = Color(0xFF4D6459);
-  static const textInverse = Color(0xFF0A0F0D);
+  static const textPrimary = Color(0xFF0C1F2A);
+  static const textSecondary = Color(0xFF7A838A);
+  static const textDisabled = Color(0xFFA8AFB4);
+  static const textInverse = Color(0xFFFFFFFF);
 
   // Status
-  static const statusActive = Color(0xFF1DB386);
-  static const statusActiveContainer = Color(0xFF0D3D30);
-  static const statusInactive = Color(0xFFE05858);
-  static const statusInactiveContainer = Color(0xFF3D1515);
-  static const statusPending = Color(0xFFF5A623);
-  static const statusPendingContainer = Color(0xFF3D2800);
+  static const statusActive = Color(0xFF248A57);
+  static const statusActiveContainer = Color(0xFFE9F7EF);
+  static const statusInactive = Color(0xFFD94B4B);
+  static const statusInactiveContainer = Color(0xFFFFECEC);
+  static const statusPending = Color(0xFFD48700);
+  static const statusPendingContainer = Color(0xFFFFF5DB);
 
   // Package colors
-  static const packageBasic = Color(0xFF5B7FCC);
-  static const packageBasicContainer = Color(0xFF1A2847);
-  static const packageStandard = Color(0xFF8B6BE8);
-  static const packageStandardContainer = Color(0xFF271D47);
-  static const packagePremium = Color(0xFF1DB386);
-  static const packagePremiumContainer = Color(0xFF0D3D30);
-  static const packageElite = Color(0xFFF5A623);
-  static const packageEliteContainer = Color(0xFF3D2800);
+  static const packageBasic = Color(0xFF3973B7);
+  static const packageBasicContainer = Color(0xFFEAF2FB);
+  static const packageStandard = Color(0xFF7959B7);
+  static const packageStandardContainer = Color(0xFFF1ECFA);
+  static const packagePremium = Color(0xFFFF6B00);
+  static const packagePremiumContainer = Color(0xFFFFF0E6);
+  static const packageElite = Color(0xFFD48700);
+  static const packageEliteContainer = Color(0xFFFFF5DB);
 
   // Semantic
-  static const success = Color(0xFF1DB386);
-  static const error = Color(0xFFE05858);
-  static const warning = Color(0xFFF5A623);
-  static const info = Color(0xFF5B7FCC);
+  static const success = Color(0xFF248A57);
+  static const error = Color(0xFFD94B4B);
+  static const warning = Color(0xFFD48700);
+  static const info = Color(0xFF3973B7);
 
   // Audit action colors
-  static const actionDeactivate = Color(0xFFE05858);
-  static const actionReactivate = Color(0xFF1DB386);
-  static const actionPackageChange = Color(0xFF8B6BE8);
-  static const actionGeneral = Color(0xFF5B7FCC);
+  static const actionDeactivate = Color(0xFFD94B4B);
+  static const actionReactivate = Color(0xFF248A57);
+  static const actionPackageChange = Color(0xFF7959B7);
+  static const actionGeneral = Color(0xFF3973B7);
 }
 
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get darkTheme {
-    final base = ThemeData.dark();
+  static ThemeData get lightTheme {
+    final base = ThemeData.light();
     final textTheme = GoogleFonts.interTextTheme(base.textTheme).copyWith(
       displayLarge: GoogleFonts.inter(
         fontSize: 32,
@@ -142,11 +143,11 @@ class AppTheme {
     );
 
     return base.copyWith(
-      colorScheme: const ColorScheme.dark(
+      colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
         onPrimary: AppColors.textInverse,
         primaryContainer: AppColors.primaryContainer,
-        onPrimaryContainer: AppColors.primaryLight,
+        onPrimaryContainer: AppColors.primaryDark,
         secondary: AppColors.primaryLight,
         onSecondary: AppColors.textInverse,
         surface: AppColors.surface,
@@ -154,7 +155,7 @@ class AppTheme {
         surfaceContainerHighest: AppColors.surfaceVariant,
         error: AppColors.error,
         onError: Colors.white,
-        outline: AppColors.divider,
+        outline: AppColors.fieldBorder,
       ),
       scaffoldBackgroundColor: AppColors.background,
       textTheme: textTheme,
@@ -171,9 +172,10 @@ class AppTheme {
         ),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: Brightness.light,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
           systemNavigationBarColor: AppColors.background,
-          systemNavigationBarIconBrightness: Brightness.light,
+          systemNavigationBarIconBrightness: Brightness.dark,
         ),
       ),
       cardTheme: CardThemeData(
@@ -199,7 +201,7 @@ class AppTheme {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.divider),
+          borderSide: const BorderSide(color: AppColors.fieldBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -219,7 +221,7 @@ class AppTheme {
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(24),
           ),
           textStyle: GoogleFonts.inter(
             fontSize: 15,
@@ -229,7 +231,7 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: AppColors.textPrimary,
           side: const BorderSide(color: AppColors.primary),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(

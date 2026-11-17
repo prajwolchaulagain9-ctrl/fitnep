@@ -176,12 +176,12 @@ class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({required this.client});
 
   static const _colors = [
-    Color(0xFF1DB386),
-    Color(0xFF5B7FCC),
-    Color(0xFF8B6BE8),
-    Color(0xFFF5A623),
-    Color(0xFFE05858),
-    Color(0xFF26C6DA),
+    AppColors.primary,
+    AppColors.info,
+    AppColors.actionPackageChange,
+    AppColors.warning,
+    AppColors.error,
+    AppColors.success,
   ];
 
   Color get _color {
