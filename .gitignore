@@ -46,3 +46,23 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+/config/*.json
+!/config/*.example.json
+
+# Signing material
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+**/key.properties
+**/local.properties
+
+# Additional Flutter generated files
+.flutter-plugins
+**/Flutter/ephemeral/

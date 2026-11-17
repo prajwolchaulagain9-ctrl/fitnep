@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Secure-storage tokens must not be restored without their device keys. -->
     <application
-        android:label="fitnep"
+        android:allowBackup="false"
+        android:label="FitNEP"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
