@@ -1,83 +1,116 @@
 # FitNEP
 
-College project: a nutrition and fitness app for Android and iOS.
+Flutter nutrition and fitness app for Android and iOS.
 
-## Location
+## Current implementation
 
-The Flutter project and Git repository are both at `D:\fitnep\fitnep`.
-Run commands from that directory.
+The app now initializes the shared Firebase development project and opens a
+FitNEP welcome screen with navigation. Startup has loading and retry states.
+Riverpod provides shared Firebase Auth, Firestore and Functions dependencies.
 
-## Setup
+Authentication, password recovery, package selection and the remaining feature
+flows are still to be implemented. The current text branding and theme are
+provisional until the original Figma logo and design values are supplied.
 
-Use Flutter with Dart 3.13.4 or a compatible later 3.x SDK.
+## Workspace and tools
+
+Repository: `D:\fitnep\fitnep`.
+Installed SDK: Flutter 3.47.5 / Dart 3.13.4 at `D:\flutter`.
+Use a compatible SDK matching `pubspec.yaml`.
 
 ```powershell
-cd D:\fitnep\fitnep
 flutter pub get
 flutter devices
-flutter run -d <device-id>
+flutter run -d <android-device-id>
 ```
 
-Choose an Android phone/emulator or an iOS device/simulator.
-iOS builds require macOS and Xcode.
+iOS builds and device validation require macOS and Xcode.
+Firebase client configuration currently supports Android and iOS.
 
-This initialization adds folders and setup files only. The original Flutter
-entry point is preserved. New Dart files are empty placeholders; feature UI,
-navigation, state management, API requests, and authentication are not implemented.
+## Shared Firebase development project
 
-## Folders
+Project ID: `fitnep-88908`.
+Console: https://console.firebase.google.com/project/fitnep-88908/overview
 
-```text
-lib/
-  main.dart
-  app/
-    routes/
-    theme/
-  core/
-  shared/
-  features/
-assets/
-  images/
-  icons/
-  fonts/
-  animations/
-test/
-integration_test/
-config/
+| Platform | Identifier | Firebase app ID |
+| --- | --- | --- |
+| Android | com.example.fitnep | 1:1005066655980:android:439e90e7ff1e252483edc9 |
+| iOS Runner | com.example.fitnep | 1:1005066655980:ios:b66d19dd781a157b83edc9 |
+
+Client configuration is in:
+- `lib/firebase_options.dart`
+- `android/app/google-services.json`
+- `ios/Runner/GoogleService-Info.plist`
+
+These files identify the client applications and are versioned for reproducible
+team setup. They are not server credentials. Keep private service-account keys,
+signing credentials and local secrets out of the mobile app and Git history.
+
+The Android Google Services plugin and iOS Runner plist resource are configured.
+Kotlin incremental compilation is disabled to support a Windows workspace and
+Pub cache on different drives.
+Android builds also limit Gradle workers and compile Kotlin in the Gradle JVM
+to keep memory use suitable for development laptops.
+
+For the first full Android build on a memory-constrained Windows machine, the
+following runtime settings can reduce native compiler pressure. They apply only
+to the current shell/build and are restored afterwards:
+
+```powershell
+$previousFitNepJavaOptions = $env:JAVA_TOOL_OPTIONS
+try {
+  $env:JAVA_TOOL_OPTIONS = "$previousFitNepJavaOptions -XX:ActiveProcessorCount=2 -XX:HeapBaseMinAddress=8G".Trim()
+  flutter build apk --debug
+} finally {
+  $env:JAVA_TOOL_OPTIONS = $previousFitNepJavaOptions
+}
+```
+Firestore databases, authorization rules, Functions deployment and enabled Auth
+providers are separate server setup tasks; app registration does not create them.
+
+Invite teammates to the Firebase project through their own Google accounts.
+Enable Email/Password authentication and agree the password policy and recovery
+settings before implementing US 2 against the live project. Agree the shared
+Firestore schema, region and server rules before implementing package operations.
+
+## Shared code
+
+- `lib/app/app.dart`: app setup and startup boundary.
+- `lib/app/routes/`: named routes and router lifecycle.
+- `lib/app/theme/`: provisional light/dark theme.
+- `lib/core/services/firebase_providers.dart`: initialization and injectable SDK dependencies.
+- `lib/shared/widgets/`: page layout, startup feedback and text wordmark.
+- `lib/features/`: existing feature folders; use the files needed for each story.
+
+Read Firebase SDK providers after initialization completes. Override the providers
+in feature tests instead of connecting widget tests to the live project.
+
+Functions currently use `us-central1` by default. Match the region to the agreed
+backend deployment when one exists:
+
+```powershell
+flutter run -d <android-device-id> --dart-define=FIREBASE_FUNCTIONS_REGION=<deployed-region>
 ```
 
-See `lib/README.md` for the feature folder layout.
-Empty directories contain `.gitkeep` files so Git preserves them.
-Remove placeholders when real files are added.
+## Checks and cooperation
 
-Only Android and iOS are planned. Other folders generated by Flutter are
-currently unused.
+```powershell
+dart format --output=none --set-exit-if-changed lib test
+flutter analyze
+flutter test
+flutter build apk --debug
+git diff --check
+```
 
-## Dependencies prepared for later development
+GitHub Actions runs format, analysis and widget tests for the shared branches.
+The widget tests check startup gating, retry and navigation with larger text on
+a small display. They do not verify native Firebase connectivity or story
+acceptance criteria.
 
-- `flutter_riverpod`: app state and dependency injection.
-- `go_router`: navigation.
-- `dio`: backend HTTP requests.
-- `flutter_secure_storage`: token storage.
-- `intl`: date, number, and price formatting.
+Use personal work branches and PR into `development`. Include story IDs,
+acceptance evidence, tests and any shared Firebase/schema changes in the PR.
+Use the agreed release branch and GitHub Releases for tested APK prereleases;
+do not commit build output.
 
-These packages are installed but not wired into the app.
-Add feature-specific packages when implementing those features.
-
-## Configuration and assets
-
-`.env.example` and `config/development.example.json` are future configuration
-templates. No configuration loader has been implemented.
-Never put backend private keys or passwords in a mobile app.
-Local `.env` and `config/development.json` are ignored by Git.
-
-Asset declarations in `pubspec.yaml` remain commented until real files are added.
-Declare custom font families after adding the font files.
-
-## Git
-
-Build files, IDE files, local configuration, and signing keys are ignored.
-Keep example configuration and `pubspec.lock` in version control.
-
-Nothing has been committed or pushed. Review and push the initialization
-changes yourself when ready.
+The four-day work plan, Firebase teammate handoff and release-notes template are
+maintained separately in `D:\fitnep_plan`.
