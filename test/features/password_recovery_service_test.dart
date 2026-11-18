@@ -28,6 +28,8 @@ class TestRecoveryAuth extends Fake implements FirebaseAuth {
   bool strongPassword = true;
   bool used = false;
   bool policyOffline = false;
+  bool signOutFails = false;
+  int signOuts = 0;
   String? requestedEmail;
   String? confirmedPassword;
 
@@ -66,6 +68,12 @@ class TestRecoveryAuth extends Fake implements FirebaseAuth {
     used = true;
     confirmedPassword = newPassword;
   }
+
+  @override
+  Future<void> signOut() async {
+    signOuts++;
+    if (signOutFails) throw StateError('Device sign-out failed');
+  }
 }
 
 void main() {
@@ -75,6 +83,28 @@ void main() {
     auth = TestRecoveryAuth();
     service = PasswordRecoveryService(auth);
   });
+
+  test(
+    'cleanup failure preserves successful reset and retries only sign-out',
+    () async {
+      auth.signOutFails = true;
+      await expectLater(
+        service.confirm('valid_code', 'Stronger!12'),
+        throwsA(
+          isA<RecoveryFailure>().having(
+            (e) => e.passwordUpdated,
+            'reset succeeded',
+            true,
+          ),
+        ),
+      );
+      expect(auth.used, isTrue);
+      auth.signOutFails = false;
+      await service.clearLocalSession();
+      expect(auth.signOuts, 2);
+      expect(auth.confirmedPassword, 'Stronger!12');
+    },
+  );
 
   test('registered and missing emails return equivalent completion', () async {
     await service.request('  client@example.com  ');
@@ -192,6 +222,7 @@ void main() {
       auth.confirmError = null;
       await service.confirm('valid_code', '  Stronger!12  ');
       expect(auth.confirmedPassword, '  Stronger!12  ');
+      expect(auth.signOuts, 1);
       await expectLater(
         service.confirm('valid_code', 'Different!12'),
         throwsA(

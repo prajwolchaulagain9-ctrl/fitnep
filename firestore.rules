@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Protected Sprint 1 operations use trusted Functions with
+    // requireValidSession. Add direct access only with revocation-aware rules.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

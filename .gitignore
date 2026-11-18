@@ -71,6 +71,7 @@ firebase-debug.log
 firebase-debug.*.log
 firestore-debug.log
 ui-debug.log
+functions/node_modules/
 .firebase/
 
 # Local JVM and Kotlin build diagnostics

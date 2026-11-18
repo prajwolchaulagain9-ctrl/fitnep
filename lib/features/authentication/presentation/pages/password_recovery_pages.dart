@@ -245,6 +245,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
   bool _busy = false;
   bool _invalidLink = false;
   bool _complete = false;
+  bool _needsSignOut = false;
 
   @override
   void initState() {
@@ -309,15 +310,18 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
     try {
       await ref.read(passwordRecoveryProvider).confirm(_code!, _password.text);
       if (!mounted) return;
-      _password.clear();
-      _confirmation.clear();
-      _code = null;
+      _clearSecrets();
       if (mounted) setState(() => _complete = true);
     } on RecoveryFailure catch (error) {
       if (mounted) {
         setState(() {
           _error = error.message;
           _invalidLink = error.invalidLink;
+          if (error.passwordUpdated) {
+            _clearSecrets();
+            _complete = true;
+            _needsSignOut = true;
+          }
         });
       }
     } catch (_) {
@@ -326,6 +330,29 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
           () => _error = 'We couldn’t reset your password. Please try again.',
         );
       }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _clearSecrets() {
+    _password.clear();
+    _confirmation.clear();
+    _link.clear();
+    _code = null;
+  }
+
+  Future<void> _finishSignOut() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await ref.read(passwordRecoveryProvider).clearLocalSession();
+      if (mounted) setState(() => _needsSignOut = false);
+    } on RecoveryFailure catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -349,8 +376,18 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
         if (_error != null) RecoveryMessage(_error!),
         if (_complete)
           FilledButton(
-            onPressed: () => context.goNamed(AppRoutes.welcome),
-            child: const Text('Back to FitNEP'),
+            onPressed: _busy
+                ? null
+                : _needsSignOut
+                ? _finishSignOut
+                : () => context.goNamed(AppRoutes.welcome),
+            child: Text(
+              _busy
+                  ? 'Signing out…'
+                  : _needsSignOut
+                  ? 'Finish signing out'
+                  : 'Back to FitNEP',
+            ),
           )
         else if (_invalidLink)
           FilledButton(

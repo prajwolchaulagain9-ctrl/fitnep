@@ -1,0 +1,14 @@
+{
+  "name": "fitnep-recovery-functions",
+  "private": true,
+  "main": "src/index.cjs",
+  "engines": { "node": "22" },
+  "scripts": {
+    "test": "node --test test/session.test.cjs",
+    "test:emulator": "node --test test/auth-emulator.test.cjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.0.0"
+  }
+}

@@ -8,10 +8,15 @@ final passwordRecoveryProvider = Provider<PasswordRecoveryService>(
 );
 
 class RecoveryFailure implements Exception {
-  const RecoveryFailure(this.message, {this.invalidLink = false});
+  const RecoveryFailure(
+    this.message, {
+    this.invalidLink = false,
+    this.passwordUpdated = false,
+  });
 
   final String message;
   final bool invalidLink;
+  final bool passwordUpdated;
 }
 
 class PasswordRecoveryService {
@@ -119,6 +124,20 @@ class PasswordRecoveryService {
       throw const RecoveryFailure(
         'We couldn’t check your password requirements. Check your connection '
         'and try again.',
+      );
+    }
+    await clearLocalSession();
+  }
+
+  Future<void> clearLocalSession() async {
+    try {
+      await auth.signOut();
+    } catch (_) {
+      // The reset code has already been consumed. Retry sign-out, not reset.
+      throw const RecoveryFailure(
+        'Your password was updated, but we couldn’t sign out this device. '
+        'Please finish signing out before continuing.',
+        passwordUpdated: true,
       );
     }
   }

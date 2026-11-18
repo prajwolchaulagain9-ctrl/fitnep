@@ -19,6 +19,7 @@ class _Recovery extends PasswordRecoveryService {
   Completer<void>? pending;
   int requests = 0;
   int resets = 0;
+  int signOuts = 0;
   String? password;
 
   @override
@@ -40,6 +41,11 @@ class _Recovery extends PasswordRecoveryService {
     if (pending != null) await pending!.future;
     if (error != null) throw error!;
     password = newPassword;
+  }
+
+  @override
+  Future<void> clearLocalSession() async {
+    signOuts++;
   }
 }
 
@@ -67,6 +73,32 @@ Future<ProviderContainer> _open(
 }
 
 void main() {
+  testWidgets(
+    'cleanup failure retries sign-out without replaying successful reset',
+    (tester) async {
+      final recovery = _Recovery();
+      await _open(
+        tester,
+        recovery,
+        '/reset-password?mode=resetPassword&oobCode=valid_code',
+      );
+      recovery.error = const RecoveryFailure(
+        'Finish signing out.',
+        passwordUpdated: true,
+      );
+      await tester.enterText(find.byType(TextFormField).at(0), 'Stronger!12');
+      await tester.enterText(find.byType(TextFormField).at(1), 'Stronger!12');
+      await tester.tap(find.text('Update password'));
+      await tester.pumpAndSettle();
+      expect(find.text('Password updated'), findsOneWidget);
+      expect(find.byType(TextFormField), findsNothing);
+      await tester.tap(find.text('Finish signing out'));
+      await tester.pumpAndSettle();
+      expect(recovery.resets, 1);
+      expect(recovery.signOuts, 1);
+      expect(find.text('Back to FitNEP'), findsOneWidget);
+    },
+  );
   testWidgets('recovery routes remain gated on Firebase initialization', (
     tester,
   ) async {
