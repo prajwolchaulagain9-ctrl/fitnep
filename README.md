@@ -12,7 +12,13 @@ flutter devices
 flutter run -d <device-id>
 ```
 
-The notifications frontend reads its API root from a Dart define:
+The mobile notifications frontend defaults to the FitNep Firebase function:
+
+```text
+https://asia-south1-fitnep-88908.cloudfunctions.net/api/
+```
+
+Override it for local development or another environment with a Dart define:
 
 ```powershell
 flutter run -d <device-id> --dart-define=API_BASE_URL=https://api.example.com/

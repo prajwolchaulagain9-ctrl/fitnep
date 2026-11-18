@@ -8,10 +8,16 @@ class AppRoutes {
   static const taskDetails = '/tasks/:id';
   static const paymentDetails = '/payments/:id';
 
+  // Client
+  static const clientHome = '/client/home';
+  static const clientNotifications = '/client/notifications';
+
   static const dietPlanDetailsName = 'diet-plan-details';
   static const messageThreadName = 'message-thread';
   static const taskDetailsName = 'task-details';
   static const paymentDetailsName = 'payment-details';
+  static const clientHomeName = 'client-home';
+  static const clientNotificationsName = 'client-notifications';
 
   // Admin
   static const adminClients = '/admin/clients';

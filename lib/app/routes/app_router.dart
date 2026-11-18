@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
+import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
 import '../../features/notifications/domain/entities/notification_entity.dart';
 import '../../features/notifications/presentation/pages/notification_destination_page.dart';
@@ -14,6 +15,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.adminClients,
     debugLogDiagnostics: false,
     routes: [
+      GoRoute(
+        path: AppRoutes.clientHome,
+        name: AppRoutes.clientHomeName,
+        builder: (context, state) => const ClientHomePage(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientNotifications,
+        name: AppRoutes.clientNotificationsName,
+        builder: (context, state) => const NotificationsPage(),
+      ),
       GoRoute(
         path: AppRoutes.notifications,
         name: 'notifications',
