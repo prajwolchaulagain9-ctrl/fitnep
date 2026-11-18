@@ -12,7 +12,7 @@ import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: AppRoutes.adminClients,
+    initialLocation: AppRoutes.clientHome,
     debugLogDiagnostics: false,
     routes: [
       GoRoute(
