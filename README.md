@@ -9,7 +9,8 @@ FitNEP welcome screen with navigation. Startup has loading and retry states.
 Riverpod provides shared Firebase Auth, Firestore and Functions dependencies.
 
 US 2 password recovery now has email requests, reset-link/code verification,
-new-password forms, Firebase password-policy checks and local sign-out. The
+new-password forms, Firebase password-policy checks and local sign-out. Revoked
+sessions are also checked on app resume and every 30 seconds in the foreground. The
 recovery screens follow the supplied auth screenshots. Login/registration (US 1)
 belong to the authentication teammate; package selection and the remaining flows
 are still to be implemented. The original logo export remains pending.
@@ -74,9 +75,10 @@ Firestore databases, authorization rules, Functions deployment and enabled Auth
 providers are separate server setup tasks; app registration does not create them.
 
 Invite teammates to the Firebase project through their own Google accounts.
-Enable Email/Password authentication and agree the password policy and recovery
-settings before implementing US 2 against the live project. Agree the shared
-Firestore schema, region and server rules before implementing package operations.
+Email/Password, enumeration protection and the development password policy are
+enabled. The project remains on Spark; live Functions deployment is pending.
+Agree the shared Firestore schema, region and server rules before implementing
+package operations.
 
 ## Shared code
 
@@ -100,9 +102,9 @@ flutter run -d <android-device-id> --dart-define=FIREBASE_FUNCTIONS_REGION=<depl
 ## Checks and cooperation
 
 ```powershell
-dart format --output=none --set-exit-if-changed lib test
+dart format --output=none --set-exit-if-changed lib test integration_test
 flutter analyze
-flutter test
+flutter test --concurrency=1
 flutter build apk --debug
 git diff --check
 ```
@@ -111,8 +113,11 @@ GitHub Actions runs format, analysis and widget tests for the shared branches.
 The widget tests check startup gating, recovery navigation, form validation,
 retry, reset completion and keyboard use with larger text on a small display.
 Functions unit/emulator tests cover reset-code replay, changed credentials and
-revoked-session access. Live email delivery, real expiry and multi-device behavior
-still need acceptance verification in the development project.
+revoked-session access. Live Android recovery, mailbox delivery, actual provider
+expiry, equivalent public email responses and rejection of old credentials and
+multiple session tokens were verified on 18 November 2026. The login handoff,
+live protected-access deployment and iOS checks remain pending; see the recovery
+integration document for the evidence and its limits.
 
 Use personal work branches and PR into `development`. Include story IDs,
 acceptance evidence, tests and any shared Firebase/schema changes in the PR.

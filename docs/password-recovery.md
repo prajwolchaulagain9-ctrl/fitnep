@@ -43,9 +43,11 @@ iOS requires macOS/Xcode validation.
 
 ## Firebase development setup
 
-Project: `fitnep-88908`. A read on 18 November 2026 returned
-`404 CONFIGURATION_NOT_FOUND` for the Firebase Auth configuration, so real recovery
-is awaiting Authentication initialization.
+Project: `fitnep-88908`. Authentication was initialized on 18 November 2026.
+Email/Password and enumeration protection are enabled. The development password
+policy is enforced: at least eight characters, with uppercase, lowercase, a
+number and a symbol. Coordinate policy changes with US 1; the Flutter service
+reads the Firebase policy.
 
 1. Open Firebase Console → Authentication → Get started; enable Email/Password.
 2. Agree the password requirements with US 1 and set enforcement to **Require**.
@@ -59,9 +61,11 @@ is awaiting Authentication initialization.
 5. Review/deploy `checkSession` and the Firestore rules through the team's Firebase
    deployment process. Cloud Functions deployment requires Blaze billing.
 
-No development-project Auth settings, Functions or rules have been changed by
-these local commits. The exact Figma logo asset is pending an original export or
-file access; the existing text wordmark remains in use.
+The project remains on Spark by the owner's choice. `checkSession` is prepared
+and tested locally; live Cloud Functions deployment remains pending Blaze.
+The repository's Firestore rules have not been deployed to the development
+project. The exact Figma logo asset is pending an original export or file access;
+the existing text wordmark remains in use.
 
 ## Sessions and protected access
 
@@ -72,14 +76,21 @@ the bearer token with Admin SDK `verifyIdToken(token, true)` and checks that the
 verified UID matches the callable identity. Revoked, disabled and expired sessions
 are refused; a verifier outage denies access with a retryable error.
 
-`checkSession` exposes this verification for US 1's shared session lifecycle:
-call it before exposing protected state, on resume and when a protected request
-fails. On `unauthenticated`, sign out and invalidate the team's sensitive state
-providers. Network failures must not be treated as verified sessions. Visible
-sign-out on other devices depends on that US 1 integration; this change provides
-the recovery-side cleanup and server enforcement, not a competing login/session UI.
+The app's `PasswordResetSessionObserver` force-refreshes the shared Firebase Auth
+session at startup/sign-in, on resume, and every 30 seconds in the foreground.
+Revoked sessions are signed out and return to welcome; recovery routes remain
+available and keep their confirmation. Background checks pause. Network errors
+preserve the session and retry later. A refresh of an old session cannot sign out
+a newer login, including a newer login for the same UID.
 
-The current Firestore rules deny **all direct client access**, including fresh
+Forced refresh detects revoked refresh tokens; it does not authorize protected
+operations. After deployment, use `checkSession` before exposing protected state
+and when a protected request fails. On `unauthenticated`, sign out and invalidate
+the team's sensitive state providers. Add cache/provider cleanup when US 1 and
+the protected features introduce that state. No sensitive account cache exists
+in the current app.
+
+The repository's Firestore rules deny **all direct client access**, including fresh
 sessions. Current protected access is through trusted Functions. These rules are
 not a finished catalog/user/profile access policy: review this shared contract
 before deployment, and add future direct access only with appropriate authorization
@@ -90,7 +101,7 @@ business callable still needs its own resource/role checks after session validat
 
 ```powershell
 flutter analyze
-flutter test
+flutter test --concurrency=1
 npm --prefix functions ci
 npm --prefix functions test
 firebase emulators:exec --only auth,functions,firestore --project demo-fitnep --non-interactive "npm --prefix functions run test:emulator"
@@ -107,11 +118,47 @@ error handling, matching passwords, password-policy rejection, delivery/verifica
 retry, duplicate taps, hidden fields, cleanup failure and startup/keyboard behavior.
 The emulator check passed for real reset operations, replay, weak-password
 rejection, old/new credentials, both old sessions and direct Firestore read/write
-denial. Local validation also passed 19 Flutter tests, four server unit tests,
-the analyzer and the Android debug build. Firestore uses port 18080 locally to
+denial. Current local validation passed 25 Flutter tests, four server unit tests,
+format checks and the analyzer. Firestore uses port 18080 locally to
 avoid another service already using port 8080.
 
-Before marking US 2 Done, record real mailbox delivery, actual code expiry, public
-enumeration behavior, configured server-policy rejection, real email-to-app link
-behavior, and two-device sign-out with US 1's session lifecycle connected. Evidence
-and sprint planning stay in `D:\fitnep_plan` outside the application repository.
+The live recovery test passed on Infinix X6817 on 18 November 2026, against the
+working tree based on `1e48477` before the app observer was connected. The observer
+and newer-login race guard are covered by the current unit/widget tests. The operator
+confirmed mailbox delivery. It exercised the native request/reset UI, password
+explanations, server weak-password rejection, used-code rejection, local sign-out,
+a second native Firebase Auth instance, and a desktop session. Old credentials,
+both captured old ID tokens (Admin SDK revocation verification) and the old
+desktop refresh token were rejected; new credentials/token worked. Public reset
+responses for existing and missing addresses matched. This verifies multiple
+sessions, including the physical phone; a second physical phone was not tested.
+
+An isolated unused reset code was valid at issue and during checks through
+10:58:27 UTC. After the timed process was interrupted, a resumed check returned
+`EXPIRED_OOB_CODE` at 12:43:35 UTC, 8,311 seconds after issue. This proves actual
+provider expiry, without measuring the exact expiry time. The temporary expiry
+account was removed. No expiry-test email was sent.
+
+To repeat live acceptance deliberately using the Firebase CLI login:
+
+```powershell
+node scripts/live-recovery-harness.cjs --run
+# In another terminal, with the Infinix connected:
+D:\Android\SDK\platform-tools\adb.exe -s 0874637289000589 reverse tcp:8765 tcp:8765
+flutter test integration_test/password_recovery_live_test.dart -d 0874637289000589 --dart-define-from-file=.dart_tool/live-recovery-defines.json
+node scripts/live-reset-expiry-check.cjs --run
+# If the timed expiry process is interrupted, check its saved fixture once:
+node scripts/live-reset-expiry-check.cjs --resume
+```
+
+The live UI test is skipped unless `FITNEP_LIVE_RECOVERY_TEST` is explicitly
+enabled. The harness only changes its own saved test account and refuses an
+existing account without the matching fixture. Private credentials and action
+codes, plus runtime results, stay in ignored `.dart_tool`; never commit them.
+Expiry cleanup removes only its matching temporary fixture.
+
+US 2 still needs the US 1 login entry/success-route integration, a reviewed live
+protected-access deployment, and iOS validation. One-tap HTTPS email-to-app links
+are pending; the supported paste-link flow is documented above. Keep the story
+open until the remaining integration/security criteria are accepted. Sprint
+planning stays in `D:\fitnep_plan` outside the application repository.
