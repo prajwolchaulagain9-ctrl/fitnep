@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../support/signed_out_auth.dart';
+
 void main() {
   testWidgets(
     'startup failure stays retryable and opens the app after recovery',
@@ -14,6 +16,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
             firebaseInitializationProvider.overrideWith((ref) async {
               attempts++;
               if (attempts == 1) throw StateError('Test connection failure');
@@ -38,6 +41,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
         child: const FitNepApp(),
@@ -63,6 +67,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) async {}),
         ],
         child: const FitNepApp(),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/services/firebase_providers.dart';
+import '../features/authentication/presentation/password_reset_session_observer.dart';
 import '../shared/widgets/app_startup_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
@@ -20,7 +21,9 @@ class FitNepApp extends ConsumerWidget {
       darkTheme: AppTheme.dark,
       routerConfig: ref.watch(appRouterProvider),
       builder: (context, child) => initialization.when(
-        data: (_) => child ?? const SizedBox.shrink(),
+        data: (_) => PasswordResetSessionObserver(
+          child: child ?? const SizedBox.shrink(),
+        ),
         loading: () => const AppStartupView(),
         error: (error, stackTrace) => AppStartupView(
           onRetry: () => ref.invalidate(firebaseInitializationProvider),

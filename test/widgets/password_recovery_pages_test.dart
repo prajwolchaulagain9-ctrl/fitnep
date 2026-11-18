@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../support/signed_out_auth.dart';
+
 class _UnusedAuth extends Fake implements FirebaseAuth {}
 
 class _Recovery extends PasswordRecoveryService {
@@ -57,6 +59,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         passwordRecoveryProvider.overrideWithValue(recovery),
       ],
@@ -85,6 +88,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
         child: const FitNepApp(),
@@ -129,6 +133,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
         child: const FitNepApp(),

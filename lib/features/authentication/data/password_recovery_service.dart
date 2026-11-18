@@ -147,6 +147,7 @@ class PasswordRecoveryService {
   Future<bool> signOutIfSessionRevoked() async {
     final user = auth.currentUser;
     if (user == null) return false;
+    final refreshToken = user.refreshToken;
     try {
       await user.getIdToken(true);
       return false;
@@ -159,8 +160,11 @@ class PasswordRecoveryService {
       }.contains(error.code)) {
         rethrow;
       }
-      // A different account may have signed in while refresh was in flight.
-      if (auth.currentUser?.uid == user.uid) await auth.signOut();
+      // Preserve a fresh sign-in made while this older session was checked.
+      final current = auth.currentUser;
+      if (current?.uid == user.uid && current?.refreshToken == refreshToken) {
+        await auth.signOut();
+      }
       return true;
     }
   }

@@ -81,9 +81,12 @@ class TestRecoveryAuth extends Fake implements FirebaseAuth {
 }
 
 class TestRecoveryUser extends Fake implements User {
-  TestRecoveryUser(this.uid);
+  TestRecoveryUser(this.uid, {String? sessionToken})
+    : refreshToken = sessionToken ?? 'refresh-$uid';
   @override
   final String uid;
+  @override
+  final String? refreshToken;
   FirebaseAuthException? tokenError;
   bool forcedRefresh = false;
   void Function()? onRefresh;
@@ -103,6 +106,20 @@ void main() {
     auth = TestRecoveryAuth();
     service = PasswordRecoveryService(auth);
   });
+
+  test(
+    'revoked refresh preserves a fresh login for the same account',
+    () async {
+      final user = TestRecoveryUser('client', sessionToken: 'old-session')
+        ..tokenError = FirebaseAuthException(code: 'user-token-expired');
+      final next = TestRecoveryUser('client', sessionToken: 'new-session');
+      auth.signedInUser = user;
+      user.onRefresh = () => auth.signedInUser = next;
+      await service.signOutIfSessionRevoked();
+      expect(auth.signedInUser, same(next));
+      expect(auth.signOuts, 0);
+    },
+  );
 
   test(
     'session refresh signs out revoked sessions and preserves network errors',
