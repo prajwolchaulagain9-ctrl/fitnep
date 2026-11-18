@@ -22,6 +22,9 @@ class TestPasswordStatus extends Fake implements PasswordValidationStatus {
 }
 
 class TestRecoveryAuth extends Fake implements FirebaseAuth {
+  User? signedInUser;
+  @override
+  User? get currentUser => signedInUser;
   FirebaseAuthException? requestError;
   FirebaseAuthException? codeError;
   FirebaseAuthException? confirmError;
@@ -73,6 +76,23 @@ class TestRecoveryAuth extends Fake implements FirebaseAuth {
   Future<void> signOut() async {
     signOuts++;
     if (signOutFails) throw StateError('Device sign-out failed');
+    signedInUser = null;
+  }
+}
+
+class TestRecoveryUser extends Fake implements User {
+  TestRecoveryUser(this.uid);
+  @override
+  final String uid;
+  FirebaseAuthException? tokenError;
+  bool forcedRefresh = false;
+  void Function()? onRefresh;
+  @override
+  Future<String?> getIdToken([bool forceRefresh = false]) async {
+    forcedRefresh = forceRefresh;
+    onRefresh?.call();
+    if (tokenError != null) throw tokenError!;
+    return 'test-id-token';
   }
 }
 
@@ -83,6 +103,39 @@ void main() {
     auth = TestRecoveryAuth();
     service = PasswordRecoveryService(auth);
   });
+
+  test(
+    'session refresh signs out revoked sessions and preserves network errors',
+    () async {
+      final user = TestRecoveryUser('client');
+      auth.signedInUser = user;
+      expect(await service.signOutIfSessionRevoked(), isFalse);
+      expect(user.forcedRefresh, isTrue);
+      user.tokenError = FirebaseAuthException(code: 'network-request-failed');
+      await expectLater(
+        service.signOutIfSessionRevoked(),
+        throwsA(isA<FirebaseAuthException>()),
+      );
+      expect(auth.signedInUser, same(user));
+      user.tokenError = FirebaseAuthException(code: 'user-token-expired');
+      expect(await service.signOutIfSessionRevoked(), isTrue);
+      expect(auth.signedInUser, isNull);
+    },
+  );
+
+  test(
+    'revoked refresh does not sign out a different newly signed-in account',
+    () async {
+      final user = TestRecoveryUser('old')
+        ..tokenError = FirebaseAuthException(code: 'user-token-expired');
+      final next = TestRecoveryUser('new');
+      auth.signedInUser = user;
+      user.onRefresh = () => auth.signedInUser = next;
+      await service.signOutIfSessionRevoked();
+      expect(auth.signedInUser, same(next));
+      expect(auth.signOuts, 0);
+    },
+  );
 
   test(
     'cleanup failure preserves successful reset and retries only sign-out',

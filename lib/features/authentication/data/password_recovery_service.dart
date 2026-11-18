@@ -142,6 +142,29 @@ class PasswordRecoveryService {
     }
   }
 
+  // Call from the shared session lifecycle on resume/refresh. This reports
+  // whether an old session ended; it is not authorization for protected data.
+  Future<bool> signOutIfSessionRevoked() async {
+    final user = auth.currentUser;
+    if (user == null) return false;
+    try {
+      await user.getIdToken(true);
+      return false;
+    } on FirebaseAuthException catch (error) {
+      if (!const {
+        'user-token-expired',
+        'invalid-user-token',
+        'user-disabled',
+        'user-not-found',
+      }.contains(error.code)) {
+        rethrow;
+      }
+      // A different account may have signed in while refresh was in flight.
+      if (auth.currentUser?.uid == user.uid) await auth.signOut();
+      return true;
+    }
+  }
+
   static RecoveryFailure failureFor(FirebaseAuthException error) {
     return switch (error.code) {
       'expired-action-code' ||
