@@ -22,6 +22,11 @@ class ClientHomePage extends ConsumerWidget {
         titleSpacing: 16,
         title: const _ClientAppBarTitle(),
         actions: [
+          IconButton(
+            tooltip: 'Privacy preferences',
+            onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
+            icon: const Icon(Icons.privacy_tip_outlined),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Semantics(

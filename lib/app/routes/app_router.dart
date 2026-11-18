@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
+import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
@@ -54,6 +55,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => const NotificationsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientPrivacyPreferences,
+        name: 'client-privacy-preferences',
+        builder: (context, state) => const PrivacyPreferencesPage(),
       ),
       GoRoute(
         path: AppRoutes.notifications,
