@@ -73,6 +73,29 @@ Future<ProviderContainer> _open(
 }
 
 void main() {
+  testWidgets('cold recovery link opens after Firebase becomes ready', (
+    tester,
+  ) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue =
+        'fitnep://auth/forgot-password';
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
+    final ready = Completer<void>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseInitializationProvider.overrideWith((ref) => ready.future),
+        ],
+        child: const FitNepApp(),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('Send reset link'), findsNothing);
+    ready.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Send reset link'), findsOneWidget);
+  });
   testWidgets(
     'cleanup failure retries sign-out without replaying successful reset',
     (tester) async {

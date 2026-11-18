@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -50,53 +51,61 @@ class RecoveryPage extends StatelessWidget {
           ),
         ),
       ),
-      child: AppPage(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () {
-                  if (context.canPop()) {
-                    context.pop();
-                  } else {
-                    context.goNamed(AppRoutes.welcome);
-                  }
-                },
-                icon: const Icon(Icons.arrow_back, size: 20),
-                label: const Text('Back'),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        child: AppPage(
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () {
+                    if (context.canPop()) {
+                      context.pop();
+                    } else {
+                      context.goNamed(AppRoutes.welcome);
+                    }
+                  },
+                  icon: const Icon(Icons.arrow_back, size: 20),
+                  label: const Text('Back'),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            const Center(child: FitNepWordmark()),
-            const SizedBox(height: 32),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF102637),
+              const SizedBox(height: 16),
+              const Center(child: FitNepWordmark()),
+              const SizedBox(height: 32),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF102637),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              description,
-              style: const TextStyle(
-                fontSize: 14,
-                height: 1.5,
-                color: Color(0xFF657A8C),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: Color(0xFF657A8C),
+                ),
               ),
-            ),
-            const SizedBox(height: 24),
-            child,
-            const SizedBox(height: 40),
-            const Text(
-              'Move better. Feel stronger. Live healthier.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
-            ),
-          ],
+              const SizedBox(height: 24),
+              child,
+              const SizedBox(height: 40),
+              const Text(
+                'Move better. Feel stronger. Live healthier.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
+              ),
+            ],
+          ),
         ),
       ),
     );
