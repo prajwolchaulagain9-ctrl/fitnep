@@ -8,9 +8,14 @@ The app now initializes the shared Firebase development project and opens a
 FitNEP welcome screen with navigation. Startup has loading and retry states.
 Riverpod provides shared Firebase Auth, Firestore and Functions dependencies.
 
-Authentication, password recovery, package selection and the remaining feature
-flows are still to be implemented. The current text branding and theme are
-provisional until the original Figma logo and design values are supplied.
+US 2 password recovery now has email requests, reset-link/code verification,
+new-password forms, Firebase password-policy checks and local sign-out. The
+recovery screens follow the supplied auth screenshots. Login/registration (US 1)
+belong to the authentication teammate; package selection and the remaining flows
+are still to be implemented. The original logo export remains pending.
+
+See [password recovery integration](docs/password-recovery.md) for route names,
+Firebase setup, session enforcement and verification.
 
 ## Workspace and tools
 
@@ -103,9 +108,11 @@ git diff --check
 ```
 
 GitHub Actions runs format, analysis and widget tests for the shared branches.
-The widget tests check startup gating, retry and navigation with larger text on
-a small display. They do not verify native Firebase connectivity or story
-acceptance criteria.
+The widget tests check startup gating, recovery navigation, form validation,
+retry, reset completion and keyboard use with larger text on a small display.
+Functions unit/emulator tests cover reset-code replay, changed credentials and
+revoked-session access. Live email delivery, real expiry and multi-device behavior
+still need acceptance verification in the development project.
 
 Use personal work branches and PR into `development`. Include story IDs,
 acceptance evidence, tests and any shared Firebase/schema changes in the PR.
