@@ -6,6 +6,8 @@ import '../models/notification_model.dart';
 
 abstract class NotificationRemoteDatasource {
   Future<List<NotificationModel>> getNotifications();
+
+  Future<void> markAsRead(String notificationId);
 }
 
 class NotificationRemoteDatasourceImpl implements NotificationRemoteDatasource {
@@ -15,11 +17,7 @@ class NotificationRemoteDatasourceImpl implements NotificationRemoteDatasource {
 
   @override
   Future<List<NotificationModel>> getNotifications() async {
-    if (_apiClient.dio.options.baseUrl.trim().isEmpty) {
-      throw const NotificationDataException(
-        'Notification service is not configured.',
-      );
-    }
+    _ensureConfigured();
 
     try {
       final response = await _apiClient.dio.get<Object?>(
@@ -47,6 +45,45 @@ class NotificationRemoteDatasourceImpl implements NotificationRemoteDatasource {
     } on FormatException {
       throw const NotificationDataException(
         'The notification service returned invalid data.',
+      );
+    }
+  }
+
+  @override
+  Future<void> markAsRead(String notificationId) async {
+    _ensureConfigured();
+
+    try {
+      await _apiClient.dio.patch<Object?>(
+        AppConstants.notificationReadEndpoint(notificationId),
+      );
+    } on DioException catch (error) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 401) {
+        throw const NotificationDataException(
+          'Your session has expired. Please sign in again.',
+        );
+      }
+      if (statusCode == 403) {
+        throw const NotificationDataException(
+          'You do not have permission to update this notification.',
+        );
+      }
+      if (statusCode == 404) {
+        throw const NotificationDataException(
+          'This notification is no longer available.',
+        );
+      }
+      throw const NotificationDataException(
+        'Could not mark the notification as read. Check your connection and try again.',
+      );
+    }
+  }
+
+  void _ensureConfigured() {
+    if (_apiClient.dio.options.baseUrl.trim().isEmpty) {
+      throw const NotificationDataException(
+        'Notification service is not configured.',
       );
     }
   }

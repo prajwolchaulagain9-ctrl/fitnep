@@ -13,4 +13,8 @@ class NotificationRepositoryImpl implements NotificationRepository {
     notifications.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return List<NotificationEntity>.unmodifiable(notifications);
   }
+
+  @override
+  Future<void> markAsRead(String notificationId) =>
+      _remoteDatasource.markAsRead(notificationId);
 }

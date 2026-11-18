@@ -7,6 +7,7 @@ import '../../data/repositories/notification_repository_impl.dart';
 import '../../domain/entities/notification_entity.dart';
 import '../../domain/repositories/notification_repository.dart';
 import '../../domain/usecases/get_notifications_usecase.dart';
+import '../../domain/usecases/mark_notification_as_read_usecase.dart';
 
 final tokenStorageProvider = Provider<TokenStorage>((ref) {
   return const TokenStorage();
@@ -29,10 +30,14 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 
 class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
   late final GetNotificationsUseCase _getNotifications;
+  late final MarkNotificationAsReadUseCase _markNotificationAsRead;
 
   @override
   Future<List<NotificationEntity>> build() async {
     _getNotifications = GetNotificationsUseCase(
+      ref.watch(notificationRepositoryProvider),
+    );
+    _markNotificationAsRead = MarkNotificationAsReadUseCase(
       ref.watch(notificationRepositoryProvider),
     );
     return _load();
@@ -47,6 +52,44 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
   Future<void> refresh() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(_load);
+  }
+
+  Future<void> markAsRead(String notificationId) async {
+    final notifications = state.value;
+    if (notifications == null) return;
+
+    final target = notifications
+        .where((notification) => notification.id == notificationId)
+        .firstOrNull;
+    if (target == null || target.isRead) return;
+
+    state = AsyncData(
+      List<NotificationEntity>.unmodifiable(
+        notifications.map(
+          (notification) => notification.id == notificationId
+              ? notification.copyWith(isRead: true)
+              : notification,
+        ),
+      ),
+    );
+
+    try {
+      await _markNotificationAsRead(notificationId);
+    } catch (_) {
+      final latest = state.value;
+      if (latest != null) {
+        state = AsyncData(
+          List<NotificationEntity>.unmodifiable(
+            latest.map(
+              (notification) => notification.id == notificationId
+                  ? notification.copyWith(isRead: false)
+                  : notification,
+            ),
+          ),
+        );
+      }
+      rethrow;
+    }
   }
 }
 

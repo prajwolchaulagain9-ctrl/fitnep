@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
@@ -7,6 +8,7 @@ import 'package:fitnep/features/notifications/presentation/pages/notifications_p
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   testWidgets(
@@ -130,15 +132,98 @@ void main() {
     expect(find.text('Could not load notifications'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
   });
+
+  final navigationCases = <(NotificationType, String, String)>[
+    (NotificationType.dietPlan, 'plan-42', 'plan:plan-42'),
+    (NotificationType.message, 'conversation-42', 'message:conversation-42'),
+    (NotificationType.task, 'task-42', 'task:task-42'),
+    (NotificationType.payment, 'payment-42', 'payment:payment-42'),
+  ];
+
+  for (final testCase in navigationCases) {
+    testWidgets('opens the correct ${testCase.$1.name} destination', (
+      tester,
+    ) async {
+      final repository = _FakeNotificationRepository([
+        _notification(
+          title: 'Open ${testCase.$1.name}',
+          isRead: false,
+          createdAt: DateTime.utc(2026, 11, 18, 9),
+          type: testCase.$1,
+          referenceId: testCase.$2,
+        ),
+      ]);
+      final router = _buildTestRouter();
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            notificationRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Open ${testCase.$1.name}'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(testCase.$3), findsOneWidget);
+      expect(repository.markedIds, ['Open ${testCase.$1.name}']);
+    });
+  }
+
+  testWidgets(
+    'handles an invalid reference without navigating or marking read',
+    (tester) async {
+      final repository = _FakeNotificationRepository([
+        _notification(
+          title: 'Invalid reference notification',
+          isRead: false,
+          createdAt: DateTime.utc(2026, 11, 18, 9),
+          type: NotificationType.task,
+          referenceId: '   ',
+        ),
+      ]);
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            notificationRepositoryProvider.overrideWithValue(repository),
+          ],
+          child: const MaterialApp(home: NotificationsPage()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Invalid reference notification'));
+      await tester.pump();
+
+      expect(
+        find.text(
+          'This notification has an invalid reference and cannot be opened.',
+        ),
+        findsOneWidget,
+      );
+      expect(repository.markedIds, isEmpty);
+    },
+  );
 }
 
 class _FakeNotificationRepository implements NotificationRepository {
   final List<NotificationEntity> notifications;
+  final List<String> markedIds = [];
 
   _FakeNotificationRepository(this.notifications);
 
   @override
   Future<List<NotificationEntity>> getNotifications() async => notifications;
+
+  @override
+  Future<void> markAsRead(String notificationId) async {
+    markedIds.add(notificationId);
+  }
 }
 
 class _FutureNotificationRepository implements NotificationRepository {
@@ -148,21 +233,59 @@ class _FutureNotificationRepository implements NotificationRepository {
 
   @override
   Future<List<NotificationEntity>> getNotifications() => notifications;
+
+  @override
+  Future<void> markAsRead(String notificationId) async {}
 }
 
 NotificationEntity _notification({
   required String title,
   required bool isRead,
   required DateTime createdAt,
+  NotificationType type = NotificationType.message,
+  String? referenceId,
 }) {
   return NotificationEntity(
     id: title,
     recipientId: 'user-1',
     title: title,
     message: 'Notification message',
-    type: NotificationType.message,
-    referenceId: null,
+    type: type,
+    referenceId: referenceId,
     isRead: isRead,
     createdAt: createdAt,
+  );
+}
+
+GoRouter _buildTestRouter() {
+  Widget destination(String label, GoRouterState state) {
+    return Scaffold(body: Text('$label:${state.pathParameters['id']}'));
+  }
+
+  return GoRouter(
+    initialLocation: '/',
+    routes: [
+      GoRoute(path: '/', builder: (_, _) => const NotificationsPage()),
+      GoRoute(
+        path: AppRoutes.dietPlanDetails,
+        name: AppRoutes.dietPlanDetailsName,
+        builder: (_, state) => destination('plan', state),
+      ),
+      GoRoute(
+        path: AppRoutes.messageThread,
+        name: AppRoutes.messageThreadName,
+        builder: (_, state) => destination('message', state),
+      ),
+      GoRoute(
+        path: AppRoutes.taskDetails,
+        name: AppRoutes.taskDetailsName,
+        builder: (_, state) => destination('task', state),
+      ),
+      GoRoute(
+        path: AppRoutes.paymentDetails,
+        name: AppRoutes.paymentDetailsName,
+        builder: (_, state) => destination('payment', state),
+      ),
+    ],
   );
 }

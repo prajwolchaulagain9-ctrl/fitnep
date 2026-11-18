@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../../app/theme/app_theme.dart';
+import '../../domain/entities/notification_entity.dart';
 import '../controllers/notification_controller.dart';
+import '../navigation/notification_navigation.dart';
 import '../widgets/notification_tile.dart';
 
 class NotificationsPage extends ConsumerWidget {
@@ -56,8 +61,13 @@ class NotificationsPage extends ConsumerWidget {
                 ),
                 itemCount: notifications.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) =>
-                    NotificationTile(notification: notifications[index]),
+                itemBuilder: (context, index) {
+                  final notification = notifications[index];
+                  return NotificationTile(
+                    notification: notification,
+                    onTap: () => _openNotification(context, ref, notification),
+                  );
+                },
               ),
             );
           },
@@ -70,6 +80,63 @@ class NotificationsPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _openNotification(
+    BuildContext context,
+    WidgetRef ref,
+    NotificationEntity notification,
+  ) {
+    late final NotificationNavigationTarget target;
+    try {
+      target = NotificationNavigationTarget.fromNotification(notification);
+    } on NotificationNavigationException catch (error) {
+      _showMessage(context, error.message, isError: true);
+      return;
+    }
+
+    if (!notification.isRead) {
+      unawaited(
+        ref
+            .read(notificationControllerProvider.notifier)
+            .markAsRead(notification.id)
+            .catchError((Object error) {
+              if (context.mounted) {
+                _showMessage(context, error.toString(), isError: true);
+              }
+            }),
+      );
+    }
+
+    unawaited(
+      context.pushNamed<void>(
+        target.routeName,
+        pathParameters: {'id': target.referenceId},
+      ),
+    );
+  }
+
+  void _showMessage(
+    BuildContext context,
+    String message, {
+    required bool isError,
+  }) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(
+                isError ? Icons.error_outline_rounded : Icons.info_outline,
+                color: isError ? AppColors.error : AppColors.info,
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      );
   }
 }
 

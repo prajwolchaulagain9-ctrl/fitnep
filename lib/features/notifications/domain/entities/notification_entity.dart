@@ -20,4 +20,17 @@ class NotificationEntity {
     required this.isRead,
     required this.createdAt,
   });
+
+  NotificationEntity copyWith({bool? isRead}) {
+    return NotificationEntity(
+      id: id,
+      recipientId: recipientId,
+      title: title,
+      message: message,
+      type: type,
+      referenceId: referenceId,
+      isRead: isRead ?? this.isRead,
+      createdAt: createdAt,
+    );
+  }
 }
