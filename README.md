@@ -76,7 +76,8 @@ providers are separate server setup tasks; app registration does not create them
 
 Invite teammates to the Firebase project through their own Google accounts.
 Email/Password, enumeration protection and the development password policy are
-enabled. The project remains on Spark; live Functions deployment is pending.
+enabled. The project will remain on Spark. Password recovery uses Firebase Auth
+directly; the locally tested Functions example is optional and is not deployed.
 Agree the shared Firestore schema, region and server rules before implementing
 package operations.
 
@@ -115,9 +116,10 @@ retry, reset completion and keyboard use with larger text on a small display.
 Functions unit/emulator tests cover reset-code replay, changed credentials and
 revoked-session access. Live Android recovery, mailbox delivery, actual provider
 expiry, equivalent public email responses and rejection of old credentials and
-multiple session tokens were verified on 18 November 2026. The login handoff,
-live protected-access deployment and iOS checks remain pending; see the recovery
-integration document for the evidence and its limits.
+multiple session tokens were verified on 18 November 2026. The login handoff and
+iOS checks remain pending. Protected-data features need authorization and
+revocation rules designed for Spark before integration; see the recovery
+document for the evidence and its limits.
 
 Use personal work branches and PR into `development`. Include story IDs,
 acceptance evidence, tests and any shared Firebase/schema changes in the PR.

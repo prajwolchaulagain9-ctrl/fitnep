@@ -58,11 +58,13 @@ reads the Firebase policy.
    account errors, but matching public API responses also require the server
    setting. Configure and test the reset email sender/template.
 4. Create a synthetic account using a mailbox available for acceptance testing.
-5. Review/deploy `checkSession` and the Firestore rules through the team's Firebase
-   deployment process. Cloud Functions deployment requires Blaze billing.
+5. Keep the project on Spark. The current recovery flow uses Firebase Auth
+   directly and does not call Cloud Functions. Review Firestore rules before
+   introducing any client data access.
 
-The project remains on Spark by the owner's choice. `checkSession` is prepared
-and tested locally; live Cloud Functions deployment remains pending Blaze.
+Spark is the agreed plan; no paid upgrade is planned. `checkSession` is an
+optional, locally tested server example, not a dependency of password recovery.
+It is not deployed, and deploying it is not a Day 2 requirement.
 The repository's Firestore rules have not been deployed to the development
 project. The exact Figma logo asset is pending an original export or file access;
 the existing text wordmark remains in use.
@@ -84,14 +86,15 @@ preserve the session and retry later. A refresh of an old session cannot sign ou
 a newer login, including a newer login for the same UID.
 
 Forced refresh detects revoked refresh tokens; it does not authorize protected
-operations. After deployment, use `checkSession` before exposing protected state
-and when a protected request fails. On `unauthenticated`, sign out and invalidate
-the team's sensitive state providers. Add cache/provider cleanup when US 1 and
-the protected features introduce that state. No sensitive account cache exists
-in the current app.
+operations. The current app has no protected-data routes or sensitive account
+cache. When those features are introduced, design and verify authorization and
+revocation enforcement within the Spark constraint, and invalidate sensitive
+state on sign-out. Client polling alone cannot reject a direct request made with
+an already-issued ID token. The optional server verifier demonstrates that
+check, but it is not deployed or called by the app.
 
 The repository's Firestore rules deny **all direct client access**, including fresh
-sessions. Current protected access is through trusted Functions. These rules are
+sessions. No protected data access is implemented in the current app. These rules are
 not a finished catalog/user/profile access policy: review this shared contract
 before deployment, and add future direct access only with appropriate authorization
 and revocation enforcement. Admin SDK operations bypass Firestore rules, so each
@@ -157,8 +160,10 @@ existing account without the matching fixture. Private credentials and action
 codes, plus runtime results, stay in ignored `.dart_tool`; never commit them.
 Expiry cleanup removes only its matching temporary fixture.
 
-US 2 still needs the US 1 login entry/success-route integration, a reviewed live
-protected-access deployment, and iOS validation. One-tap HTTPS email-to-app links
-are pending; the supported paste-link flow is documented above. Keep the story
-open until the remaining integration/security criteria are accepted. Sprint
+Day 2's recovery implementation and Firebase Auth checks are finished. US 2
+still needs the US 1 login entry/success-route integration. Live protected-data
+revocation has not been verified and must be addressed before those data features
+are exposed; this does not require a paid upgrade for the current Auth flow.
+iOS remains unverified for later platform validation. One-tap HTTPS email-to-app
+links are pending; the supported paste-link flow is documented above. Sprint
 planning stays in `D:\fitnep_plan` outside the application repository.
