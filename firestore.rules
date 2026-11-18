@@ -1,8 +1,28 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // No client data feature is implemented yet. Keep access denied until
-    // ownership and revocation rules are reviewed for the Spark plan.
+    // Notification data is accessed only through authenticated Cloud Functions.
+    // The Admin SDK bypasses these rules after the HTTPS layer verifies identity.
+    match /notifications/{notificationId} {
+      allow read, write: if false;
+    }
+
+    // Workflow records are backend-owned. Mobile clients use the application
+    // APIs rather than writing workflow events directly.
+    match /diet_plans/{document=**} {
+      allow read, write: if false;
+    }
+    match /messages/{document=**} {
+      allow read, write: if false;
+    }
+    match /tasks/{document=**} {
+      allow read, write: if false;
+    }
+    match /payments/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

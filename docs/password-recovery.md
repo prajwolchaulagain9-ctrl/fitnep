@@ -86,15 +86,18 @@ preserve the session and retry later. A refresh of an old session cannot sign ou
 a newer login, including a newer login for the same UID.
 
 Forced refresh detects revoked refresh tokens; it does not authorize protected
-operations. The current app has no protected-data routes or sensitive account
-cache. When those features are introduced, design and verify authorization and
-revocation enforcement within the Spark constraint, and invalidate sensitive
-state on sign-out. Client polling alone cannot reject a direct request made with
+operations. The integrated app now includes notification routes and their
+cached state. Auth changes invalidate notifications and destination records;
+requests read the current shared Firebase ID token rather than a separately
+stored token. When connecting live data, verify authorization and revocation
+enforcement within the Spark constraint. Client polling alone cannot reject a direct request made with
 an already-issued ID token. The optional server verifier demonstrates that
-check, but it is not deployed or called by the app.
+check, but it is not deployed or called by the app. Dilochan's notification API
+also verifies revoked tokens and derives recipient identity on the server.
 
 The repository's Firestore rules deny **all direct client access**, including fresh
-sessions. No protected data access is implemented in the current app. These rules are
+sessions. Notifications have a backend API implementation for local tests, with
+no live backend configured on Spark. These rules are
 not a finished catalog/user/profile access policy: review this shared contract
 before deployment, and add future direct access only with appropriate authorization
 and revocation enforcement. Admin SDK operations bypass Firestore rules, so each
@@ -121,8 +124,9 @@ error handling, matching passwords, password-policy rejection, delivery/verifica
 retry, duplicate taps, hidden fields, cleanup failure and startup/keyboard behavior.
 The emulator check passed for real reset operations, replay, weak-password
 rejection, old/new credentials, both old sessions and direct Firestore read/write
-denial. Current local validation passed 25 Flutter tests, four server unit tests,
-format checks and the analyzer. Firestore uses port 18080 locally to
+denial. The recovery baseline passed 25 Flutter tests and four server unit tests.
+The merged app passed 70 Flutter tests, 18 backend unit tests, 21 combined emulator
+checks, formatting, the analyzer and the Android debug build. Firestore uses port 18080 locally to
 avoid another service already using port 8080.
 
 The live recovery test passed on Infinix X6817 on 18 November 2026, against the

@@ -5,6 +5,9 @@ import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
+import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
+import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -44,13 +47,19 @@ class _Auth extends Fake implements FirebaseAuth {
   }
 }
 
-Future<ProviderContainer> _open(WidgetTester tester, _Auth auth) async {
+Future<ProviderContainer> _open(
+  WidgetTester tester,
+  _Auth auth, {
+  NotificationRepository? notifications,
+}) async {
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        if (notifications != null)
+          notificationRepositoryProvider.overrideWithValue(notifications),
       ],
       child: const FitNepApp(),
     ),
@@ -64,6 +73,35 @@ Future<ProviderContainer> _open(WidgetTester tester, _Auth auth) async {
   return container;
 }
 
+class _Notifications implements NotificationRepository {
+  _Notifications(this.auth);
+  final _Auth auth;
+  int loads = 0;
+  @override
+  Future<List<NotificationEntity>> getNotifications() async {
+    loads++;
+    return auth.currentUser == null
+        ? []
+        : [
+            NotificationEntity(
+              id: 'old-account-notification',
+              recipientId: 'client',
+              title: 'Private',
+              message: 'Account update',
+              type: NotificationType.message,
+              referenceId: 'conversation',
+              isRead: false,
+              createdAt: DateTime.utc(2026),
+            ),
+          ];
+  }
+
+  @override
+  Future<void> markAsRead(String notificationId) async {}
+  @override
+  Future<void> markAllAsRead() async {}
+}
+
 Future<void> _close(WidgetTester tester, _Auth auth) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump();
@@ -72,6 +110,29 @@ Future<void> _close(WidgetTester tester, _Auth auth) async {
 }
 
 void main() {
+  testWidgets('revocation clears notifications cached for the old account', (
+    tester,
+  ) async {
+    final user = _User();
+    final auth = _Auth(user);
+    final notifications = _Notifications(auth);
+    final container = await _open(tester, auth, notifications: notifications);
+    expect(
+      await container.read(notificationControllerProvider.future),
+      hasLength(1),
+    );
+    user.error = FirebaseAuthException(code: 'user-token-expired');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(auth.currentUser == null, isTrue);
+    expect(
+      await container.read(notificationControllerProvider.future),
+      isEmpty,
+    );
+    expect(notifications.loads, 2);
+    await _close(tester, auth);
+  });
   testWidgets('revoked session is cleared on resume and returns to welcome', (
     tester,
   ) async {

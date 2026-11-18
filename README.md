@@ -18,6 +18,33 @@ are still to be implemented. The original logo export remains pending.
 See [password recovery integration](docs/password-recovery.md) for route names,
 Firebase setup, session enforcement and verification.
 
+Dilochan's contribution adds the admin client list/profile/audit screens,
+client home, notifications and routes to related diet plans, conversations,
+tasks and payments. Admin data currently comes from the local mock datasource.
+The shared router starts at welcome and retains all recovery and feature routes;
+US 1 must connect authenticated navigation and trusted role claims.
+
+The notification API base URL defaults to empty because this Spark project has
+no deployed notification backend. The screens show a configuration error until
+a backend is explicitly supplied:
+
+```powershell
+flutter run -d <android-device-id> --dart-define=API_BASE_URL=https://api.example.com/
+```
+
+Notifications use `GET /notifications`, `PATCH /notifications/{id}/read` and
+`PATCH /notifications/read-all`. Requests read the current shared Firebase ID
+token, and the server derives recipient identity from that verified token.
+Sign-out clears cached notifications and destination records. Diet-plan,
+conversation, task and payment record endpoints remain feature integrations;
+the notification backend does not implement those record APIs yet.
+
+The TypeScript notification backend and recovery callable are combined in
+`functions/`; both use revocation-aware Admin SDK verification. They are retained
+for local emulator testing. See [backend setup](functions/README.md) for API
+schemas, custom claims, workflow hooks, indexes and tests. No deployment or
+billing change is part of this merge.
+
 ## Workspace and tools
 
 Repository: `D:\fitnep\fitnep`.
@@ -93,8 +120,9 @@ package operations.
 Read Firebase SDK providers after initialization completes. Override the providers
 in feature tests instead of connecting widget tests to the live project.
 
-Functions currently use `us-central1` by default. Match the region to the agreed
-backend deployment when one exists:
+The recovery callable uses `us-central1`; the notification API and workflow hooks
+use `asia-south1`. The shared callable SDK defaults to `us-central1` and can be
+configured for a different callable region:
 
 ```powershell
 flutter run -d <android-device-id> --dart-define=FIREBASE_FUNCTIONS_REGION=<deployed-region>
@@ -128,3 +156,8 @@ do not commit build output.
 
 The four-day work plan, Firebase teammate handoff and release-notes template are
 maintained separately in `D:\fitnep_plan`.
+
+The Prajwol/Dilochan integration passed 70 Flutter tests, 18 backend unit tests,
+21 combined Firebase emulator checks, formatting, the analyzer and the Android
+debug APK build. Local backend checks used Node 24; the declared runtime and CI
+use Node 22. These checks did not deploy Functions or change Spark billing.

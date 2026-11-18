@@ -9,7 +9,7 @@ assert.ok(project?.startsWith('demo-'), 'Use a demo project; never run these tes
 assert.ok(process.env.FIREBASE_AUTH_EMULATOR_HOST, 'Run using firebase emulators:exec.');
 assert.ok(process.env.FIRESTORE_EMULATOR_HOST, 'Include the Firestore emulator.');
 const authHost = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
-const auth = getAuth(initializeApp({ projectId: project }));
+const auth = getAuth(initializeApp({ projectId: project }, 'fitnep-recovery-tests'));
 
 async function authPost(method, body) {
   const response = await fetch(

@@ -1,14 +1,36 @@
 {
-  "name": "fitnep-recovery-functions",
+  "name": "fitnep-functions",
   "private": true,
-  "main": "src/index.cjs",
-  "engines": { "node": "22" },
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
   "scripts": {
-    "test": "node --test test/session.test.cjs",
-    "test:emulator": "node --test test/auth-emulator.test.cjs"
+    "prebuild": "node scripts/clean-output.mjs lib",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "prebuild:test": "node scripts/clean-output.mjs .test-build",
+    "build:test": "tsc -p tsconfig.test.json",
+    "test": "npm run typecheck && npm run build:test && node --test --test-isolation=none --test-concurrency=1 test/session.test.cjs .test-build/test/notification_security.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js",
+    "serve": "npm run build && npx firebase-tools emulators:start --only functions",
+    "deploy": "npx firebase-tools deploy --only functions",
+    "test:emulator": "npm run build:test && node --test --test-isolation=none --test-concurrency=1 test/auth-emulator.test.cjs .test-build/test/notification_security.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js"
   },
   "dependencies": {
-    "firebase-admin": "^13.0.0",
-    "firebase-functions": "^7.0.0"
+    "express": "^4.21.2",
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0"
+  },
+  "overrides": {
+    "firebase-admin": {
+      "@firebase/database-compat": "2.1.7"
+    }
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.5",
+    "@types/supertest": "^6.0.2",
+    "supertest": "^7.0.0",
+    "typescript": "^5.7.2"
   }
 }

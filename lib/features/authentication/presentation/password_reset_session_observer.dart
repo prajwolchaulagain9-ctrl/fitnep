@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/routes/app_router.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../core/services/firebase_providers.dart';
+import '../../notifications/presentation/controllers/notification_controller.dart';
+import '../../notifications/presentation/controllers/notification_destination_controller.dart';
 import '../data/password_recovery_service.dart';
 
 // US 2 session revocation. Firebase remains the shared authentication state.
@@ -32,10 +34,11 @@ class _PasswordResetSessionObserverState
     super.initState();
     _recovery = PasswordRecoveryService(ref.read(firebaseAuthProvider));
     WidgetsBinding.instance.addObserver(this);
-    _subscription = _recovery.auth.authStateChanges().listen(
-      (_) => _startChecking(),
-      onError: (Object error) {},
-    );
+    _subscription = _recovery.auth.authStateChanges().listen((_) {
+      ref.invalidate(notificationControllerProvider);
+      ref.invalidate(notificationDestinationProvider);
+      _startChecking();
+    }, onError: (Object error) {});
     _startChecking();
   }
 
