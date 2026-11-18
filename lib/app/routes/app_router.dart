@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
@@ -20,6 +21,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.about,
         path: AppRoutes.aboutPath,
         builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.forgotPassword,
+        path: AppRoutes.forgotPasswordPath,
+        builder: (context, state) => const ForgotPasswordPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.resetPassword,
+        path: AppRoutes.resetPasswordPath,
+        builder: (context, state) => ResetPasswordPage(
+          key: ValueKey(state.uri.toString()),
+          // Preserve the mode/duplicate parameters for service validation.
+          initialLink: state.uri.query.isEmpty
+              ? null
+              : 'fitnep://auth/reset-password?${state.uri.query}',
+        ),
       ),
     ],
     errorBuilder: (context, state) => AppPage(
