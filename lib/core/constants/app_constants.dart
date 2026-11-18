@@ -2,6 +2,7 @@ class AppConstants {
   AppConstants._();
 
   static const notificationsEndpoint = 'notifications';
+  static const notificationsReadAllEndpoint = 'notifications/read-all';
 
   static String notificationReadEndpoint(String notificationId) =>
       '$notificationsEndpoint/${Uri.encodeComponent(notificationId)}/read';

@@ -79,4 +79,32 @@ void main() {
       'https://api.fitnep.test/notifications/notification-1/read',
     );
   });
+
+  test('marks all authenticated-user notifications as read', () async {
+    late RequestOptions capturedRequest;
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.fitnep.test/'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          capturedRequest = options;
+          handler.resolve(
+            Response<Object?>(requestOptions: options, statusCode: 204),
+          );
+        },
+      ),
+    );
+    final datasource = NotificationRemoteDatasourceImpl(
+      ApiClient(tokenStorage: const TokenStorage(), dio: dio),
+    );
+
+    await datasource.markAllAsRead();
+
+    expect(capturedRequest.method, 'PATCH');
+    expect(
+      capturedRequest.uri.toString(),
+      'https://api.fitnep.test/notifications/read-all',
+    );
+    expect(capturedRequest.queryParameters, isEmpty);
+    expect(capturedRequest.data, isNull);
+  });
 }

@@ -16,6 +16,9 @@ class NotificationsPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(notificationControllerProvider);
+    final isMarkingAllAsRead = ref.watch(
+      notificationMarkAllReadInProgressProvider,
+    );
     final unreadCount = state.when<int?>(
       data: (notifications) =>
           notifications.where((notification) => !notification.isRead).length,
@@ -46,29 +49,47 @@ class NotificationsPage extends ConsumerWidget {
               );
             }
 
-            return RefreshIndicator(
-              color: AppColors.primary,
-              backgroundColor: AppColors.surfaceElevated,
-              onRefresh: () =>
-                  ref.read(notificationControllerProvider.notifier).refresh(),
-              child: ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  24 + MediaQuery.paddingOf(context).bottom,
+            final currentUnreadCount = notifications
+                .where((notification) => !notification.isRead)
+                .length;
+
+            return Column(
+              children: [
+                if (currentUnreadCount > 0 || isMarkingAllAsRead)
+                  _MarkAllReadBar(
+                    unreadCount: currentUnreadCount,
+                    isLoading: isMarkingAllAsRead,
+                    onPressed: () => _markAllAsRead(context, ref),
+                  ),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: AppColors.primary,
+                    backgroundColor: AppColors.surfaceElevated,
+                    onRefresh: () => ref
+                        .read(notificationControllerProvider.notifier)
+                        .refresh(),
+                    child: ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        16,
+                        12,
+                        16,
+                        24 + MediaQuery.paddingOf(context).bottom,
+                      ),
+                      itemCount: notifications.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final notification = notifications[index];
+                        return NotificationTile(
+                          notification: notification,
+                          onTap: () =>
+                              _openNotification(context, ref, notification),
+                        );
+                      },
+                    ),
+                  ),
                 ),
-                itemCount: notifications.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final notification = notifications[index];
-                  return NotificationTile(
-                    notification: notification,
-                    onTap: () => _openNotification(context, ref, notification),
-                  );
-                },
-              ),
+              ],
             );
           },
           error: (error, _) => _ErrorState(
@@ -80,6 +101,24 @@ class NotificationsPage extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _markAllAsRead(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(notificationControllerProvider.notifier).markAllAsRead();
+      if (context.mounted) {
+        _showMessage(
+          context,
+          'All notifications marked as read.',
+          isError: false,
+          isSuccess: true,
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        _showMessage(context, error.toString(), isError: true);
+      }
+    }
   }
 
   void _openNotification(
@@ -120,6 +159,7 @@ class NotificationsPage extends ConsumerWidget {
     BuildContext context,
     String message, {
     required bool isError,
+    bool isSuccess = false,
   }) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -128,8 +168,16 @@ class NotificationsPage extends ConsumerWidget {
           content: Row(
             children: [
               Icon(
-                isError ? Icons.error_outline_rounded : Icons.info_outline,
-                color: isError ? AppColors.error : AppColors.info,
+                isError
+                    ? Icons.error_outline_rounded
+                    : isSuccess
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.info_outline,
+                color: isError
+                    ? AppColors.error
+                    : isSuccess
+                    ? AppColors.success
+                    : AppColors.info,
               ),
               const SizedBox(width: 10),
               Expanded(child: Text(message)),
@@ -137,6 +185,51 @@ class NotificationsPage extends ConsumerWidget {
           ),
         ),
       );
+  }
+}
+
+class _MarkAllReadBar extends StatelessWidget {
+  final int unreadCount;
+  final bool isLoading;
+  final VoidCallback onPressed;
+
+  const _MarkAllReadBar({
+    required this.unreadCount,
+    required this.isLoading,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.divider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$unreadCount unread notification${unreadCount == 1 ? '' : 's'}',
+              style: Theme.of(context).textTheme.labelMedium
+                  ?.copyWith(color: AppColors.textSecondary, letterSpacing: 0),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: isLoading ? null : onPressed,
+            icon: isLoading
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.done_all_rounded, size: 18),
+            label: Text(isLoading ? 'Marking as read...' : 'Mark All as Read'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

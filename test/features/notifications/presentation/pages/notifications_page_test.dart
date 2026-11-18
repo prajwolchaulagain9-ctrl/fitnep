@@ -209,13 +209,126 @@ void main() {
       expect(repository.markedIds, isEmpty);
     },
   );
+
+  testWidgets('marks all unread notifications and shows success feedback', (
+    tester,
+  ) async {
+    final markAllCompleter = Completer<void>();
+    final repository = _FakeNotificationRepository([
+      _notification(
+        title: 'Unread notification',
+        isRead: false,
+        createdAt: DateTime.utc(2026, 11, 18, 9),
+      ),
+      _notification(
+        title: 'Already read notification',
+        isRead: true,
+        createdAt: DateTime.utc(2026, 11, 17, 9),
+      ),
+    ], markAllCompleter: markAllCompleter);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notificationRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: NotificationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Mark All as Read'));
+    await tester.pump();
+
+    expect(find.text('Marking as read...'), findsOneWidget);
+    expect(repository.markAllCalls, 1);
+    expect(
+      tester
+          .widget<TextButton>(
+            find.widgetWithText(TextButton, 'Marking as read...'),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    markAllCompleter.complete();
+    await tester.pumpAndSettle();
+
+    expect(find.text('0 unread'), findsOneWidget);
+    expect(find.text('Unread'), findsNothing);
+    expect(find.text('Mark All as Read'), findsNothing);
+    expect(find.text('All notifications marked as read.'), findsOneWidget);
+  });
+
+  testWidgets('hides mark-all when every notification is already read', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notificationRepositoryProvider.overrideWithValue(
+            _FakeNotificationRepository([
+              _notification(
+                title: 'Read notification',
+                isRead: true,
+                createdAt: DateTime.utc(2026, 11, 18, 9),
+              ),
+            ]),
+          ),
+        ],
+        child: const MaterialApp(home: NotificationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('0 unread'), findsOneWidget);
+    expect(find.text('Mark All as Read'), findsNothing);
+  });
+
+  testWidgets('keeps unread UI and allows retry after mark-all fails', (
+    tester,
+  ) async {
+    final repository = _FakeNotificationRepository([
+      _notification(
+        title: 'Unread notification',
+        isRead: false,
+        createdAt: DateTime.utc(2026, 11, 18, 9),
+      ),
+    ], markAllError: Exception('Network unavailable'));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notificationRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const MaterialApp(home: NotificationsPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Mark All as Read'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 unread'), findsOneWidget);
+    expect(find.text('Unread'), findsOneWidget);
+    expect(find.text('Mark All as Read'), findsOneWidget);
+    expect(find.text('Exception: Network unavailable'), findsOneWidget);
+    expect(repository.markAllCalls, 1);
+  });
 }
 
 class _FakeNotificationRepository implements NotificationRepository {
-  final List<NotificationEntity> notifications;
+  List<NotificationEntity> notifications;
+  final Completer<void>? markAllCompleter;
+  final Object? markAllError;
   final List<String> markedIds = [];
+  int markAllCalls = 0;
 
-  _FakeNotificationRepository(this.notifications);
+  _FakeNotificationRepository(
+    List<NotificationEntity> notifications, {
+    this.markAllCompleter,
+    this.markAllError,
+  }) : notifications = List<NotificationEntity>.of(notifications);
 
   @override
   Future<List<NotificationEntity>> getNotifications() async => notifications;
@@ -223,6 +336,20 @@ class _FakeNotificationRepository implements NotificationRepository {
   @override
   Future<void> markAsRead(String notificationId) async {
     markedIds.add(notificationId);
+  }
+
+  @override
+  Future<void> markAllAsRead() async {
+    markAllCalls++;
+    if (markAllError != null) throw markAllError!;
+    if (markAllCompleter != null) await markAllCompleter!.future;
+    notifications = notifications
+        .map(
+          (notification) => notification.isRead
+              ? notification
+              : notification.copyWith(isRead: true),
+        )
+        .toList(growable: false);
   }
 }
 
@@ -236,6 +363,9 @@ class _FutureNotificationRepository implements NotificationRepository {
 
   @override
   Future<void> markAsRead(String notificationId) async {}
+
+  @override
+  Future<void> markAllAsRead() async {}
 }
 
 NotificationEntity _notification({

@@ -8,6 +8,8 @@ abstract class NotificationRemoteDatasource {
   Future<List<NotificationModel>> getNotifications();
 
   Future<void> markAsRead(String notificationId);
+
+  Future<void> markAllAsRead();
 }
 
 class NotificationRemoteDatasourceImpl implements NotificationRemoteDatasource {
@@ -76,6 +78,37 @@ class NotificationRemoteDatasourceImpl implements NotificationRemoteDatasource {
       }
       throw const NotificationDataException(
         'Could not mark the notification as read. Check your connection and try again.',
+      );
+    }
+  }
+
+  @override
+  Future<void> markAllAsRead() async {
+    _ensureConfigured();
+
+    try {
+      await _apiClient.dio.patch<Object?>(
+        AppConstants.notificationsReadAllEndpoint,
+      );
+    } on DioException catch (error) {
+      final statusCode = error.response?.statusCode;
+      if (statusCode == 401) {
+        throw const NotificationDataException(
+          'Your session has expired. Please sign in again.',
+        );
+      }
+      if (statusCode == 403) {
+        throw const NotificationDataException(
+          'You do not have permission to update these notifications.',
+        );
+      }
+      if (statusCode == 404) {
+        throw const NotificationDataException(
+          'Mark all as read is not available right now.',
+        );
+      }
+      throw const NotificationDataException(
+        'Could not mark all notifications as read. Check your connection and try again.',
       );
     }
   }
