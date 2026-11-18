@@ -18,6 +18,16 @@ flutter devices
 flutter run -d <device-id>
 ```
 
+The notifications frontend reads its API root from a Dart define:
+
+```powershell
+flutter run -d <device-id> --dart-define=API_BASE_URL=https://api.example.com/
+```
+
+It requests `GET /notifications` with the stored bearer token. The backend is
+expected to scope results to the authenticated user; backend and database code
+are not included in this mobile repository.
+
 Choose an Android phone/emulator or an iOS device/simulator.
 iOS builds require macOS and Xcode.
 

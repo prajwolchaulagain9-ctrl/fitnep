@@ -1,7 +1,33 @@
+val localProperties = java.util.Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use(localProperties::load)
+}
+
+val androidSdkRoot = localProperties.getProperty("sdk.dir")
+val installedNdkVersions =
+    androidSdkRoot
+        ?.let { rootProject.file("$it/ndk") }
+        ?.listFiles()
+        ?.filter { rootProject.file("${it.path}/source.properties").isFile }
+        ?.map { it.name }
+        ?.sorted()
+        ?.joinToString(",")
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+    }
+
+    if (!androidSdkRoot.isNullOrBlank()) {
+        extensions.extraProperties.set("flutter.androidSdkRoot", androidSdkRoot)
+    }
+    if (!installedNdkVersions.isNullOrBlank()) {
+        extensions.extraProperties.set(
+            "flutter.installedNdkVersions",
+            installedNdkVersions,
+        )
     }
 }
 

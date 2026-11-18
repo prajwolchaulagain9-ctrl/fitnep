@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
+import '../../features/notifications/presentation/pages/notifications_page.dart';
 import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -10,6 +11,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.adminClients,
     debugLogDiagnostics: false,
     routes: [
+      GoRoute(
+        path: AppRoutes.notifications,
+        name: 'notifications',
+        builder: (context, state) => const NotificationsPage(),
+      ),
       GoRoute(
         path: AppRoutes.adminClients,
         name: 'admin-clients',

@@ -47,6 +47,8 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
     ClientListController controller,
     bool innerBoxIsScrolled,
   ) {
+    final isCompact = MediaQuery.sizeOf(context).width < 480;
+
     return SliverAppBar(
       floating: true,
       snap: true,
@@ -72,24 +74,38 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
                 totalCount: state.allClients.length,
               ),
       ),
-      actions: [
-        if (!_searchExpanded)
-          IconButton(
-            icon: const Icon(Icons.search_rounded),
-            tooltip: 'Search clients',
-            onPressed: () => setState(() => _searchExpanded = true),
-          ),
-        _FilterButton(
-          state: state,
-          onFilter: () => _showFilterMenu(context, state, controller),
-        ),
-        IconButton(
-          icon: const Icon(Icons.history_rounded),
-          tooltip: 'Audit Log',
-          onPressed: () => context.push(AppRoutes.auditLog),
-        ),
-        const SizedBox(width: 4),
-      ],
+      actions: _searchExpanded
+          ? const [SizedBox(width: 8)]
+          : [
+              IconButton(
+                icon: const Icon(Icons.search_rounded),
+                tooltip: 'Search clients',
+                onPressed: () => setState(() => _searchExpanded = true),
+              ),
+              _FilterButton(
+                state: state,
+                onFilter: () => _showFilterMenu(context, state, controller),
+              ),
+              if (isCompact)
+                _ClientAppBarOverflow(
+                  onNotifications: () =>
+                      context.push(AppRoutes.notifications),
+                  onAuditLog: () => context.push(AppRoutes.auditLog),
+                )
+              else ...[
+                IconButton(
+                  icon: const Icon(Icons.notifications_none_rounded),
+                  tooltip: 'Notifications',
+                  onPressed: () => context.push(AppRoutes.notifications),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.history_rounded),
+                  tooltip: 'Audit Log',
+                  onPressed: () => context.push(AppRoutes.auditLog),
+                ),
+              ],
+              const SizedBox(width: 4),
+            ],
       bottom: state.filters.activeCount > 0 || state.searchQuery.isNotEmpty
           ? PreferredSize(
               preferredSize: const Size.fromHeight(48),
@@ -222,7 +238,13 @@ class _AppBarTitle extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            const Text('Client Management'),
+            const Flexible(
+              child: Text(
+                'Client Management',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         Text(
@@ -315,6 +337,55 @@ class _FilterButton extends StatelessWidget {
               ),
             ),
           ),
+      ],
+    );
+  }
+}
+
+enum _ClientAppBarAction { notifications, auditLog }
+
+class _ClientAppBarOverflow extends StatelessWidget {
+  final VoidCallback onNotifications;
+  final VoidCallback onAuditLog;
+
+  const _ClientAppBarOverflow({
+    required this.onNotifications,
+    required this.onAuditLog,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<_ClientAppBarAction>(
+      tooltip: 'More options',
+      icon: const Icon(Icons.more_vert_rounded),
+      onSelected: (action) {
+        if (action == _ClientAppBarAction.notifications) {
+          onNotifications();
+        } else {
+          onAuditLog();
+        }
+      },
+      itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: _ClientAppBarAction.notifications,
+          child: Row(
+            children: [
+              Icon(Icons.notifications_none_rounded),
+              SizedBox(width: 12),
+              Text('Notifications'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _ClientAppBarAction.auditLog,
+          child: Row(
+            children: [
+              Icon(Icons.history_rounded),
+              SizedBox(width: 12),
+              Text('Audit Log'),
+            ],
+          ),
+        ),
       ],
     );
   }
