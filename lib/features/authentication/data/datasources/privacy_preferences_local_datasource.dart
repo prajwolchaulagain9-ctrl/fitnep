@@ -23,9 +23,7 @@ class PrivacyPreferencesLocalDatasource {
       }
 
       return PrivacyPreferences(
-        shareMealPhotos: decoded['shareMealPhotos'] == true,
-        shareProgressPhotos: decoded['shareProgressPhotos'] == true,
-        shareActivityData: decoded['shareActivityData'] == true,
+        shareNutritionRecords: decoded['shareNutritionRecords'] == true,
       );
     } on FormatException {
       // Malformed saved data must never enable sharing by accident.
@@ -35,9 +33,7 @@ class PrivacyPreferencesLocalDatasource {
 
   Future<void> writePreferences(PrivacyPreferences preferences) {
     final encoded = jsonEncode({
-      'shareMealPhotos': preferences.shareMealPhotos,
-      'shareProgressPhotos': preferences.shareProgressPhotos,
-      'shareActivityData': preferences.shareActivityData,
+      'shareNutritionRecords': preferences.shareNutritionRecords,
     });
     return _storage.write(key: _storageKey, value: encoded);
   }

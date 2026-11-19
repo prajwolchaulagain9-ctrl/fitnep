@@ -69,8 +69,8 @@ class _PrivacyPreferencesPageState
               ),
               const SizedBox(height: 8),
               Text(
-                'Choose which information you’re comfortable sharing with your '
-                'FitNEP care team. Sharing is off until you turn it on.',
+                'Choose whether your assigned dietitian can view your nutrition '
+                'records. Sharing is off until you turn it on.',
                 style: theme.textTheme.bodyLarge,
               ),
               if (_isSaving) ...[
@@ -84,38 +84,15 @@ class _PrivacyPreferencesPageState
                   children: [
                     _PrivacyOption(
                       icon: Icons.restaurant_outlined,
-                      title: 'Meal photos',
+                      title: 'Share nutrition records',
                       description:
-                          'Let your care team review meal photos you submit.',
-                      value: value.shareMealPhotos,
-                      onChanged: _isSaving
-                          ? null
-                          : (enabled) =>
-                                _save(value.copyWith(shareMealPhotos: enabled)),
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    _PrivacyOption(
-                      icon: Icons.photo_camera_back_outlined,
-                      title: 'Progress photos',
-                      description: 'Share progress photos with your care team.',
-                      value: value.shareProgressPhotos,
+                          'Allow your assigned dietitian to view your '
+                          'nutrition logs.',
+                      value: value.shareNutritionRecords,
                       onChanged: _isSaving
                           ? null
                           : (enabled) => _save(
-                              value.copyWith(shareProgressPhotos: enabled),
-                            ),
-                    ),
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                    _PrivacyOption(
-                      icon: Icons.directions_run_outlined,
-                      title: 'Activity data',
-                      description:
-                          'Share activity information to support your plan.',
-                      value: value.shareActivityData,
-                      onChanged: _isSaving
-                          ? null
-                          : (enabled) => _save(
-                              value.copyWith(shareActivityData: enabled),
+                              value.copyWith(shareNutritionRecords: enabled),
                             ),
                     ),
                   ],
@@ -123,8 +100,9 @@ class _PrivacyPreferencesPageState
               ),
               const SizedBox(height: 16),
               Text(
-                'Your choices are saved on this device and can be changed at '
-                'any time.',
+                'Your own nutrition records remain available to you regardless '
+                'of this setting. This preference is stored on this device and '
+                'can be changed at any time.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
