@@ -9,6 +9,5 @@ class DeactivateClientUseCase {
     required String reason,
     required String adminId,
     required String adminName,
-  }) =>
-      _repository.deactivateClient(clientId, reason, adminId, adminName);
+  }) => _repository.deactivateClient(clientId, reason, adminId, adminName);
 }

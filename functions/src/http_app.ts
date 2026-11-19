@@ -16,10 +16,22 @@ import {
   NotificationNotFoundError,
   NotificationService,
 } from "./notification_service";
+import {
+  PackageRepository,
+  PackageRequestConflictError,
+  PackageStorageNotConfiguredError,
+  UnconfiguredPackageRepository,
+} from "./package_repository";
+import {
+  InvalidPackageError,
+  PackageAuthorizationError,
+  PackageService,
+} from "./package_service";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
+  packageRepository?: PackageRepository;
 }
 
 export function createNotificationApp(
@@ -28,6 +40,9 @@ export function createNotificationApp(
   const app = express();
   const service = new NotificationService(
     dependencies.notificationRepository,
+  );
+  const packageService = new PackageService(
+    dependencies.packageRepository ?? new UnconfiguredPackageRepository(),
   );
 
   app.disable("x-powered-by");
@@ -67,6 +82,31 @@ export function createNotificationApp(
     asyncRoute(async (_request, response) => {
       const updatedCount = await service.markAllRead(currentUser(response));
       response.status(200).json({ data: { updated_count: updatedCount } });
+    }),
+  );
+
+  app.get(
+    "/packages",
+    asyncRoute(async (_request, response) => {
+      const packages = await packageService.list();
+      response.status(200).json({
+        data: { packages: packages.map(toApiPackage) },
+      });
+    }),
+  );
+
+  app.post(
+    "/packages",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const created = await packageService.create(currentUser(response), {
+        name: body.name,
+        durationMonths: body.duration_months,
+        price: body.price,
+        featureDescription: body.feature_description,
+        requestId: body.request_id,
+      });
+      response.status(201).json({ data: { package: toApiPackage(created) } });
     }),
   );
 
@@ -112,6 +152,24 @@ export function createNotificationApp(
         });
         return;
       }
+      if (error instanceof PackageAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidPackageError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PackageRequestConflictError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PackageStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Package storage has not been configured yet.",
+        });
+        return;
+      }
 
       console.error("Unhandled notification API error", error);
       response.status(500).json({ error: "Internal server error." });
@@ -119,6 +177,17 @@ export function createNotificationApp(
   );
 
   return app;
+}
+
+function toApiPackage(packageRecord: import("./domain").PackageRecord) {
+  return {
+    id: packageRecord.id,
+    name: packageRecord.name,
+    duration_months: packageRecord.durationMonths,
+    price: packageRecord.price,
+    feature_description: packageRecord.featureDescription,
+    created_at: packageRecord.createdAt,
+  };
 }
 
 function authenticate(authVerifier: AuthVerifier): RequestHandler {

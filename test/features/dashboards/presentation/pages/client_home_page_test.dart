@@ -1,4 +1,5 @@
 import 'package:fitnep/app/routes/app_router.dart';
+import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/features/dashboards/presentation/pages/client_home_page.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
@@ -29,7 +30,7 @@ void main() {
       );
       addTearDown(container.dispose);
       final router = container.read(appRouterProvider);
-      addTearDown(router.dispose);
+      router.goNamed(AppRoutes.clientHomeName);
 
       await tester.pumpWidget(
         UncontrolledProviderScope(

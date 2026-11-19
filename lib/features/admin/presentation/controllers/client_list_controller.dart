@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../data/datasources/admin_local_datasource.dart';
 import '../../data/repositories/admin_repository_impl.dart';
 import '../../domain/entities/client_entity.dart';
@@ -115,10 +116,7 @@ class ClientListController extends Notifier<ClientListState> {
         errorMessage: null,
       );
     } catch (e) {
-      state = state.copyWith(
-        isLoading: false,
-        errorMessage: e.toString(),
-      );
+      state = state.copyWith(isLoading: false, errorMessage: e.toString());
     }
   }
 
@@ -175,5 +173,5 @@ class ClientListController extends Notifier<ClientListState> {
 
 final clientListControllerProvider =
     NotifierProvider<ClientListController, ClientListState>(
-  ClientListController.new,
-);
+      ClientListController.new,
+    );

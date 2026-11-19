@@ -1,5 +1,13 @@
-class AppRoutes {
-  AppRoutes._();
+abstract final class AppRoutes {
+  static const welcome = 'welcome';
+  static const about = 'about';
+  static const forgotPassword = 'forgotPassword';
+  static const resetPassword = 'resetPassword';
+
+  static const welcomePath = '/';
+  static const aboutPath = '/about';
+  static const forgotPasswordPath = '/forgot-password';
+  static const resetPasswordPath = '/reset-password';
 
   // Shared
   static const notifications = '/notifications';
@@ -23,4 +31,6 @@ class AppRoutes {
   static const adminClients = '/admin/clients';
   static const clientProfile = '/admin/clients/:id';
   static const auditLog = '/admin/audit-log';
+  static const adminPackages = '/admin/packages';
+  static const adminCreatePackage = '/admin/packages/create';
 }

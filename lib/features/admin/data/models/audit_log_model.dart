@@ -31,14 +31,14 @@ class AuditLogModel extends AuditLogEntity {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'adminId': adminId,
-        'adminName': adminName,
-        'clientId': clientId,
-        'clientName': clientName,
-        'actionType': actionType.name,
-        'reason': reason,
-        'details': details,
-        'timestamp': timestamp.toIso8601String(),
-      };
+    'id': id,
+    'adminId': adminId,
+    'adminName': adminName,
+    'clientId': clientId,
+    'clientName': clientName,
+    'actionType': actionType.name,
+    'reason': reason,
+    'details': details,
+    'timestamp': timestamp.toIso8601String(),
+  };
 }

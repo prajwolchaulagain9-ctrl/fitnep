@@ -16,10 +16,16 @@ dependencies:
   dio: ^5.11.1
   flutter_secure_storage: ^11.2.0
   intl: ^0.20.3
+  firebase_core: ^5.2.0
+  firebase_auth: ^7.1.0
+  cloud_firestore: ^7.2.0
+  cloud_functions: ^7.1.0
   google_fonts: ^6.2.1
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
 
   flutter_lints: ^6.0.0
@@ -30,3 +36,11 @@ dependency_overrides:
 
 flutter:
   uses-material-design: true
+
+  # Enable asset directories once real files are added:
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/
+  #   - assets/animations/
+
+  # Declare font families here after adding font files to assets/fonts/.

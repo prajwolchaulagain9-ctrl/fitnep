@@ -81,7 +81,8 @@ class ClientEntity {
       packageName: packageName ?? this.packageName,
       status: status ?? this.status,
       assignedDietitianId: assignedDietitianId ?? this.assignedDietitianId,
-      assignedDietitianName: assignedDietitianName ?? this.assignedDietitianName,
+      assignedDietitianName:
+          assignedDietitianName ?? this.assignedDietitianName,
       joinDate: joinDate ?? this.joinDate,
       deactivatedAt: deactivatedAt ?? this.deactivatedAt,
       deactivationReason: deactivationReason ?? this.deactivationReason,

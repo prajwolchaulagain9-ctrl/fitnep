@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../domain/entities/client_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -67,9 +68,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               children: [
                 Text(
                   'Filter by ${widget.title}',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
+                  style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const Spacer(),
@@ -183,10 +182,11 @@ class _StatusOption extends StatelessWidget {
           size: 20,
         ),
       ),
-      title: Text(label,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: AppColors.textPrimary,
-              )),
+      title: Text(
+        label,
+        style: Theme.of(context).textTheme.titleSmall
+            ?.copyWith(color: AppColors.textPrimary),
+      ),
       trailing: Checkbox(
         value: selected,
         onChanged: (v) => onToggle(v ?? false),
@@ -212,10 +212,11 @@ class _StringOption extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       onTap: () => onToggle(!selected),
-      title: Text(label,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: AppColors.textPrimary,
-              )),
+      title: Text(
+        label,
+        style: Theme.of(context).textTheme.titleSmall
+            ?.copyWith(color: AppColors.textPrimary),
+      ),
       trailing: Checkbox(
         value: selected,
         onChanged: (v) => onToggle(v ?? false),

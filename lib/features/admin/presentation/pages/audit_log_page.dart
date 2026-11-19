@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../controllers/audit_log_controller.dart';
 import '../widgets/audit_log_tile.dart';
 import '../widgets/empty_state_widget.dart';
@@ -41,25 +42,24 @@ class AuditLogPage extends ConsumerWidget {
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : state.logs.isEmpty
-              ? EmptyStateWidget(
-                  icon: Icons.history_rounded,
-                  title: 'No audit logs yet',
-                  subtitle:
-                      'Administrative actions such as deactivations and profile changes will appear here.',
-                )
-              : RefreshIndicator(
-                  color: AppColors.primary,
-                  backgroundColor: AppColors.surfaceElevated,
-                  onRefresh: controller.refresh,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    itemCount: state.logs.length,
-                    itemBuilder: (ctx, index) => AuditLogTile(
-                      log: state.logs[index],
-                      isLast: index == state.logs.length - 1,
-                    ),
-                  ),
+          ? EmptyStateWidget(
+              icon: Icons.history_rounded,
+              title: 'No audit logs yet',
+              subtitle: 'Administrative actions such as deactivations and profile changes will appear here.',
+            )
+          : RefreshIndicator(
+              color: AppColors.primary,
+              backgroundColor: AppColors.surfaceElevated,
+              onRefresh: controller.refresh,
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                itemCount: state.logs.length,
+                itemBuilder: (ctx, index) => AuditLogTile(
+                  log: state.logs[index],
+                  isLast: index == state.logs.length - 1,
                 ),
+              ),
+            ),
     );
   }
 }

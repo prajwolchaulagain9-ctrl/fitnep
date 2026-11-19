@@ -7,6 +7,44 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('an older mark-all completion cannot update the next account', () async {
+    final pending = Completer<void>();
+    final first = _FakeNotificationRepository([
+      _notification(
+        id: 'old-account',
+        isRead: false,
+        createdAt: DateTime.utc(2026),
+      ),
+    ], markAllCompleter: pending);
+    final next = _FakeNotificationRepository([
+      _notification(
+        id: 'new-account',
+        isRead: false,
+        createdAt: DateTime.utc(2026),
+      ),
+    ]);
+    final container = ProviderContainer(
+      overrides: [notificationRepositoryProvider.overrideWithValue(first)],
+    );
+    addTearDown(container.dispose);
+    await container.read(notificationControllerProvider.future);
+    final request = container
+        .read(notificationControllerProvider.notifier)
+        .markAllAsRead();
+    container.updateOverrides([
+      notificationRepositoryProvider.overrideWithValue(next),
+    ]);
+    await container.read(notificationControllerProvider.future);
+    pending.complete();
+    await request;
+    final notifications = container
+        .read(notificationControllerProvider)
+        .requireValue;
+    expect(notifications.single.id, 'new-account');
+    expect(notifications.single.isRead, isFalse);
+    expect(next.markAllCalls, 0);
+    expect(container.read(notificationMarkAllReadInProgressProvider), isFalse);
+  });
   test(
     'sorts notifications newest first and calculates unread count',
     () async {

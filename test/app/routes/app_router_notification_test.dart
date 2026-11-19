@@ -34,7 +34,6 @@ void main() {
       );
       addTearDown(container.dispose);
       final router = container.read(appRouterProvider);
-      addTearDown(router.dispose);
       router.goNamed(testCase.$1, pathParameters: const {'id': 'record-99'});
 
       await tester.pumpWidget(

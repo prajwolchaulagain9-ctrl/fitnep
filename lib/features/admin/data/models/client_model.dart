@@ -83,10 +83,10 @@ class ClientModel extends ClientEntity {
       'totalAmountPaid': totalAmountPaid,
       'outstandingAmount': outstandingAmount,
       'lastPaymentDate': lastPaymentDate?.toIso8601String(),
-      'paymentHistory':
-          paymentHistory.map((e) => _paymentToJson(e)).toList(),
-      'packageHistory':
-          packageHistory.map((e) => _packageHistoryToJson(e)).toList(),
+      'paymentHistory': paymentHistory.map((e) => _paymentToJson(e)).toList(),
+      'packageHistory': packageHistory
+          .map((e) => _packageHistoryToJson(e))
+          .toList(),
     };
   }
 
@@ -104,15 +104,16 @@ class ClientModel extends ClientEntity {
   }
 
   static Map<String, dynamic> _paymentToJson(PaymentHistoryEntry e) => {
-        'id': e.id,
-        'date': e.date.toIso8601String(),
-        'amount': e.amount,
-        'status': e.status.name,
-        'description': e.description,
-      };
+    'id': e.id,
+    'date': e.date.toIso8601String(),
+    'amount': e.amount,
+    'status': e.status.name,
+    'description': e.description,
+  };
 
   static PackageHistoryEntry _packageHistoryFromJson(
-      Map<String, dynamic> json) {
+    Map<String, dynamic> json,
+  ) {
     return PackageHistoryEntry(
       packageId: json['packageId'] as String,
       packageName: json['packageName'] as String,
@@ -124,9 +125,9 @@ class ClientModel extends ClientEntity {
   }
 
   static Map<String, dynamic> _packageHistoryToJson(PackageHistoryEntry e) => {
-        'packageId': e.packageId,
-        'packageName': e.packageName,
-        'startDate': e.startDate.toIso8601String(),
-        'endDate': e.endDate?.toIso8601String(),
-      };
+    'packageId': e.packageId,
+    'packageName': e.packageName,
+    'startDate': e.startDate.toIso8601String(),
+    'endDate': e.endDate?.toIso8601String(),
+  };
 }

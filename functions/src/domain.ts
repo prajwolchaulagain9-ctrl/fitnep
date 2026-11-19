@@ -42,6 +42,31 @@ export interface CreateNotificationResult {
   created: boolean;
 }
 
+export interface PackageRecord {
+  id: string;
+  name: string;
+  durationMonths: number;
+  price: number;
+  featureDescription: string;
+  createdAt: string;
+  createdBy: string;
+  requestId: string;
+}
+
+export interface NewPackage {
+  name: string;
+  durationMonths: number;
+  price: number;
+  featureDescription: string;
+  createdBy: string;
+  requestId: string;
+}
+
+export interface CreatePackageResult {
+  package: PackageRecord;
+  created: boolean;
+}
+
 export function isUserRole(value: unknown): value is UserRole {
   return typeof value === "string" &&
     userRoles.includes(value.toLowerCase() as UserRole);

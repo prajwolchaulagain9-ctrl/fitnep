@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/storage/token_storage.dart';
 import '../../data/datasources/notification_remote_datasource.dart';
 import '../../data/repositories/notification_repository_impl.dart';
@@ -11,7 +12,7 @@ import '../../domain/usecases/mark_all_notifications_as_read_usecase.dart';
 import '../../domain/usecases/mark_notification_as_read_usecase.dart';
 
 final tokenStorageProvider = Provider<TokenStorage>((ref) {
-  return const TokenStorage();
+  return TokenStorage(auth: ref.watch(firebaseAuthProvider));
 });
 
 final apiClientProvider = Provider<ApiClient>((ref) {
@@ -30,15 +31,18 @@ final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
 });
 
 class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
-  late final GetNotificationsUseCase _getNotifications;
-  late final MarkAllNotificationsAsReadUseCase _markAllNotificationsAsRead;
-  late final MarkNotificationAsReadUseCase _markNotificationAsRead;
+  late GetNotificationsUseCase _getNotifications;
+  late MarkAllNotificationsAsReadUseCase _markAllNotificationsAsRead;
+  late MarkNotificationAsReadUseCase _markNotificationAsRead;
+  int _generation = 0;
   bool _isMarkingAllAsRead = false;
 
   bool get isMarkingAllAsRead => _isMarkingAllAsRead;
 
   @override
   Future<List<NotificationEntity>> build() async {
+    _generation++;
+    _isMarkingAllAsRead = false;
     _getNotifications = GetNotificationsUseCase(
       ref.watch(notificationRepositoryProvider),
     );
@@ -58,11 +62,14 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
   }
 
   Future<void> refresh() async {
+    final generation = _generation;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(_load);
+    final result = await AsyncValue.guard(_load);
+    if (generation == _generation) state = result;
   }
 
   Future<void> markAsRead(String notificationId) async {
+    final generation = _generation;
     final notifications = state.value;
     if (notifications == null) return;
 
@@ -84,7 +91,7 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
     try {
       await _markNotificationAsRead(notificationId);
     } catch (_) {
-      final latest = state.value;
+      final latest = generation == _generation ? state.value : null;
       if (latest != null) {
         state = AsyncData(
           List<NotificationEntity>.unmodifiable(
@@ -101,6 +108,7 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
   }
 
   Future<void> markAllAsRead() async {
+    final generation = _generation;
     if (_isMarkingAllAsRead) return;
 
     final notifications = state.value;
@@ -114,6 +122,7 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
 
     try {
       await _markAllNotificationsAsRead();
+      if (generation != _generation) return;
 
       final latest = state.value ?? notifications;
       state = AsyncData(
@@ -123,16 +132,19 @@ class NotificationController extends AsyncNotifier<List<NotificationEntity>> {
       );
 
       try {
-        state = AsyncData(await _load());
+        final refreshed = await _load();
+        if (generation == _generation) state = AsyncData(refreshed);
       } catch (_) {
         // The write succeeded. Keep the locally confirmed read state if the
         // follow-up refresh is temporarily unavailable.
       }
     } finally {
-      _isMarkingAllAsRead = false;
-      final latest = state.value;
-      if (latest != null) {
-        state = AsyncData(List<NotificationEntity>.unmodifiable(latest));
+      if (generation == _generation) {
+        _isMarkingAllAsRead = false;
+        final latest = state.value;
+        if (latest != null) {
+          state = AsyncData(List<NotificationEntity>.unmodifiable(latest));
+        }
       }
     }
   }

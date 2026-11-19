@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../domain/entities/client_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 import 'status_badge.dart';
@@ -8,11 +9,7 @@ class ClientCard extends StatelessWidget {
   final ClientEntity client;
   final VoidCallback onTap;
 
-  const ClientCard({
-    super.key,
-    required this.client,
-    required this.onTap,
-  });
+  const ClientCard({super.key, required this.client, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -49,9 +46,7 @@ class ClientCard extends StatelessWidget {
                             Expanded(
                               child: Text(
                                 client.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
                                       color: AppColors.textPrimary,
                                       fontWeight: FontWeight.w600,
@@ -142,7 +137,10 @@ class _ClientAvatar extends StatelessWidget {
       decoration: BoxDecoration(
         color: _avatarColor.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _avatarColor.withValues(alpha: 0.35), width: 1.5),
+        border: Border.all(
+          color: _avatarColor.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
       ),
       alignment: Alignment.center,
       child: Text(

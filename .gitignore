@@ -65,6 +65,19 @@ app.*.map.json
 
 # Additional Flutter generated files
 .flutter-plugins
+
+# Firebase CLI diagnostics and local emulator state
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+functions/node_modules/
+.firebase/
+
+# Local JVM and Kotlin build diagnostics
+**/.kotlin/
+hs_err_pid*.log
+*.hprof
 **/Flutter/ephemeral/
 
 # Firebase local tooling

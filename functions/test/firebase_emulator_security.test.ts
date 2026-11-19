@@ -9,6 +9,7 @@ import request from "supertest";
 import { FirebaseAuthVerifier } from "../src/auth";
 import { UserRole } from "../src/domain";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
+import { FirestorePackageRepository } from "../src/firestore_package_repository";
 import { createNotificationApp } from "../src/http_app";
 import { NotificationWorkflowService } from "../src/notification_service";
 
@@ -26,6 +27,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
   let firestore: Firestore;
   let repository: FirestoreNotificationRepository;
   let workflows: NotificationWorkflowService;
+  let packageRepository: FirestorePackageRepository;
   let api: ReturnType<typeof createNotificationApp>;
 
   before(() => {
@@ -33,10 +35,12 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     auth = getAuth(firebaseApp);
     firestore = getFirestore(firebaseApp);
     repository = new FirestoreNotificationRepository(firestore);
+    packageRepository = new FirestorePackageRepository(firestore);
     workflows = new NotificationWorkflowService(repository);
     api = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
+      packageRepository,
     });
   });
 
@@ -51,6 +55,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
         "dietitian@fitnep.test",
         "dietitian",
       ),
+      createAccount(auth, "admin-1", "admin@fitnep.test", "admin"),
     ]);
   });
 
@@ -126,6 +131,49 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       .set(bearer(clientAToken));
     assert.equal(readAll.status, 200);
     assert.equal(readAll.body.data.updated_count, 1);
+  });
+
+  it("persists an admin-created package and returns it to clients", async () => {
+    const [adminToken, clientToken] = await Promise.all([
+      signIn("admin@fitnep.test"),
+      signIn("client-a@fitnep.test"),
+    ]);
+    const payload = {
+      request_id: "emulator-package-request",
+      name: "Six Month Transformation",
+      duration_months: 6,
+      price: 12500,
+      feature_description: "Training, nutrition, and progress reviews.",
+    };
+
+    const createResponse = await request(api)
+      .post("/packages")
+      .set(bearer(adminToken))
+      .send(payload);
+    const repeatedResponse = await request(api)
+      .post("/packages")
+      .set(bearer(adminToken))
+      .send(payload);
+    const clientList = await request(api)
+      .get("/packages")
+      .set(bearer(clientToken));
+    const stored = await firestore
+      .collection("packages")
+      .doc("emulator-package-request")
+      .get();
+
+    assert.equal(createResponse.status, 201);
+    assert.equal(repeatedResponse.status, 201);
+    assert.equal(clientList.status, 200);
+    assert.equal(clientList.body.data.packages.length, 1);
+    assert.equal(stored.exists, true);
+    assert.equal(stored.get("name"), payload.name);
+    assert.equal(stored.get("duration_months"), payload.duration_months);
+    assert.equal(stored.get("price"), payload.price);
+    assert.equal(
+      stored.get("feature_description"),
+      payload.feature_description,
+    );
   });
 });
 

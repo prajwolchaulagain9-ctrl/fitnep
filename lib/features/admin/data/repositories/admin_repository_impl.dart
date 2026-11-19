@@ -24,8 +24,7 @@ class AdminRepositoryImpl implements AdminRepository {
     String reason,
     String adminId,
     String adminName,
-  ) =>
-      _datasource.deactivateClient(clientId, reason, adminId, adminName);
+  ) => _datasource.deactivateClient(clientId, reason, adminId, adminName);
 
   @override
   Future<void> reactivateClient(
@@ -33,8 +32,7 @@ class AdminRepositoryImpl implements AdminRepository {
     String reason,
     String adminId,
     String adminName,
-  ) =>
-      _datasource.reactivateClient(clientId, reason, adminId, adminName);
+  ) => _datasource.reactivateClient(clientId, reason, adminId, adminName);
 
   @override
   Future<List<AuditLogEntity>> getAllAuditLogs() =>

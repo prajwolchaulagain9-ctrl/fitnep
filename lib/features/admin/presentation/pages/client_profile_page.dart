@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+
 import '../controllers/client_profile_controller.dart';
 import '../widgets/status_badge.dart';
 import '../widgets/package_chip.dart';
@@ -18,92 +19,99 @@ class ClientProfilePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(clientProfileControllerProvider(clientId));
-    final controller =
-        ref.read(clientProfileControllerProvider(clientId).notifier);
+    final controller = ref.read(
+      clientProfileControllerProvider(clientId).notifier,
+    );
 
     // Show snack on success/error messages
-    ref.listen<ClientProfileState>(
-      clientProfileControllerProvider(clientId),
-      (ClientProfileState? prev, ClientProfileState next) {
-        if (next.successMessage != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded,
-                      color: AppColors.statusActive, size: 18),
-                  const SizedBox(width: 10),
-                  Text(next.successMessage!),
-                ],
-              ),
+    ref.listen<ClientProfileState>(clientProfileControllerProvider(clientId), (
+      ClientProfileState? prev,
+      ClientProfileState next,
+    ) {
+      if (next.successMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: AppColors.statusActive,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Text(next.successMessage!),
+              ],
             ),
-          );
-          controller.clearMessages();
-        }
-        if (next.errorMessage != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.error_outline_rounded,
-                      color: AppColors.statusInactive, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(child: Text(next.errorMessage!)),
-                ],
-              ),
+          ),
+        );
+        controller.clearMessages();
+      }
+      if (next.errorMessage != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.error_outline_rounded,
+                  color: AppColors.statusInactive,
+                  size: 18,
+                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(next.errorMessage!)),
+              ],
             ),
-          );
-          controller.clearMessages();
-        }
-      },
-    );
+          ),
+        );
+        controller.clearMessages();
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : state.client == null
-              ? EmptyStateWidget(
-                  title: 'Client not found',
-                  subtitle: 'The client profile could not be loaded.',
-                  icon: Icons.person_off_outlined,
-                )
-              : CustomScrollView(
-                  slivers: [
-                    _buildSliverAppBar(context, state, controller),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                      sliver: SliverList(
-                        delegate: SliverChildListDelegate([
-                          if (!state.client!.isActive)
-                            _DeactivationNotice(client: state.client!),
-                          const SizedBox(height: 20),
-                          _PersonalInfoSection(client: state.client!),
-                          const SizedBox(height: 16),
-                          _PackageSection(client: state.client!),
-                          const SizedBox(height: 16),
-                          _PaymentSummarySection(client: state.client!),
-                          const SizedBox(height: 16),
-                          _PaymentHistorySection(client: state.client!),
-                          const SizedBox(height: 16),
-                          _PackageHistorySection(client: state.client!),
-                          if (state.auditLogs.isNotEmpty) ...[
-                            const SizedBox(height: 16),
-                            _AuditSection(state: state),
-                          ],
-                          const SizedBox(height: 24),
-                          _ActionButton(
-                            state: state,
-                            onDeactivate: () =>
-                                _handleDeactivate(context, controller),
-                            onReactivate: () =>
-                                _handleReactivate(context, controller),
-                          ),
-                        ]),
+          ? EmptyStateWidget(
+              title: 'Client not found',
+              subtitle: 'The client profile could not be loaded.',
+              icon: Icons.person_off_outlined,
+            )
+          : CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(context, state, controller),
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      if (!state.client!.isActive)
+                        _DeactivationNotice(client: state.client!),
+                      const SizedBox(height: 20),
+                      _PersonalInfoSection(client: state.client!),
+                      const SizedBox(height: 16),
+                      _PackageSection(client: state.client!),
+                      const SizedBox(height: 16),
+                      _PaymentSummarySection(client: state.client!),
+                      const SizedBox(height: 16),
+                      _PaymentHistorySection(client: state.client!),
+                      const SizedBox(height: 16),
+                      _PackageHistorySection(client: state.client!),
+                      if (state.auditLogs.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        _AuditSection(state: state),
+                      ],
+                      const SizedBox(height: 24),
+                      _ActionButton(
+                        state: state,
+                        onDeactivate: () =>
+                            _handleDeactivate(context, controller),
+                        onReactivate: () =>
+                            _handleReactivate(context, controller),
                       ),
-                    ),
-                  ],
+                    ]),
+                  ),
                 ),
+              ],
+            ),
     );
   }
 
@@ -123,10 +131,7 @@ class ClientProfilePage extends ConsumerWidget {
         collapseMode: CollapseMode.parallax,
       ),
       actions: [
-        IconButton(
-          icon: const Icon(Icons.more_vert_rounded),
-          onPressed: () {},
-        ),
+        IconButton(icon: const Icon(Icons.more_vert_rounded), onPressed: () {}),
       ],
     );
   }
@@ -150,7 +155,8 @@ class ClientProfilePage extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Reactivate Account'),
         content: const Text(
-            'Are you sure you want to reactivate this client\'s account?'),
+          'Are you sure you want to reactivate this client\'s account?',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -196,10 +202,7 @@ class _ProfileHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            AppColors.surface,
-            _color.withValues(alpha: 0.08),
-          ],
+          colors: [AppColors.surface, _color.withValues(alpha: 0.08)],
         ),
       ),
       child: SafeArea(
@@ -214,7 +217,10 @@ class _ProfileHeader extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: _color.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: _color.withValues(alpha: 0.5), width: 2),
+                  border: Border.all(
+                    color: _color.withValues(alpha: 0.5),
+                    width: 2,
+                  ),
                 ),
                 child: Center(
                   child: Text(
@@ -235,9 +241,7 @@ class _ProfileHeader extends StatelessWidget {
                   children: [
                     Text(
                       client.name,
-                      style: Theme.of(context)
-                          .textTheme
-                          .headlineMedium
+                      style: Theme.of(context).textTheme.headlineMedium
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 6),
@@ -245,7 +249,10 @@ class _ProfileHeader extends StatelessWidget {
                       children: [
                         StatusBadge(status: client.status, large: true),
                         const SizedBox(width: 8),
-                        PackageChip(packageName: client.packageName, large: true),
+                        PackageChip(
+                          packageName: client.packageName,
+                          large: true,
+                        ),
                       ],
                     ),
                   ],
@@ -271,14 +278,18 @@ class _DeactivationNotice extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.statusInactiveContainer,
         borderRadius: BorderRadius.circular(12),
-        border:
-            Border.all(color: AppColors.statusInactive.withValues(alpha: 0.4)),
+        border: Border.all(
+          color: AppColors.statusInactive.withValues(alpha: 0.4),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.block_rounded,
-              color: AppColors.statusInactive, size: 20),
+          const Icon(
+            Icons.block_rounded,
+            color: AppColors.statusInactive,
+            size: 20,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -297,9 +308,9 @@ class _DeactivationNotice extends StatelessWidget {
                   Text(
                     'Reason: ${client.deactivationReason}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.statusInactive.withValues(alpha: 0.8),
-                          height: 1.5,
-                        ),
+                      color: AppColors.statusInactive.withValues(alpha: 0.8),
+                      height: 1.5,
+                    ),
                   ),
                 ],
                 if (client.deactivatedAt != null) ...[
@@ -307,8 +318,8 @@ class _DeactivationNotice extends StatelessWidget {
                   Text(
                     'Deactivated on: ${DateFormat('dd MMM yyyy').format(client.deactivatedAt!)}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.statusInactive.withValues(alpha: 0.6),
-                        ),
+                      color: AppColors.statusInactive.withValues(alpha: 0.6),
+                    ),
                   ),
                 ],
               ],
@@ -332,9 +343,11 @@ class _PersonalInfoSection extends StatelessWidget {
       children: [
         _InfoRow('Email', client.email, Icons.email_outlined),
         _InfoRow('Phone', client.phone, Icons.phone_outlined),
-        _InfoRow('Gender',
-            client.gender.name[0].toUpperCase() + client.gender.name.substring(1),
-            Icons.wc_rounded),
+        _InfoRow(
+          'Gender',
+          client.gender.name[0].toUpperCase() + client.gender.name.substring(1),
+          Icons.wc_rounded,
+        ),
         _InfoRow(
           'Date of Birth',
           '${DateFormat('dd MMM yyyy').format(client.dateOfBirth)} (${client.age} yrs)',
@@ -458,17 +471,25 @@ class _SummaryCard extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: color),
               const SizedBox(width: 6),
-              Text(label,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(value,
-              style: TextStyle(
-                  color: color,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700)),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -488,8 +509,10 @@ class _PaymentHistorySection extends StatelessWidget {
         if (client.paymentHistory.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
-            child: Text('No payment records.',
-                style: TextStyle(color: AppColors.textSecondary)),
+            child: Text(
+              'No payment records.',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           )
         else
           ...client.paymentHistory.asMap().entries.map((entry) {
@@ -550,16 +573,21 @@ class _PackageHistorySection extends StatelessWidget {
                           const SizedBox(width: 8),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: AppColors.primaryContainer,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text('Current',
-                                style: TextStyle(
-                                    color: AppColors.primary,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600)),
+                            child: const Text(
+                              'Current',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                           ),
                         ],
                       ],
@@ -682,14 +710,11 @@ class _SectionCard extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
-                if (trailing != null) ...[
-                  const Spacer(),
-                  trailing!,
-                ],
+                if (trailing != null) ...[const Spacer(), trailing!],
               ],
             ),
           ),
@@ -729,18 +754,18 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           Expanded(
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

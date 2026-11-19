@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../domain/entities/audit_log_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -69,26 +70,23 @@ class AuditLogTile extends StatelessWidget {
                       child: Text(
                         log.actionType.displayName,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              color: color,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          color: color,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                     Text(
                       _formatTimestamp(log.timestamp),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: AppColors.textDisabled,
-                          ),
+                      style: Theme.of(context).textTheme.labelSmall
+                          ?.copyWith(color: AppColors.textDisabled),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 RichText(
                   text: TextSpan(
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                          height: 1.5,
-                        ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textSecondary, height: 1.5),
                     children: [
                       TextSpan(
                         text: log.adminName,
@@ -112,7 +110,9 @@ class AuditLogTile extends StatelessWidget {
                   const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.surfaceVariant,
                       borderRadius: BorderRadius.circular(8),
@@ -121,16 +121,13 @@ class AuditLogTile extends StatelessWidget {
                     child: Text(
                       '"${log.reason}"',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
-                            fontStyle: FontStyle.italic,
-                          ),
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
                     ),
                   ),
                 ],
-                if (!isLast) ...[
-                  const SizedBox(height: 14),
-                  const Divider(),
-                ],
+                if (!isLast) ...[const SizedBox(height: 14), const Divider()],
               ],
             ),
           ),

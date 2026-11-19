@@ -11,14 +11,20 @@
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "prebuild:test": "node scripts/clean-output.mjs .test-build",
     "build:test": "tsc -p tsconfig.test.json",
-    "test": "npm run typecheck && npm run build:test && node --test --test-isolation=none --test-concurrency=1 .test-build/test/notification_security.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js",
+    "test": "npm run typecheck && npm run build:test && node --test --test-isolation=none --test-concurrency=1 test/session.test.cjs .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js",
     "serve": "npm run build && npx firebase-tools emulators:start --only functions",
-    "deploy": "npx firebase-tools deploy --only functions"
+    "deploy": "npx firebase-tools deploy --only functions",
+    "test:emulator": "npm run build:test && node --test --test-isolation=none --test-concurrency=1 test/auth-emulator.test.cjs .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js"
   },
   "dependencies": {
     "express": "^4.21.2",
     "firebase-admin": "^14.5.1",
     "firebase-functions": "^7.4.0"
+  },
+  "overrides": {
+    "firebase-admin": {
+      "@firebase/database-compat": "2.1.7"
+    }
   },
   "devDependencies": {
     "@types/express": "^4.17.21",

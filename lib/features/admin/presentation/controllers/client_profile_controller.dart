@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../domain/entities/client_entity.dart';
 import '../../domain/entities/audit_log_entity.dart';
 import '../../domain/usecases/get_client_by_id_usecase.dart';
@@ -163,5 +164,5 @@ class ClientProfileController extends Notifier<ClientProfileState> {
 
 final clientProfileControllerProvider = NotifierProvider.autoDispose
     .family<ClientProfileController, ClientProfileState, String>(
-  (arg) => ClientProfileController(arg),
-);
+      (arg) => ClientProfileController(arg),
+    );

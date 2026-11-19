@@ -4,17 +4,25 @@ This folder contains the mobile application's Firebase Cloud Functions backend.
 It exposes authenticated HTTPS APIs for the Flutter app; it does not contain a
 website or browser UI.
 
+The shared project stays on **Spark**. These Functions are local emulator
+implementations; they are not deployed. Cloud Functions deployment requires a
+billing-enabled project and is outside the agreed scope. The Flutter API URL
+defaults to empty until a supported backend is supplied.
+
 ## Firebase project and runtime
 
 - Project: `fitnep-88908`
 - Region: `asia-south1`
 - Runtime: Node.js 22
 - Exported HTTPS function: `api`
+- Recovery callable: `checkSession`, in `us-central1`
+- Shared entry point: `lib/index.js`, built from TypeScript; it also exports
+  the existing CommonJS recovery callable from `src/index.cjs`.
 
-After deployment, configure the Flutter app with:
+For local emulators, configure an Android emulator with:
 
 ```powershell
-flutter run --dart-define=API_BASE_URL=https://asia-south1-fitnep-88908.cloudfunctions.net/api/
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:5001/demo-fitnep/asia-south1/api/
 ```
 
 ## Authentication and roles
@@ -50,6 +58,18 @@ Recipient identity is always derived from the verified token. Requests that
 try to supply `recipient_id`, `recipientId`, `user_id`, or `userId` are rejected.
 Unknown and unauthorized notification IDs both return `404` to avoid leaking
 whether another user's notification exists.
+
+## Package APIs
+
+- `GET /packages` lists packages for any authenticated FitNep role.
+- `POST /packages` creates a package for an `admin` role only.
+
+The create body uses `request_id`, `name`, `duration_months`, `price`, and
+`feature_description`. The request identifier makes retries idempotent. Package
+name and feature description are required, duration must be a positive whole
+number of months, and price must be positive. Records are stored in the
+Firestore `packages` collection. Direct mobile reads and writes remain denied
+by Firestore rules.
 
 ## Workflow hooks
 
@@ -101,16 +121,21 @@ cd functions
 npm ci
 npm run build
 npm test
-npm run deploy
 ```
 
-Run the real Auth/Firestore security tests from the repository root:
+The declared Node 22 runtime uses Firebase Admin 14 and pins its database-compat
+dependency to the previously tested Node-compatible release. Keep the lockfile
+when installing shared dependencies.
+
+Run the combined recovery, notification and workflow security tests from the
+repository root. These tests use only `demo-fitnep`, never the live project:
 
 ```powershell
-$env:JAVA_HOME = 'C:\Program Files\Android\Android Studio\jbr'
-$env:Path = "$env:JAVA_HOME\bin;$env:Path"
-npm --prefix functions run build:test
-npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only auth,firestore "node --test --test-isolation=none --test-concurrency=1 functions/.test-build/test/notification_security.test.js functions/.test-build/test/firestore_notification_repository.test.js functions/.test-build/test/firebase_emulator_security.test.js"
+$env:JAVA_HOME = 'D:\studio\jbr'
+$env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+$env:FITNEP_RUN_TRIGGER_TESTS = 'true'
+npm --prefix functions run build
+firebase emulators:exec --only auth,functions,firestore --project demo-fitnep --non-interactive "npm --prefix functions run test:emulator"
 ```
 
 Run all four workflow-trigger integration tests with the Functions emulator:
@@ -122,10 +147,9 @@ npm --prefix functions run build:test
 npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only firestore,functions "node --test --test-isolation=none --test-concurrency=1 functions/.test-build/test/workflow_trigger_emulator.test.js"
 ```
 
-Firebase CLI authentication is required before serving/deploying:
+Firestore uses port 18080 in the shared configuration. The emulator-only
+commands work without deploying to the Spark project.
 
-```powershell
-npx firebase-tools login
-npx firebase-tools use fitnep-88908
-npx firebase-tools deploy --only firestore:rules,firestore:indexes,functions
-```
+The retained deployment script is outside the supported Spark workflow. No
+Functions deployment or billing upgrade is part of this integration. A live
+notification service needs a separately agreed hosting arrangement.

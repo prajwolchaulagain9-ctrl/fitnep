@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../domain/entities/client_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -12,8 +13,9 @@ class StatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final isActive = status == ClientStatus.active;
     final color = isActive ? AppColors.statusActive : AppColors.statusInactive;
-    final bgColor =
-        isActive ? AppColors.statusActiveContainer : AppColors.statusInactiveContainer;
+    final bgColor = isActive
+        ? AppColors.statusActiveContainer
+        : AppColors.statusInactiveContainer;
     final label = isActive ? 'Active' : 'Inactive';
 
     return Container(
@@ -32,10 +34,7 @@ class StatusBadge extends StatelessWidget {
           Container(
             width: large ? 7 : 5,
             height: large ? 7 : 5,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           SizedBox(width: large ? 6 : 4),
           Text(

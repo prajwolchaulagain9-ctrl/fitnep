@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../../../app/theme/app_theme.dart';
 
 Future<String?> showDeactivationDialog(BuildContext context) {
@@ -70,18 +71,14 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
                       children: [
                         Text(
                           'Deactivate Account',
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleLarge
+                          style: Theme.of(context).textTheme.titleLarge
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           'This will not delete the account.',
-                          style:
-                              Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -99,22 +96,26 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
                   color: AppColors.statusInactiveContainer,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                      color: AppColors.statusInactive.withValues(alpha: 0.3)),
+                    color: AppColors.statusInactive.withValues(alpha: 0.3),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.info_outline_rounded,
-                        color: AppColors.statusInactive, size: 18),
+                    const Icon(
+                      Icons.info_outline_rounded,
+                      color: AppColors.statusInactive,
+                      size: 18,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         'All client data, payment records and history will be preserved. '
                         'The client will lose access to the app.',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.statusInactive,
-                              height: 1.5,
-                            ),
+                          color: AppColors.statusInactive,
+                          height: 1.5,
+                        ),
                       ),
                     ),
                   ],
@@ -125,18 +126,16 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
               // Reason field
               Text(
                 'Reason for deactivation *',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
+                style: Theme.of(context).textTheme.labelLarge
+                    ?.copyWith(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               TextFormField(
                 controller: _controller,
                 maxLines: 3,
                 maxLength: 300,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textPrimary,
-                    ),
+                style: Theme.of(context).textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.textPrimary),
                 decoration: InputDecoration(
                   hintText:
                       'e.g. Non-payment, violation of terms, client request...',

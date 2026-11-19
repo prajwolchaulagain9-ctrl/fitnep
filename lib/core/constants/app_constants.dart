@@ -3,6 +3,7 @@ class AppConstants {
 
   static const notificationsEndpoint = 'notifications';
   static const notificationsReadAllEndpoint = 'notifications/read-all';
+  static const packagesEndpoint = 'packages';
 
   static String notificationReadEndpoint(String notificationId) =>
       '$notificationsEndpoint/${Uri.encodeComponent(notificationId)}/read';

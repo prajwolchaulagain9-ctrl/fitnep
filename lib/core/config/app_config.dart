@@ -1,9 +1,14 @@
 class AppConfig {
   AppConfig._();
 
+  static const functionsRegion = String.fromEnvironment(
+    'FIREBASE_FUNCTIONS_REGION',
+    defaultValue: 'us-central1',
+  );
+
   static const String _configuredApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://asia-south1-fitnep-88908.cloudfunctions.net/api/',
+    defaultValue: '',
   );
 
   static String get apiBaseUrl {

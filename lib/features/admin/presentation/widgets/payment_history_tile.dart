@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../../domain/entities/client_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -75,11 +76,7 @@ class PaymentHistoryTile extends StatelessWidget {
                 ),
               ),
               if (!isLast)
-                Container(
-                  width: 1.5,
-                  height: 44,
-                  color: AppColors.divider,
-                ),
+                Container(width: 1.5, height: 44, color: AppColors.divider),
             ],
           ),
           const SizedBox(width: 14),
@@ -95,16 +92,15 @@ class PaymentHistoryTile extends StatelessWidget {
                       Text(
                         payment.description,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w500,
-                            ),
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         DateFormat('dd MMM yyyy').format(payment.date),
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -116,14 +112,16 @@ class PaymentHistoryTile extends StatelessWidget {
                     Text(
                       'Rs. ${payment.amount.toStringAsFixed(0)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 7, vertical: 2),
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: _statusBg,
                         borderRadius: BorderRadius.circular(5),
@@ -131,8 +129,7 @@ class PaymentHistoryTile extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(_statusIcon,
-                              size: 10, color: _statusColor),
+                          Icon(_statusIcon, size: 10, color: _statusColor),
                           const SizedBox(width: 3),
                           Text(
                             _statusLabel,

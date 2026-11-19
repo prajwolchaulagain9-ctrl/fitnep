@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
 import '../controllers/client_list_controller.dart';
 import '../widgets/client_card.dart';
 import '../widgets/empty_state_widget.dart';
@@ -88,11 +89,16 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
               ),
               if (isCompact)
                 _ClientAppBarOverflow(
-                  onNotifications: () =>
-                      context.push(AppRoutes.notifications),
+                  onPackages: () => context.push(AppRoutes.adminPackages),
+                  onNotifications: () => context.push(AppRoutes.notifications),
                   onAuditLog: () => context.push(AppRoutes.auditLog),
                 )
               else ...[
+                IconButton(
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  tooltip: 'Package Management',
+                  onPressed: () => context.push(AppRoutes.adminPackages),
+                ),
                 IconButton(
                   icon: const Icon(Icons.notifications_none_rounded),
                   tooltip: 'Notifications',
@@ -184,8 +190,7 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
           final client = state.filteredClients[index];
           return ClientCard(
             client: client,
-            onTap: () =>
-                context.push('/admin/clients/${client.id}'),
+            onTap: () => context.push('/admin/clients/${client.id}'),
           );
         },
       ),
@@ -288,7 +293,10 @@ class _SearchField extends StatelessWidget {
         ),
         filled: true,
         fillColor: AppColors.surfaceVariant,
-        contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 10,
+          horizontal: 16,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide.none,
@@ -342,13 +350,15 @@ class _FilterButton extends StatelessWidget {
   }
 }
 
-enum _ClientAppBarAction { notifications, auditLog }
+enum _ClientAppBarAction { packages, notifications, auditLog }
 
 class _ClientAppBarOverflow extends StatelessWidget {
+  final VoidCallback onPackages;
   final VoidCallback onNotifications;
   final VoidCallback onAuditLog;
 
   const _ClientAppBarOverflow({
+    required this.onPackages,
     required this.onNotifications,
     required this.onAuditLog,
   });
@@ -359,13 +369,25 @@ class _ClientAppBarOverflow extends StatelessWidget {
       tooltip: 'More options',
       icon: const Icon(Icons.more_vert_rounded),
       onSelected: (action) {
-        if (action == _ClientAppBarAction.notifications) {
+        if (action == _ClientAppBarAction.packages) {
+          onPackages();
+        } else if (action == _ClientAppBarAction.notifications) {
           onNotifications();
         } else {
           onAuditLog();
         }
       },
       itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: _ClientAppBarAction.packages,
+          child: Row(
+            children: [
+              Icon(Icons.inventory_2_outlined),
+              SizedBox(width: 12),
+              Flexible(child: Text('Package Management')),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: _ClientAppBarAction.notifications,
           child: Row(
@@ -411,10 +433,12 @@ class _ActiveFiltersBar extends StatelessWidget {
                 children: [
                   if (state.searchQuery.isNotEmpty)
                     _FilterTag(
-                        label: '"${state.searchQuery}"',
-                        icon: Icons.search_rounded),
+                      label: '"${state.searchQuery}"',
+                      icon: Icons.search_rounded,
+                    ),
                   ...state.filters.packages.map(
-                    (p) => _FilterTag(label: p, icon: Icons.inventory_2_outlined),
+                    (p) =>
+                        _FilterTag(label: p, icon: Icons.inventory_2_outlined),
                   ),
                   ...state.filters.statuses.map(
                     (s) => _FilterTag(
@@ -426,7 +450,10 @@ class _ActiveFiltersBar extends StatelessWidget {
                     ),
                   ),
                   ...state.filters.dietitians.map(
-                    (d) => _FilterTag(label: d, icon: Icons.person_outline_rounded),
+                    (d) => _FilterTag(
+                      label: d,
+                      icon: Icons.person_outline_rounded,
+                    ),
                   ),
                 ],
               ),
@@ -516,8 +543,8 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
   @override
   Widget build(BuildContext context) {
     final availablePackages = widget.state.availablePackages.toList()..sort();
-    final availableDietitians =
-        widget.state.availableDietitians.toList()..sort();
+    final availableDietitians = widget.state.availableDietitians.toList()
+      ..sort();
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -540,15 +567,12 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
           ),
           // Header
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             child: Row(
               children: [
                 Text(
                   'Filter Clients',
-                  style: Theme.of(context)
-                      .textTheme
-                      .headlineSmall
+                  style: Theme.of(context).textTheme.headlineSmall
                       ?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const Spacer(),
@@ -573,36 +597,38 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 _SectionHeader('Package'),
-                ...availablePackages.map((pkg) => CheckboxListTile(
-                      title: Text(pkg,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(color: AppColors.textPrimary)),
-                      value: _packages.contains(pkg),
-                      onChanged: (v) => setState(() {
-                        if (v == true) {
-                          _packages.add(pkg);
-                        } else {
-                          _packages.remove(pkg);
-                        }
-                      }),
-                      activeColor: AppColors.primary,
-                      checkColor: Colors.white,
-                      side: const BorderSide(color: AppColors.divider),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    )),
+                ...availablePackages.map(
+                  (pkg) => CheckboxListTile(
+                    title: Text(
+                      pkg,
+                      style: Theme.of(context).textTheme.bodyLarge
+                          ?.copyWith(color: AppColors.textPrimary),
+                    ),
+                    value: _packages.contains(pkg),
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        _packages.add(pkg);
+                      } else {
+                        _packages.remove(pkg);
+                      }
+                    }),
+                    activeColor: AppColors.primary,
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: AppColors.divider),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 const Divider(indent: 16, endIndent: 16),
                 _SectionHeader('Account Status'),
                 CheckboxListTile(
-                  title: Text('Active',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(color: AppColors.textPrimary)),
+                  title: Text(
+                    'Active',
+                    style: Theme.of(context).textTheme.bodyLarge
+                        ?.copyWith(color: AppColors.textPrimary),
+                  ),
                   value: _statuses.contains(ClientStatus.active),
                   onChanged: (v) => setState(() {
                     if (v == true) {
@@ -619,11 +645,11 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                   ),
                 ),
                 CheckboxListTile(
-                  title: Text('Inactive',
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyLarge
-                          ?.copyWith(color: AppColors.textPrimary)),
+                  title: Text(
+                    'Inactive',
+                    style: Theme.of(context).textTheme.bodyLarge
+                        ?.copyWith(color: AppColors.textPrimary),
+                  ),
                   value: _statuses.contains(ClientStatus.inactive),
                   onChanged: (v) => setState(() {
                     if (v == true) {
@@ -642,38 +668,39 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                 const SizedBox(height: 8),
                 const Divider(indent: 16, endIndent: 16),
                 _SectionHeader('Assigned Dietitian'),
-                ...availableDietitians.map((diet) => CheckboxListTile(
-                      title: Text(diet,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(color: AppColors.textPrimary)),
-                      value: _dietitians.contains(diet),
-                      onChanged: (v) => setState(() {
-                        if (v == true) {
-                          _dietitians.add(diet);
-                        } else {
-                          _dietitians.remove(diet);
-                        }
-                      }),
-                      activeColor: AppColors.primary,
-                      checkColor: Colors.white,
-                      side: const BorderSide(color: AppColors.divider),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    )),
+                ...availableDietitians.map(
+                  (diet) => CheckboxListTile(
+                    title: Text(
+                      diet,
+                      style: Theme.of(context).textTheme.bodyLarge
+                          ?.copyWith(color: AppColors.textPrimary),
+                    ),
+                    value: _dietitians.contains(diet),
+                    onChanged: (v) => setState(() {
+                      if (v == true) {
+                        _dietitians.add(diet);
+                      } else {
+                        _dietitians.remove(diet);
+                      }
+                    }),
+                    activeColor: AppColors.primary,
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: AppColors.divider),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 80),
               ],
             ),
           ),
           // Apply button
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
-                    .copyWith(
-                        bottom:
-                            MediaQuery.of(context).viewInsets.bottom + 16),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ).copyWith(bottom: MediaQuery.of(context).viewInsets.bottom + 16),
             decoration: const BoxDecoration(
               color: AppColors.surfaceElevated,
               border: Border(top: BorderSide(color: AppColors.divider)),
@@ -682,11 +709,13 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
               width: double.infinity,
               child: ElevatedButton(
                 onPressed: () {
-                  widget.onApply(ClientFilters(
-                    packages: _packages,
-                    statuses: _statuses,
-                    dietitians: _dietitians,
-                  ));
+                  widget.onApply(
+                    ClientFilters(
+                      packages: _packages,
+                      statuses: _statuses,
+                      dietitians: _dietitians,
+                    ),
+                  );
                   Navigator.pop(context);
                 },
                 child: const Text('Apply Filters'),
@@ -710,10 +739,10 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: AppColors.textDisabled,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w600,
-            ),
+          color: AppColors.textDisabled,
+          letterSpacing: 1.2,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
