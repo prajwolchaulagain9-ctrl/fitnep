@@ -115,6 +115,7 @@ void main() {
       );
       await tester.enterText(find.byType(TextFormField).at(0), 'Stronger!12');
       await tester.enterText(find.byType(TextFormField).at(1), 'Stronger!12');
+      await tester.ensureVisible(find.text('Update password'));
       await tester.tap(find.text('Update password'));
       await tester.pumpAndSettle();
       expect(find.text('Password updated'), findsOneWidget);
@@ -199,11 +200,13 @@ void main() {
       final fields = find.byType(TextFormField);
       await tester.enterText(fields.at(0), '  Stronger!12  ');
       await tester.enterText(fields.at(1), 'wrong');
+      await tester.ensureVisible(find.text('Update password'));
       await tester.tap(find.text('Update password'));
       await tester.pump();
       expect(recovery.resets, 0);
       expect(find.text('Your passwords do not match.'), findsOneWidget);
       await tester.enterText(fields.at(1), '  Stronger!12  ');
+      await tester.ensureVisible(find.text('Update password'));
       await tester.tap(find.text('Update password'));
       await tester.pumpAndSettle();
       expect(recovery.password, '  Stronger!12  ');

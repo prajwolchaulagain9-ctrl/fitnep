@@ -41,6 +41,12 @@ class AboutPage extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           OutlinedButton.icon(
+            onPressed: () => context.push(AppRoutes.clientPackages),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('View packages'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
             onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
             icon: const Icon(Icons.privacy_tip_outlined),
             label: const Text('Privacy preferences'),

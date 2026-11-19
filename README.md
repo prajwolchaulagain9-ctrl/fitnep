@@ -13,7 +13,9 @@ new-password forms, Firebase password-policy checks and local sign-out. Revoked
 sessions are also checked on app resume and every 30 seconds in the foreground. The
 recovery screens follow the supplied auth screenshots. Login/registration (US 1)
 belong to the authentication teammate; package selection and the remaining flows
-are still to be implemented. The original logo export remains pending.
+are still to be integrated. The original Figma logo, a shared Inter/orange/navy
+theme, and Android/iOS launch screens are now integrated. See
+[branding](docs/branding.md) for source references and platform validation.
 
 See [password recovery integration](docs/password-recovery.md) for route names,
 Firebase setup, session enforcement and verification.
@@ -112,9 +114,9 @@ package operations.
 
 - `lib/app/app.dart`: app setup and startup boundary.
 - `lib/app/routes/`: named routes and router lifecycle.
-- `lib/app/theme/`: provisional light/dark theme.
+- `lib/app/theme/`: shared FitNEP theme and palette.
 - `lib/core/services/firebase_providers.dart`: initialization and injectable SDK dependencies.
-- `lib/shared/widgets/`: page layout, startup feedback and text wordmark.
+- `lib/shared/widgets/`: page layout, branded startup feedback and original logo.
 - `lib/features/`: existing feature folders; use the files needed for each story.
 
 Read Firebase SDK providers after initialization completes. Override the providers
@@ -156,6 +158,12 @@ do not commit build output.
 
 The four-day work plan, Firebase teammate handoff and release-notes template are
 maintained separately in `D:\fitnep_plan`.
+
+US 9 package catalog, Pending selection and membership screens are implemented
+at `/client/packages`, with protected server operations and verified-payment
+activation. Local emulator checks cover ownership, snapshots, revoked sessions
+and concurrent date overlap. Live catalog data, the US 1 login handoff and API
+hosting remain team integration dependencies. See [package setup](docs/packages.md).
 
 The Prajwol/Dilochan integration passed 70 Flutter tests, 18 backend unit tests,
 21 combined Firebase emulator checks, formatting, the analyzer and the Android

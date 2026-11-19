@@ -14,10 +14,10 @@ class WelcomePage extends StatelessWidget {
 
     return AppPage(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const FitNepWordmark(),
-          const SizedBox(height: 56),
+          const Center(child: FitNepWordmark()),
+          const SizedBox(height: 40),
           Text(
             'NUTRITION & FITNESS',
             style: theme.textTheme.labelLarge?.copyWith(

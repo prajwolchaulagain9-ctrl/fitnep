@@ -2,6 +2,16 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Package selection and verified activation use the revocation-aware API.
+    match /package_catalog/{id} {
+      allow read, write: if false;
+    }
+    match /package_memberships/{id} {
+      allow read, write: if false;
+    }
+    match /package_membership_guards/{id} {
+      allow read, write: if false;
+    }
     // Notification data is accessed only through authenticated Cloud Functions.
     // The Admin SDK bypasses these rules after the HTTPS layer verifies identity.
     match /notifications/{notificationId} {

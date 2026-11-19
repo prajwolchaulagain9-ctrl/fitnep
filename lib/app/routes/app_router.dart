@@ -7,6 +7,7 @@ import '../../features/authentication/presentation/pages/privacy_preferences_pag
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
+import '../../features/packages/presentation/pages/packages_page.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
@@ -50,6 +51,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientHome,
         name: AppRoutes.clientHomeName,
         builder: (context, state) => const ClientHomePage(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientPackages,
+        name: 'client-packages',
+        builder: (context, state) => const PackagesPage(),
       ),
       GoRoute(
         path: AppRoutes.clientNotifications,

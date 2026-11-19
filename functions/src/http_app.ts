@@ -7,6 +7,7 @@ import express, {
 
 import { AuthVerifier, AuthenticationError } from "./auth";
 import { AuthenticatedUser, NotificationRecord } from "./domain";
+import { FirestorePackageService, PackageError } from "./package_service";
 import {
   NotificationRepository,
   NotificationStorageNotConfiguredError,
@@ -20,6 +21,7 @@ import {
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
+  packageService?: FirestorePackageService;
 }
 
 export function createNotificationApp(
@@ -38,6 +40,31 @@ export function createNotificationApp(
   });
   app.use(authenticate(dependencies.authVerifier));
   app.use(rejectRecipientOverrides);
+
+  const packages = () => {
+    if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
+    return dependencies.packageService;
+  };
+  const client = (response: Response) => {
+    const user = currentUser(response);
+    if (user.role !== "client") throw new AuthenticationError("Package selection is available to clients only.", 403);
+    return user.uid;
+  };
+  app.get("/packages", asyncRoute(async (_request, response) => {
+    response.json({ data: { packages: await packages().catalog() } });
+  }));
+  app.get("/memberships/me", asyncRoute(async (_request, response) => {
+    response.json({ data: { memberships: await packages().memberships(client(response)) } });
+  }));
+  app.post("/memberships", asyncRoute(async (request, response) => {
+    const uid = client(response);
+    const body = isObject(request.body) ? request.body : {};
+    if (Object.keys(body).some(key => !["package_id", "request_id"].includes(key)) || typeof body.package_id !== "string" || typeof body.request_id !== "string") {
+      throw new PackageError(400, "Only package_id and request_id may be supplied.");
+    }
+    const membership = await packages().select(uid, body.package_id, body.request_id);
+    response.json({ data: { membership } });
+  }));
 
   app.get(
     "/notifications",
@@ -98,6 +125,10 @@ export function createNotificationApp(
         response.status(error.statusCode).json({ error: error.message });
         return;
       }
+      if (error instanceof PackageError) {
+        response.status(error.statusCode).json({ error: error.message });
+        return;
+      }
       if (error instanceof NotificationNotFoundError) {
         response.status(404).json({ error: error.message });
         return;
@@ -113,7 +144,7 @@ export function createNotificationApp(
         return;
       }
 
-      console.error("Unhandled notification API error", error);
+      console.error("Unhandled FitNEP API error", error);
       response.status(500).json({ error: "Internal server error." });
     },
   );
