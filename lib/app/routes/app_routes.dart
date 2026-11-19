@@ -8,6 +8,7 @@ abstract final class AppRoutes {
   static const aboutPath = '/about';
   static const forgotPasswordPath = '/forgot-password';
   static const resetPasswordPath = '/reset-password';
+  static const demoEntry = '/demo';
 
   // Shared
   static const notifications = '/notifications';
@@ -33,4 +34,5 @@ abstract final class AppRoutes {
   static const adminClients = '/admin/clients';
   static const clientProfile = '/admin/clients/:id';
   static const auditLog = '/admin/audit-log';
+  static const adminPackageApprovals = '/admin/package-approvals';
 }

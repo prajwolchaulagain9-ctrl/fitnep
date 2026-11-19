@@ -159,11 +159,22 @@ do not commit build output.
 The four-day work plan, Firebase teammate handoff and release-notes template are
 maintained separately in `D:\fitnep_plan`.
 
+The project budget is zero. No payment gateway, real charges, paid hosting or
+Firebase billing upgrade is required. [Run the free local demo](docs/free-demo.md)
+to complete the client selection → manual admin verification → Active journey.
+
 US 9 package catalog, Pending selection and membership screens are implemented
 at `/client/packages`, with protected server operations and verified-payment
 activation. Local emulator checks cover ownership, snapshots, revoked sessions
-and concurrent date overlap. Live catalog data, the US 1 login handoff and API
-hosting remain team integration dependencies. See [package setup](docs/packages.md).
+and concurrent date overlap. Manual admin verification is available without a
+gateway. The local demo includes test login and catalog data; the normal app's
+live catalog and US 1 login handoff remain team integration dependencies.
+See [package setup](docs/packages.md).
+
+The zero-budget package demo passed on the connected Android phone, including
+manual admin approval, saved Active dates and client approval denial. The final
+checks passed 77 Flutter tests, 18 backend unit tests and nine package emulator
+tests. See [demo setup and evidence](docs/free-demo.md).
 
 The Prajwol/Dilochan integration passed 70 Flutter tests, 18 backend unit tests,
 21 combined Firebase emulator checks, formatting, the analyzer and the Android

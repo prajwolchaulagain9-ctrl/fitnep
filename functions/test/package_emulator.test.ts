@@ -122,6 +122,36 @@ suite("US 9 package catalog, selection and verified activation", () => {
     assert.equal((await request(api).get("/memberships/me").auth(a, { type: "bearer" })).status, 401);
     assert.equal((await choose(a, "revoked-selection-01")).status, 401);
   });
+  it("admin manual verification is authenticated, audited, atomic and idempotent", async () => {
+    const selected = (await choose(b, "manual-selection-01")).body.data.membership;
+    const path = `/admin/memberships/${selected.id}/verify-payment`;
+    assert.equal((await request(api).get("/admin/memberships/pending")).status, 401);
+    assert.equal((await request(api).get("/admin/memberships/pending").auth(b, { type: "bearer" })).status, 403);
+    const list = await request(api).get("/admin/memberships/pending").auth(admin, { type: "bearer" });
+    assert.equal(list.status, 200);
+    assert.equal(list.body.data.memberships[0].id, selected.id);
+    assert.equal((await request(api).post(path).auth(b, { type: "bearer" }).send({ reference: "RECEIPT-01" })).status, 403);
+    assert.equal((await request(api).post(path).auth(admin, { type: "bearer" }).send({ reference: "" })).status, 400);
+    assert.equal((await request(api).post(path).auth(admin, { type: "bearer" }).send({ reference: "RECEIPT-01", amount_npr: 1 })).status, 400);
+    const responses = await Promise.all([1, 2].map(() => request(api).post(path).auth(admin, { type: "bearer" }).send({ reference: "RECEIPT-01" })));
+    assert(responses.every(response => response.status === 200));
+    assert.deepEqual(responses[0]!.body.data.membership, responses[1]!.body.data.membership);
+    assert.equal(responses[0]!.body.data.membership.status, "active");
+    const audit = (await db.collection("payments").doc(`manual_${selected.id}`).get()).data()!;
+    assert.equal(audit.method, "manual");
+    assert.equal(audit.verified_by, "package-admin");
+    assert.equal(audit.verification_reference, "RECEIPT-01");
+    assert.equal(audit.recipient_id, "package-b");
+    assert.equal(audit.amount_npr, 2500);
+    assert.equal((await request(api).post(path).auth(admin, { type: "bearer" }).send({ reference: "RECEIPT-02" })).status, 409);
+    assert.deepEqual((await db.collection("payments").doc(`manual_${selected.id}`).get()).data(), audit);
+    assert.equal((await request(api).get("/admin/memberships/pending").auth(admin, { type: "bearer" })).body.data.memberships.length, 0);
+    const second = await service.select("package-b", "basic", "manual-selection-02");
+    const overlap = await request(api).post(`/admin/memberships/${second.id}/verify-payment`).auth(admin, { type: "bearer" }).send({ reference: "OVERLAP-RECEIPT" });
+    assert.equal(overlap.status, 409);
+    assert.equal((await db.collection("payments").doc(`manual_${second.id}`).get()).exists, false);
+    assert.equal((await db.collection("package_memberships").doc(second.id).get()).get("status"), "pending");
+  });
   it("fails closed when an existing active membership has malformed dates", async () => {
     // The prior test revoked client A; use the trusted operation for this fixture.
     const member = await service.select("package-a", "basic", "corrupt-selection-01");

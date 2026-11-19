@@ -8,6 +8,9 @@ import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
 import '../../features/packages/presentation/pages/packages_page.dart';
+import '../../features/packages/presentation/pages/package_approvals_page.dart';
+import '../../features/onboarding/presentation/pages/demo_entry_page.dart';
+import '../../core/config/app_config.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
@@ -19,8 +22,20 @@ import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
-    initialLocation: AppRoutes.welcomePath,
+    initialLocation: AppConfig.useFirebaseEmulators
+        ? AppRoutes.demoEntry
+        : AppRoutes.welcomePath,
     routes: [
+      if (AppConfig.useFirebaseEmulators)
+        GoRoute(
+          path: AppRoutes.demoEntry,
+          builder: (context, state) => const DemoEntryPage(),
+        ),
+      GoRoute(
+        path: AppRoutes.adminPackageApprovals,
+        name: 'admin-package-approvals',
+        builder: (context, state) => const PackageApprovalsPage(),
+      ),
       GoRoute(
         name: AppRoutes.welcome,
         path: AppRoutes.welcomePath,

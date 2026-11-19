@@ -50,6 +50,31 @@ class PackageRepository {
     );
   }
 
+  Future<List<PackageMembership>> pendingApprovals() async {
+    final data = await _request('GET', '/admin/memberships/pending');
+    return (data['memberships'] as List)
+        .map(
+          (item) => PackageMembership.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList();
+  }
+
+  Future<PackageMembership> verifyPayment(
+    String membershipId,
+    String reference,
+  ) async {
+    final data = await _request(
+      'POST',
+      '/admin/memberships/$membershipId/verify-payment',
+      body: {'reference': reference},
+    );
+    return PackageMembership.fromJson(
+      Map<String, dynamic>.from(data['membership'] as Map),
+    );
+  }
+
   Future<Map<String, dynamic>> _request(
     String method,
     String path, {
@@ -105,4 +130,16 @@ final packageMembershipsProvider =
         throw const PackageFailure('Sign in to view your membership.');
       }
       return ref.watch(packageRepositoryProvider).memberships();
+    }, retry: (count, error) => null);
+
+final pendingPackageApprovalsProvider =
+    FutureProvider.autoDispose<List<PackageMembership>>((ref) async {
+      final repository = ref.watch(packageRepositoryProvider);
+      final user = await ref.watch(packageAccountProvider.future);
+      if (user == null) {
+        throw const PackageFailure(
+          'Sign in as an administrator to review package approvals.',
+        );
+      }
+      return repository.pendingApprovals();
     }, retry: (count, error) => null);

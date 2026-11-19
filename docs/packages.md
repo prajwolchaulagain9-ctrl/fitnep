@@ -10,11 +10,15 @@ Scheduled and Expired states, retry, and account cleanup are implemented.
 Server operations are persisted and tested with Firebase Auth/Firestore emulators.
 Functions and rules have not been deployed. Spark billing is unchanged.
 
-US 9 is not yet live acceptance complete. The US 1 owner must connect login and
-first-login navigation with trusted `role: client` claims. The US 68 owner must
-agree the catalog schema and populate real packages. The team must agree a live
-hosting arrangement for the API and trusted verified-payment processing.
-No placeholder catalog is displayed in the production app.
+The project has a zero budget. A payment gateway and real money processing are
+outside scope. Payment verification is a manual administrator action. A local
+demo connects client/admin login, seeded packages, Pending selection and Active
+membership using only Firebase emulators and a laptop-hosted API; see
+[free demo setup](free-demo.md). It requires no cloud deployment or billing upgrade.
+
+The normal app still needs the US 1 login handoff and the US 68 real catalog if
+the team later wants a live shared app. The demonstration's fictional catalog
+and accounts are confined to the emulator build.
 
 ## API and ownership
 
@@ -28,6 +32,8 @@ verified token; clients cannot supply an owner, status, price, or activation dat
 | `GET /packages` | `data.packages`: active catalog items |
 | `GET /memberships/me` | `data.memberships`: only this client's records |
 | `POST /memberships` | `{ "package_id": "basic", "request_id": "unique-request-id-01" }`; returns `data.membership` |
+| `GET /admin/memberships/pending` | Admin-only queue of Pending memberships |
+| `POST /admin/memberships/{id}/verify-payment` | Admin-only `{ "reference": "receipt-or-record-reference" }`; returns the activated membership |
 
 Catalog fields are `id`, `name`, `duration_days`, integer `price_npr`, and
 `features` (nonempty string array). Catalog documents live in
@@ -50,7 +56,16 @@ Membership and guard collections remain inaccessible to direct client writes
 and reads. The API is the only client data path.
 
 `onPackagePaymentVerified` reacts to writes in `payments/{paymentId}`.
-Trusted payment processing must persist all of these fields:
+The supported project workflow uses the manual admin endpoint. It writes an
+audited payment record and activates the membership in one transaction, using
+the saved owner, amount and duration. `verified_by`, `verified_at`, `method:
+manual`, and `verification_reference` identify the verification. Repeated
+approval with the same reference returns the existing result; changing the
+reference cannot overwrite the original audit. Rejected overlaps leave both
+membership and payment state unchanged. Clients and dietitians cannot approve.
+
+The existing backend payment-record hook remains compatible with trusted
+records, but requires no gateway. Those records have these fields:
 
 ```json
 {
@@ -113,3 +128,14 @@ The completed local check set passed 76 Flutter tests, 18 backend unit tests,
 plus formatting and analysis. The final payment-trigger filter was rechecked
 separately. Local backend execution used Node 24; CI and the declared runtime
 use Node 22. These results do not certify live catalog or payment integration.
+
+Manual verification additionally passed emulator checks for admin authorization,
+immutable audit records, concurrent retries and atomic overlap rejection. UI
+checks cover verification-reference validation and dialog cleanup.
+
+The zero-budget local acceptance journey passed on the connected Android phone
+on 19 November 2026: Pending selection, manual admin verification, then a fresh
+client sign-in displaying Active dates and 30 days remaining. The saved API
+state and client approval denial were verified. The final check set passed 77
+Flutter tests, 18 backend unit tests and nine package emulator tests, with clean
+formatting and analysis. See [the verified demo evidence](free-demo.md#verified-on-19-november-2026).

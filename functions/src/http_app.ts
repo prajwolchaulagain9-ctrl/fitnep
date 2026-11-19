@@ -50,6 +50,24 @@ export function createNotificationApp(
     if (user.role !== "client") throw new AuthenticationError("Package selection is available to clients only.", 403);
     return user.uid;
   };
+  const admin = (response: Response) => {
+    const user = currentUser(response);
+    if (user.role !== "admin") throw new AuthenticationError("Administrator access is required.", 403);
+    return user;
+  };
+  app.get("/admin/memberships/pending", asyncRoute(async (_request, response) => {
+    admin(response);
+    response.json({ data: { memberships: await packages().pendingMemberships() } });
+  }));
+  app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
+    const actor = admin(response);
+    const body = isObject(request.body) ? request.body : {};
+    if (Object.keys(body).some(key => key !== "reference") || typeof body.reference !== "string") {
+      throw new PackageError(400, "Only a verification reference may be supplied.");
+    }
+    const membership = await packages().verifyManually(actor, request.params.id ?? "", body.reference);
+    response.json({ data: { membership } });
+  }));
   app.get("/packages", asyncRoute(async (_request, response) => {
     response.json({ data: { packages: await packages().catalog() } });
   }));

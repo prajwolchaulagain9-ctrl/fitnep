@@ -41,6 +41,7 @@ class PackageMembership {
     required this.daysRemaining,
     this.startAt,
     this.endAt,
+    this.clientId = '',
   });
   final String id;
   final PackageOption package;
@@ -48,6 +49,7 @@ class PackageMembership {
   final int daysRemaining;
   final DateTime? startAt;
   final DateTime? endAt;
+  final String clientId;
 
   factory PackageMembership.fromJson(Map<String, dynamic> json) {
     final status = MembershipStatus.values.byName(json['status'] as String);
@@ -72,6 +74,7 @@ class PackageMembership {
       daysRemaining: remaining,
       startAt: start,
       endAt: end,
+      clientId: json['client_id'] as String? ?? '',
     );
   }
 }
