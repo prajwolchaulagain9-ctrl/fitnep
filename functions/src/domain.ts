@@ -76,6 +76,24 @@ export interface CreatePackageResult {
   created: boolean;
 }
 
+export interface PurchaseRecord {
+  id: string;
+  customerId: string;
+  packageId: string;
+  packageName: string;
+  pricePaid: number;
+  durationMonths: number;
+  featureDescription: string;
+  purchasedAt: string;
+  expiresAt: string;
+  requestId: string;
+}
+
+export interface CreatePurchaseResult {
+  purchase: PurchaseRecord;
+  created: boolean;
+}
+
 export function isUserRole(value: unknown): value is UserRole {
   return typeof value === "string" &&
     userRoles.includes(value.toLowerCase() as UserRole);

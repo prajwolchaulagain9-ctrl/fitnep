@@ -6,7 +6,11 @@ import express, {
 } from "express";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
-import { AuthenticatedUser, NotificationRecord } from "./domain";
+import {
+  AuthenticatedUser,
+  NotificationRecord,
+  PurchaseRecord,
+} from "./domain";
 import {
   NotificationRepository,
   NotificationStorageNotConfiguredError,
@@ -28,11 +32,24 @@ import {
   PackageAuthorizationError,
   PackageService,
 } from "./package_service";
+import {
+  PurchasablePackageNotFoundError,
+  PurchaseRepository,
+  PurchaseRequestConflictError,
+  PurchaseStorageNotConfiguredError,
+  UnconfiguredPurchaseRepository,
+} from "./purchase_repository";
+import {
+  InvalidPurchaseError,
+  PurchaseAuthorizationError,
+  PurchaseService,
+} from "./purchase_service";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
   packageRepository?: PackageRepository;
+  purchaseRepository?: PurchaseRepository;
 }
 
 export function createNotificationApp(
@@ -44,6 +61,9 @@ export function createNotificationApp(
   );
   const packageService = new PackageService(
     dependencies.packageRepository ?? new UnconfiguredPackageRepository(),
+  );
+  const purchaseService = new PurchaseService(
+    dependencies.purchaseRepository ?? new UnconfiguredPurchaseRepository(),
   );
 
   app.disable("x-powered-by");
@@ -165,6 +185,30 @@ export function createNotificationApp(
     }),
   );
 
+  app.get(
+    "/purchases/current",
+    asyncRoute(async (_request, response) => {
+      const purchase = await purchaseService.getCurrent(currentUser(response));
+      response.status(200).json({
+        data: { purchase: purchase === null ? null : toApiPurchase(purchase) },
+      });
+    }),
+  );
+
+  app.post(
+    "/purchases",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const purchase = await purchaseService.create(currentUser(response), {
+        packageId: body.package_id,
+        requestId: body.request_id,
+      });
+      response.status(201).json({
+        data: { purchase: toApiPurchase(purchase) },
+      });
+    }),
+  );
+
   app.patch(
     "/notifications/:notificationId/read",
     asyncRoute(async (request, response) => {
@@ -229,6 +273,28 @@ export function createNotificationApp(
         });
         return;
       }
+      if (error instanceof PurchaseAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidPurchaseError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchaseRequestConflictError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchasablePackageNotFoundError) {
+        response.status(404).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchaseStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Purchase storage has not been configured yet.",
+        });
+        return;
+      }
 
       console.error("Unhandled notification API error", error);
       response.status(500).json({ error: "Internal server error." });
@@ -247,6 +313,19 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
     feature_description: packageRecord.featureDescription,
     is_active: packageRecord.isActive,
     created_at: packageRecord.createdAt,
+  };
+}
+
+function toApiPurchase(purchase: PurchaseRecord) {
+  return {
+    id: purchase.id,
+    package_id: purchase.packageId,
+    package_name: purchase.packageName,
+    price_paid: purchase.pricePaid,
+    duration_months: purchase.durationMonths,
+    feature_description: purchase.featureDescription,
+    purchased_at: purchase.purchasedAt,
+    expires_at: purchase.expiresAt,
   };
 }
 

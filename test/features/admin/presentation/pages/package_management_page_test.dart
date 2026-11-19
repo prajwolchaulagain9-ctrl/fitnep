@@ -125,6 +125,9 @@ class _FakePackageRepository implements PackageRepository {
   }
 
   @override
+  Future<List<PackageEntity>> getActivePackages() => getPackages();
+
+  @override
   Future<PackageEntity> createPackage({
     required String requestId,
     required String name,
@@ -139,6 +142,7 @@ class _FakePackageRepository implements PackageRepository {
       durationMonths: durationMonths,
       price: price,
       featureDescription: featureDescription,
+      isActive: true,
       createdAt: DateTime.utc(2026, 11, 19, 12),
     );
     if (!delayCreate) {
@@ -148,6 +152,36 @@ class _FakePackageRepository implements PackageRepository {
     _pendingPackage = package;
     _createCompleter = Completer<PackageEntity>();
     return _createCompleter!.future;
+  }
+
+  @override
+  Future<PackageEntity> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  }) async {
+    final index = _packages.indexWhere((package) => package.id == id);
+    final updated = _packages[index].copyWith(
+      name: name,
+      durationMonths: durationMonths,
+      price: price,
+      featureDescription: featureDescription,
+    );
+    _packages[index] = updated;
+    return updated;
+  }
+
+  @override
+  Future<PackageEntity> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
+  }) async {
+    final index = _packages.indexWhere((package) => package.id == id);
+    final updated = _packages[index].copyWith(isActive: isActive);
+    _packages[index] = updated;
+    return updated;
   }
 
   void completeCreate() {

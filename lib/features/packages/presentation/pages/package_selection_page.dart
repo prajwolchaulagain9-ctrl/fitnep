@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../admin/domain/entities/package_entity.dart';
 import '../../../admin/domain/repositories/package_repository.dart';
 import '../../../admin/presentation/controllers/package_management_controller.dart';
 import '../../../admin/presentation/widgets/empty_state_widget.dart';
+import '../../../purchases/presentation/controllers/membership_controller.dart';
 
 // ── Customer-facing active-only packages provider ─────────────────────────────
 
@@ -70,6 +73,7 @@ class PackageSelectionPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(_activePackageControllerProvider);
     final controller = ref.read(_activePackageControllerProvider.notifier);
+    final membership = ref.watch(membershipControllerProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -83,18 +87,27 @@ class PackageSelectionPage extends ConsumerWidget {
           ),
         ],
       ),
-      body: _PackageSelectionBody(state: state, onRefresh: controller.refresh),
+      body: _PackageSelectionBody(
+        state: state,
+        isPurchasing: membership.isPurchasing,
+        onRefresh: controller.refresh,
+        onPurchase: (package) => _purchasePackage(context, ref, package),
+      ),
     );
   }
 }
 
 class _PackageSelectionBody extends StatelessWidget {
   final _ActivePackageState state;
+  final bool isPurchasing;
   final Future<void> Function() onRefresh;
+  final Future<void> Function(PackageEntity package) onPurchase;
 
   const _PackageSelectionBody({
     required this.state,
+    required this.isPurchasing,
     required this.onRefresh,
+    required this.onPurchase,
   });
 
   @override
@@ -143,8 +156,11 @@ class _PackageSelectionBody extends StatelessWidget {
         ),
         itemCount: state.packages.length,
         separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) =>
-            _CustomerPackageCard(package: state.packages[index]),
+        itemBuilder: (context, index) => _CustomerPackageCard(
+          package: state.packages[index],
+          isPurchasing: isPurchasing,
+          onPurchase: onPurchase,
+        ),
       ),
     );
   }
@@ -152,8 +168,14 @@ class _PackageSelectionBody extends StatelessWidget {
 
 class _CustomerPackageCard extends StatelessWidget {
   final PackageEntity package;
+  final bool isPurchasing;
+  final Future<void> Function(PackageEntity package) onPurchase;
 
-  const _CustomerPackageCard({required this.package});
+  const _CustomerPackageCard({
+    required this.package,
+    required this.isPurchasing,
+    required this.onPurchase,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -223,18 +245,21 @@ class _CustomerPackageCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               package.featureDescription,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textSecondary,
-                height: 1.5,
-              ),
+              style: Theme.of(context).textTheme.bodyMedium
+                  ?.copyWith(color: AppColors.textSecondary, height: 1.5),
             ),
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 key: Key('select_package_${package.id}'),
-                onPressed: () => _onSelectPackage(context, package),
-                child: Text('Select ${package.name}'),
+                onPressed: isPurchasing ? null : () => onPurchase(package),
+                child: isPurchasing
+                    ? const SizedBox.square(
+                        dimension: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text('Purchase ${package.name}'),
               ),
             ),
           ],
@@ -242,9 +267,42 @@ class _CustomerPackageCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  void _onSelectPackage(BuildContext context, PackageEntity package) {
-    // Returns the selected package to the caller screen.
-    Navigator.of(context).pop(package);
+Future<void> _purchasePackage(
+  BuildContext context,
+  WidgetRef ref,
+  PackageEntity package,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text('Purchase ${package.name}?'),
+      content: Text(
+        'Your price, duration, and included features will be saved as your purchased membership terms.',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          child: const Text('Confirm Purchase'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true || !context.mounted) return;
+
+  try {
+    await ref
+        .read(membershipControllerProvider.notifier)
+        .purchasePackage(package.id);
+    if (context.mounted) context.go(AppRoutes.clientMembership);
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(error.toString())));
   }
 }

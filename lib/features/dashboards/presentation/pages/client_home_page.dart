@@ -57,10 +57,12 @@ class ClientHomePage extends ConsumerWidget {
             16,
             24 + MediaQuery.paddingOf(context).bottom,
           ),
-          children: const [
-            _WelcomeCard(),
-            SizedBox(height: 20),
-            Text(
+          children: [
+            const _WelcomeCard(),
+            const SizedBox(height: 16),
+            const _MembershipActions(),
+            const SizedBox(height: 20),
+            const Text(
               'Your FitNep updates',
               style: TextStyle(
                 color: AppColors.textPrimary,
@@ -68,11 +70,40 @@ class ClientHomePage extends ConsumerWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            SizedBox(height: 12),
-            _UpdateTypesCard(),
+            const SizedBox(height: 12),
+            const _UpdateTypesCard(),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _MembershipActions extends StatelessWidget {
+  const _MembershipActions();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            key: const Key('client_view_packages_button'),
+            onPressed: () => context.push(AppRoutes.clientPackages),
+            icon: const Icon(Icons.inventory_2_outlined),
+            label: const Text('Packages'),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: FilledButton.icon(
+            key: const Key('client_membership_button'),
+            onPressed: () => context.push(AppRoutes.clientMembership),
+            icon: const Icon(Icons.card_membership_rounded),
+            label: const Text('Membership'),
+          ),
+        ),
+      ],
     );
   }
 }

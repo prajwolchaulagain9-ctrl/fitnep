@@ -29,6 +29,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Purchases contain immutable customer contract snapshots and are only
+    // accessed through authenticated Cloud Functions.
+    match /customer_purchases/{customerId}/purchases/{purchaseId} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

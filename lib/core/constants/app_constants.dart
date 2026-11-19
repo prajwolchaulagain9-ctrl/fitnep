@@ -10,6 +10,9 @@ class AppConstants {
   /// Admin packages endpoint (all packages including inactive).
   static const adminPackagesEndpoint = 'admin/packages';
 
+  static const purchasesEndpoint = 'purchases';
+  static const currentPurchaseEndpoint = 'purchases/current';
+
   static String notificationReadEndpoint(String notificationId) =>
       '$notificationsEndpoint/${Uri.encodeComponent(notificationId)}/read';
 

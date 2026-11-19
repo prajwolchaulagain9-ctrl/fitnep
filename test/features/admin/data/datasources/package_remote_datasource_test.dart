@@ -5,7 +5,7 @@ import 'package:fitnep/features/admin/data/datasources/package_remote_datasource
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('loads packages from the authenticated package endpoint', () async {
+  test('loads all packages from the authenticated admin endpoint', () async {
     late RequestOptions capturedRequest;
     final dio = Dio(BaseOptions(baseUrl: 'https://api.fitnep.test/'));
     dio.interceptors.add(
@@ -33,7 +33,10 @@ void main() {
     final packages = await datasource.getPackages();
 
     expect(capturedRequest.method, 'GET');
-    expect(capturedRequest.uri.toString(), 'https://api.fitnep.test/packages');
+    expect(
+      capturedRequest.uri.toString(),
+      'https://api.fitnep.test/admin/packages',
+    );
     expect(packages.single.name, 'Premium Fitness');
   });
 

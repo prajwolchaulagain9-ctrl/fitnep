@@ -5,6 +5,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePackageRepository } from "./firestore_package_repository";
+import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
@@ -18,10 +19,12 @@ const notificationRepository = new FirestoreNotificationRepository(
   getFirestore(),
 );
 const packageRepository = new FirestorePackageRepository(getFirestore());
+const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
   notificationRepository,
   packageRepository,
+  purchaseRepository,
 });
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(notificationRepository),

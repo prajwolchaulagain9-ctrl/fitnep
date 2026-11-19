@@ -62,7 +62,10 @@ whether another user's notification exists.
 ## Package APIs
 
 - `GET /packages` lists packages for any authenticated FitNep role.
+- `GET /admin/packages` lists active and inactive packages for administrators.
 - `POST /packages` creates a package for an `admin` role only.
+- `PATCH /packages/:packageId` edits the current offer for future purchases.
+- `PATCH /packages/:packageId/active` activates or deactivates an offer.
 
 The create body uses `request_id`, `name`, `duration_months`, `price`, and
 `feature_description`. The request identifier makes retries idempotent. Package
@@ -70,6 +73,24 @@ name and feature description are required, duration must be a positive whole
 number of months, and price must be positive. Records are stored in the
 Firestore `packages` collection. Direct mobile reads and writes remain denied
 by Firestore rules.
+
+## Customer purchase APIs
+
+- `POST /purchases` creates an immutable package purchase snapshot for the
+  authenticated customer.
+- `GET /purchases/current` returns that customer's latest purchased terms.
+
+The purchase body contains `package_id` and an idempotent `request_id`. The
+backend reads the current package and creates the purchase in one Firestore
+transaction. It stores `package_name`, `price_paid`, `duration_months`,
+`feature_description`, `purchased_at`, and `expires_at`; membership reads never
+join back to the mutable package document. Purchases are stored at
+`customer_purchases/{customerId}/purchases/{requestId}` and direct mobile reads
+and writes are denied by Firestore rules.
+
+This repository does not contain a payment gateway. The purchase endpoint is
+the package-term persistence boundary and should be called only after the
+payment workflow has confirmed the charge when a gateway is connected.
 
 ## Workflow hooks
 

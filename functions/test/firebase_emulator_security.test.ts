@@ -10,6 +10,10 @@ import { FirebaseAuthVerifier } from "../src/auth";
 import { UserRole } from "../src/domain";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
 import { FirestorePackageRepository } from "../src/firestore_package_repository";
+import {
+  addCalendarMonths,
+  FirestorePurchaseRepository,
+} from "../src/firestore_purchase_repository";
 import { createNotificationApp } from "../src/http_app";
 import { NotificationWorkflowService } from "../src/notification_service";
 
@@ -28,6 +32,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
   let repository: FirestoreNotificationRepository;
   let workflows: NotificationWorkflowService;
   let packageRepository: FirestorePackageRepository;
+  let purchaseRepository: FirestorePurchaseRepository;
   let api: ReturnType<typeof createNotificationApp>;
 
   before(() => {
@@ -36,11 +41,13 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     firestore = getFirestore(firebaseApp);
     repository = new FirestoreNotificationRepository(firestore);
     packageRepository = new FirestorePackageRepository(firestore);
+    purchaseRepository = new FirestorePurchaseRepository(firestore);
     workflows = new NotificationWorkflowService(repository);
     api = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
       packageRepository,
+      purchaseRepository,
     });
   });
 
@@ -173,6 +180,113 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.equal(
       stored.get("feature_description"),
       payload.feature_description,
+    );
+  });
+
+  it("keeps customer A's purchased terms after package edits and snapshots new terms for customer B", async () => {
+    const [adminToken, clientAToken, clientBToken] = await Promise.all([
+      signIn("admin@fitnep.test"),
+      signIn("client-a@fitnep.test"),
+      signIn("client-b@fitnep.test"),
+    ]);
+    await request(api)
+      .post("/packages")
+      .set(bearer(adminToken))
+      .send({
+        request_id: "premium-emulator-package",
+        name: "Premium",
+        duration_months: 3,
+        price: 5000,
+        feature_description: "Diet Plan, Workout Plan, Weekly Consultation",
+      })
+      .expect(201);
+
+    const customerAPurchase = await request(api)
+      .post("/purchases")
+      .set(bearer(clientAToken))
+      .send({
+        package_id: "premium-emulator-package",
+        request_id: "customer-a-emulator-purchase",
+      })
+      .expect(201);
+
+    await request(api)
+      .patch("/packages/premium-emulator-package")
+      .set(bearer(adminToken))
+      .send({
+        name: "Premium",
+        duration_months: 6,
+        price: 6500,
+        feature_description:
+          "Diet Plan, Workout Plan, Personal Coaching, Priority Consultation",
+      })
+      .expect(200);
+
+    const customerAAfterEdit = await request(api)
+      .get("/purchases/current")
+      .set(bearer(clientAToken))
+      .expect(200);
+    const customerBPurchase = await request(api)
+      .post("/purchases")
+      .set(bearer(clientBToken))
+      .send({
+        package_id: "premium-emulator-package",
+        request_id: "customer-b-emulator-purchase",
+      })
+      .expect(201);
+
+    assert.equal(customerAAfterEdit.body.data.purchase.package_name, "Premium");
+    assert.equal(customerAAfterEdit.body.data.purchase.price_paid, 5000);
+    assert.equal(customerAAfterEdit.body.data.purchase.duration_months, 3);
+    assert.equal(
+      customerAAfterEdit.body.data.purchase.feature_description,
+      "Diet Plan, Workout Plan, Weekly Consultation",
+    );
+    assert.equal(
+      customerAAfterEdit.body.data.purchase.purchased_at,
+      customerAPurchase.body.data.purchase.purchased_at,
+    );
+    assert.equal(
+      customerAAfterEdit.body.data.purchase.expires_at,
+      customerAPurchase.body.data.purchase.expires_at,
+    );
+    assert.equal(
+      customerAPurchase.body.data.purchase.expires_at,
+      addCalendarMonths(
+        new Date(customerAPurchase.body.data.purchase.purchased_at as string),
+        3,
+      ).toISOString(),
+    );
+    assert.equal(customerBPurchase.body.data.purchase.price_paid, 6500);
+    assert.equal(customerBPurchase.body.data.purchase.duration_months, 6);
+    assert.equal(
+      customerBPurchase.body.data.purchase.feature_description,
+      "Diet Plan, Workout Plan, Personal Coaching, Priority Consultation",
+    );
+
+    const storedA = await firestore
+      .collection("customer_purchases")
+      .doc("client-a")
+      .collection("purchases")
+      .doc("customer-a-emulator-purchase")
+      .get();
+    assert.equal(storedA.get("price_paid"), 5000);
+    assert.equal(storedA.get("duration_months"), 3);
+
+    const restartedApi = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(),
+      notificationRepository: repository,
+      packageRepository: new FirestorePackageRepository(firestore),
+      purchaseRepository: new FirestorePurchaseRepository(firestore),
+    });
+    const afterRestart = await request(restartedApi)
+      .get("/purchases/current")
+      .set(bearer(clientAToken))
+      .expect(200);
+    assert.equal(afterRestart.body.data.purchase.price_paid, 5000);
+    assert.equal(
+      afterRestart.body.data.purchase.expires_at,
+      customerAPurchase.body.data.purchase.expires_at,
     );
   });
 });

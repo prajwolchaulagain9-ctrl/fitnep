@@ -18,6 +18,7 @@ import '../../features/notifications/presentation/pages/notifications_page.dart'
 import '../../features/notifications/domain/entities/notification_entity.dart';
 import '../../features/notifications/presentation/pages/notification_destination_page.dart';
 import '../../features/packages/presentation/pages/package_selection_page.dart';
+import '../../features/purchases/presentation/pages/membership_page.dart';
 import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -67,6 +68,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PackageSelectionPage(),
       ),
       GoRoute(
+        path: AppRoutes.clientMembership,
+        name: AppRoutes.clientMembershipName,
+        builder: (context, state) => const MembershipPage(),
+      ),
+      GoRoute(
         path: AppRoutes.notifications,
         name: 'notifications',
         builder: (context, state) => const NotificationsPage(),
@@ -111,6 +117,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: ':id',
             name: 'client-profile',
+
             builder: (context, state) {
               final clientId = state.pathParameters['id']!;
               return ClientProfilePage(clientId: clientId);

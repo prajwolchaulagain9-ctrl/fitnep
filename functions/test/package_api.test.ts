@@ -9,29 +9,40 @@ import {
   CreatePackageResult,
   NewPackage,
   PackageRecord,
+  PurchaseRecord,
   UpdatePackageInput,
 } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
+import { addCalendarMonths } from "../src/firestore_purchase_repository";
 import {
   PackageNotFoundError,
   PackageRepository,
   PackageRequestConflictError,
 } from "../src/package_repository";
+import {
+  PurchasablePackageNotFoundError,
+  PurchaseRepository,
+  PurchaseRequestConflictError,
+} from "../src/purchase_repository";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
 
 const admin: AuthenticatedUser = { uid: "admin-1", role: "admin" };
 const client: AuthenticatedUser = { uid: "client-1", role: "client" };
+const clientB: AuthenticatedUser = { uid: "client-2", role: "client" };
 
 describe("package API", () => {
   let repository: InMemoryPackageRepository;
+  let purchaseRepository: InMemoryPurchaseRepository;
   let api: ReturnType<typeof createNotificationApp>;
 
   beforeEach(() => {
     repository = new InMemoryPackageRepository();
+    purchaseRepository = new InMemoryPurchaseRepository(repository);
     api = createNotificationApp({
-      authVerifier: new FakeAuthVerifier({ admin, client }),
+      authVerifier: new FakeAuthVerifier({ admin, client, clientB }),
       notificationRepository: new InMemoryNotificationRepository(),
       packageRepository: repository,
+      purchaseRepository,
     });
   });
 
@@ -229,26 +240,79 @@ describe("package API", () => {
     assert.equal(response.status, 400);
   });
 
-  it("existing purchase records are not affected by deactivation", async () => {
-    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
-    // Simulate an existing purchase record by confirming the package still exists in the repo
-    const preDeactivationPackage = repository.records.find(
-      (r) => r.id === "package-request-1",
-    );
-    assert.ok(preDeactivationPackage, "package exists before deactivation");
+  it("snapshots purchased terms while future purchases receive package edits", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send({
+      request_id: "premium-package-request",
+      name: "Premium",
+      duration_months: 3,
+      price: 5000,
+      feature_description: "Diet Plan, Workout Plan, Weekly Consultation",
+    });
+
+    const customerAPurchase = await request(api)
+      .post("/purchases")
+      .set(bearer("client"))
+      .send({
+        package_id: "premium-package-request",
+        request_id: "customer-a-purchase-1",
+      });
+    assert.equal(customerAPurchase.status, 201);
 
     await request(api)
-      .patch("/packages/package-request-1/active")
+      .patch("/packages/premium-package-request")
       .set(bearer("admin"))
-      .send({ is_active: false });
+      .send({
+        name: "Premium Plus",
+        duration_months: 6,
+        price: 6500,
+        feature_description:
+          "Diet Plan, Workout Plan, Personal Coaching, Priority Consultation",
+      });
 
-    // Package record still exists in the repository (not deleted)
-    assert.equal(repository.records.length, 1);
-    const postDeactivationPackage = repository.records.find(
-      (r) => r.id === "package-request-1",
+    const customerAAfterEdit = await request(api)
+      .get("/purchases/current")
+      .set(bearer("client"));
+    assert.deepEqual(customerAAfterEdit.body.data.purchase, {
+      id: "customer-a-purchase-1",
+      package_id: "premium-package-request",
+      package_name: "Premium",
+      price_paid: 5000,
+      duration_months: 3,
+      feature_description: "Diet Plan, Workout Plan, Weekly Consultation",
+      purchased_at: "2026-01-31T12:00:00.000Z",
+      expires_at: "2026-04-30T12:00:00.000Z",
+    });
+
+    const customerBPurchase = await request(api)
+      .post("/purchases")
+      .set(bearer("clientB"))
+      .send({
+        package_id: "premium-package-request",
+        request_id: "customer-b-purchase-1",
+      });
+    assert.equal(customerBPurchase.status, 201);
+    assert.equal(customerBPurchase.body.data.purchase.package_name, "Premium Plus");
+    assert.equal(customerBPurchase.body.data.purchase.price_paid, 6500);
+    assert.equal(customerBPurchase.body.data.purchase.duration_months, 6);
+    assert.equal(
+      customerBPurchase.body.data.purchase.feature_description,
+      "Diet Plan, Workout Plan, Personal Coaching, Priority Consultation",
     );
-    assert.ok(postDeactivationPackage, "package still exists after deactivation");
-    assert.equal(postDeactivationPackage.isActive, false);
+
+    const restartedApi = createNotificationApp({
+      authVerifier: new FakeAuthVerifier({ admin, client, clientB }),
+      notificationRepository: new InMemoryNotificationRepository(),
+      packageRepository: repository,
+      purchaseRepository,
+    });
+    const afterRestart = await request(restartedApi)
+      .get("/purchases/current")
+      .set(bearer("client"));
+    assert.equal(afterRestart.body.data.purchase.price_paid, 5000);
+    assert.equal(
+      afterRestart.body.data.purchase.expires_at,
+      "2026-04-30T12:00:00.000Z",
+    );
   });
 });
 
@@ -313,6 +377,63 @@ class InMemoryPackageRepository implements PackageRepository {
     const updated: PackageRecord = { ...existing, isActive };
     this.records[index] = updated;
     return updated;
+  }
+}
+
+class InMemoryPurchaseRepository implements PurchaseRepository {
+  readonly records: PurchaseRecord[] = [];
+
+  constructor(private readonly packages: InMemoryPackageRepository) {}
+
+  async getLatestForCustomer(
+    customerId: string,
+  ): Promise<PurchaseRecord | null> {
+    return [...this.records]
+      .filter((record) => record.customerId === customerId)
+      .sort((left, right) =>
+        right.purchasedAt.localeCompare(left.purchasedAt)
+      )[0] ?? null;
+  }
+
+  async purchasePackage(
+    customerId: string,
+    packageId: string,
+    requestId: string,
+  ): Promise<{ purchase: PurchaseRecord; created: boolean }> {
+    const existing = this.records.find(
+      (record) =>
+        record.customerId === customerId && record.requestId === requestId,
+    );
+    if (existing !== undefined) {
+      if (existing.packageId !== packageId) {
+        throw new PurchaseRequestConflictError();
+      }
+      return { purchase: existing, created: false };
+    }
+
+    const source = this.packages.records.find(
+      (record) => record.id === packageId && record.isActive,
+    );
+    if (source === undefined) throw new PurchasablePackageNotFoundError();
+
+    const purchasedAt = new Date("2026-01-31T12:00:00.000Z");
+    const purchase: PurchaseRecord = {
+      id: requestId,
+      customerId,
+      packageId: source.id,
+      packageName: source.name,
+      pricePaid: source.price,
+      durationMonths: source.durationMonths,
+      featureDescription: source.featureDescription,
+      purchasedAt: purchasedAt.toISOString(),
+      expiresAt: addCalendarMonths(
+        purchasedAt,
+        source.durationMonths,
+      ).toISOString(),
+      requestId,
+    };
+    this.records.push(purchase);
+    return { purchase, created: true };
   }
 }
 
