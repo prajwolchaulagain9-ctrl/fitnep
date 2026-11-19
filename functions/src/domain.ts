@@ -48,6 +48,7 @@ export interface PackageRecord {
   durationMonths: number;
   price: number;
   featureDescription: string;
+  isActive: boolean;
   createdAt: string;
   createdBy: string;
   requestId: string;
@@ -60,6 +61,14 @@ export interface NewPackage {
   featureDescription: string;
   createdBy: string;
   requestId: string;
+}
+
+export interface UpdatePackageInput {
+  name: string;
+  durationMonths: number;
+  price: number;
+  featureDescription: string;
+  updatedBy: string;
 }
 
 export interface CreatePackageResult {

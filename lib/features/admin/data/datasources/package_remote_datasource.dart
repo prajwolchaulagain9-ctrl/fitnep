@@ -5,7 +5,11 @@ import '../../../../core/network/api_client.dart';
 import '../models/package_model.dart';
 
 abstract class PackageRemoteDatasource {
+  /// Returns all packages (admin view).
   Future<List<PackageModel>> getPackages();
+
+  /// Returns only active packages (customer view).
+  Future<List<PackageModel>> getActivePackages();
 
   Future<PackageModel> createPackage({
     required String requestId,
@@ -13,6 +17,19 @@ abstract class PackageRemoteDatasource {
     required int durationMonths,
     required double price,
     required String featureDescription,
+  });
+
+  Future<PackageModel> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  });
+
+  Future<PackageModel> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
   });
 }
 
@@ -23,6 +40,24 @@ class PackageRemoteDatasourceImpl implements PackageRemoteDatasource {
 
   @override
   Future<List<PackageModel>> getPackages() async {
+    _ensureConfigured();
+    try {
+      final response = await _apiClient.dio.get<Object?>(
+        AppConstants.adminPackagesEndpoint,
+      );
+      final items = _extractPackageList(response.data);
+      return items.map(PackageModel.fromJson).toList(growable: false);
+    } on DioException catch (error) {
+      throw PackageDataException(_messageFor(error, saving: false));
+    } on FormatException {
+      throw const PackageDataException(
+        'The package service returned invalid data.',
+      );
+    }
+  }
+
+  @override
+  Future<List<PackageModel>> getActivePackages() async {
     _ensureConfigured();
     try {
       final response = await _apiClient.dio.get<Object?>(
@@ -69,6 +104,62 @@ class PackageRemoteDatasourceImpl implements PackageRemoteDatasource {
     }
   }
 
+  @override
+  Future<PackageModel> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  }) async {
+    _ensureConfigured();
+    try {
+      final response = await _apiClient.dio.patch<Object?>(
+        AppConstants.packageEndpoint(id),
+        data: {
+          'name': name,
+          'duration_months': durationMonths,
+          'price': price,
+          'feature_description': featureDescription,
+        },
+      );
+      return PackageModel.fromJson(_extractPackage(response.data));
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        throw const PackageDataException('Package not found.');
+      }
+      throw PackageDataException(_messageFor(error, saving: true));
+    } on FormatException {
+      throw const PackageDataException(
+        'The package service returned invalid data.',
+      );
+    }
+  }
+
+  @override
+  Future<PackageModel> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
+  }) async {
+    _ensureConfigured();
+    try {
+      final response = await _apiClient.dio.patch<Object?>(
+        AppConstants.packageActiveEndpoint(id),
+        data: {'is_active': isActive},
+      );
+      return PackageModel.fromJson(_extractPackage(response.data));
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        throw const PackageDataException('Package not found.');
+      }
+      throw PackageDataException(_messageFor(error, saving: true));
+    } on FormatException {
+      throw const PackageDataException(
+        'The package service returned invalid data.',
+      );
+    }
+  }
+
   void _ensureConfigured() {
     if (_apiClient.dio.options.baseUrl.trim().isEmpty) {
       throw const PackageDataException('Package service is not configured.');
@@ -83,7 +174,7 @@ class PackageRemoteDatasourceImpl implements PackageRemoteDatasource {
         return 'Your session has expired. Please sign in again.';
       case 403:
         return saving
-            ? 'Only administrators can create packages.'
+            ? 'Only administrators can manage packages.'
             : 'You do not have permission to view packages.';
       case 409:
         return 'This package submission conflicts with an earlier request.';

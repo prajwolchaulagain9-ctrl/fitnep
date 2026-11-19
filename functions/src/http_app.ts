@@ -17,6 +17,7 @@ import {
   NotificationService,
 } from "./notification_service";
 import {
+  PackageNotFoundError,
   PackageRepository,
   PackageRequestConflictError,
   PackageStorageNotConfiguredError,
@@ -85,10 +86,26 @@ export function createNotificationApp(
     }),
   );
 
+  // ── Customer-facing: returns only active packages ──────────────────────────
   app.get(
     "/packages",
     asyncRoute(async (_request, response) => {
       const packages = await packageService.list();
+      response.status(200).json({
+        data: { packages: packages.map(toApiPackage) },
+      });
+    }),
+  );
+
+  // ── Admin: returns all packages including inactive ─────────────────────────
+  app.get(
+    "/admin/packages",
+    asyncRoute(async (_request, response) => {
+      const user = currentUser(response);
+      if (user.role !== "admin") {
+        throw new PackageAuthorizationError();
+      }
+      const packages = await packageService.listAll();
       response.status(200).json({
         data: { packages: packages.map(toApiPackage) },
       });
@@ -107,6 +124,44 @@ export function createNotificationApp(
         requestId: body.request_id,
       });
       response.status(201).json({ data: { package: toApiPackage(created) } });
+    }),
+  );
+
+  // ── Admin: edit a package ──────────────────────────────────────────────────
+  app.patch(
+    "/packages/:packageId",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const updated = await packageService.update(
+        currentUser(response),
+        request.params.packageId ?? "",
+        {
+          name: body.name,
+          durationMonths: body.duration_months,
+          price: body.price,
+          featureDescription: body.feature_description,
+        },
+      );
+      response.status(200).json({ data: { package: toApiPackage(updated) } });
+    }),
+  );
+
+  // ── Admin: activate or deactivate a package ────────────────────────────────
+  app.patch(
+    "/packages/:packageId/active",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const isActive = body.is_active;
+      if (typeof isActive !== "boolean") {
+        response.status(400).json({ error: "is_active must be a boolean." });
+        return;
+      }
+      const updated = await packageService.setActiveStatus(
+        currentUser(response),
+        request.params.packageId ?? "",
+        isActive,
+      );
+      response.status(200).json({ data: { package: toApiPackage(updated) } });
     }),
   );
 
@@ -164,6 +219,10 @@ export function createNotificationApp(
         response.status(409).json({ error: error.message });
         return;
       }
+      if (error instanceof PackageNotFoundError) {
+        response.status(404).json({ error: error.message });
+        return;
+      }
       if (error instanceof PackageStorageNotConfiguredError) {
         response.status(503).json({
           error: "Package storage has not been configured yet.",
@@ -186,6 +245,7 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
     duration_months: packageRecord.durationMonths,
     price: packageRecord.price,
     feature_description: packageRecord.featureDescription,
+    is_active: packageRecord.isActive,
     created_at: packageRecord.createdAt,
   };
 }

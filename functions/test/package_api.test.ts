@@ -9,9 +9,11 @@ import {
   CreatePackageResult,
   NewPackage,
   PackageRecord,
+  UpdatePackageInput,
 } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
 import {
+  PackageNotFoundError,
   PackageRepository,
   PackageRequestConflictError,
 } from "../src/package_repository";
@@ -49,10 +51,32 @@ describe("package API", () => {
       duration_months: 3,
       price: 2500,
       feature_description: "Personalized training and nutrition guidance.",
+      is_active: true,
       created_at: "2026-11-19T12:00:00.000Z",
     });
     assert.equal(listResponse.status, 200);
     assert.equal(listResponse.body.data.packages.length, 1);
+  });
+
+  it("admin list endpoint returns all packages including inactive", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+    // Deactivate via admin toggle
+    await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: false });
+
+    const customerList = await request(api)
+      .get("/packages")
+      .set(bearer("client"));
+    const adminList = await request(api)
+      .get("/admin/packages")
+      .set(bearer("admin"));
+
+    assert.equal(customerList.status, 200);
+    assert.equal(customerList.body.data.packages.length, 0, "customers see no inactive packages");
+    assert.equal(adminList.status, 200);
+    assert.equal(adminList.body.data.packages.length, 1, "admin sees all packages");
   });
 
   it("rejects invalid fields and non-admin creation", async () => {
@@ -105,12 +129,137 @@ describe("package API", () => {
     assert.equal(conflict.status, 409);
     assert.equal(repository.records.length, 1);
   });
+
+  it("admin can edit a package", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+
+    const editResponse = await request(api)
+      .patch("/packages/package-request-1")
+      .set(bearer("admin"))
+      .send({
+        name: "Updated Fitness",
+        duration_months: 6,
+        price: 3500,
+        feature_description: "Updated features.",
+      });
+
+    assert.equal(editResponse.status, 200);
+    assert.equal(editResponse.body.data.package.name, "Updated Fitness");
+    assert.equal(editResponse.body.data.package.duration_months, 6);
+    assert.equal(editResponse.body.data.package.price, 3500);
+    assert.equal(editResponse.body.data.package.feature_description, "Updated features.");
+    // isActive should remain unchanged
+    assert.equal(editResponse.body.data.package.is_active, true);
+  });
+
+  it("non-admin cannot edit a package", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+
+    const response = await request(api)
+      .patch("/packages/package-request-1")
+      .set(bearer("client"))
+      .send({ name: "Hacked", duration_months: 1, price: 1, feature_description: "x" });
+
+    assert.equal(response.status, 403);
+    // Package name should be unchanged
+    assert.equal(repository.records[0]?.name, "Premium Fitness");
+  });
+
+  it("editing a non-existent package returns 404", async () => {
+    const response = await request(api)
+      .patch("/packages/nonexistent")
+      .set(bearer("admin"))
+      .send({ name: "X", duration_months: 1, price: 100, feature_description: "y" });
+
+    assert.equal(response.status, 404);
+  });
+
+  it("admin can deactivate and reactivate a package", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+
+    const deactivate = await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: false });
+
+    assert.equal(deactivate.status, 200);
+    assert.equal(deactivate.body.data.package.is_active, false);
+
+    // Customer list should not include deactivated package
+    const customerList = await request(api)
+      .get("/packages")
+      .set(bearer("client"));
+    assert.equal(customerList.body.data.packages.length, 0);
+
+    const reactivate = await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: true });
+
+    assert.equal(reactivate.status, 200);
+    assert.equal(reactivate.body.data.package.is_active, true);
+
+    // Customer list should now include the reactivated package
+    const customerListAfter = await request(api)
+      .get("/packages")
+      .set(bearer("client"));
+    assert.equal(customerListAfter.body.data.packages.length, 1);
+  });
+
+  it("non-admin cannot deactivate a package", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+
+    const response = await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("client"))
+      .send({ is_active: false });
+
+    assert.equal(response.status, 403);
+    assert.equal(repository.records[0]?.isActive, true);
+  });
+
+  it("deactivating with invalid body returns 400", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+
+    const response = await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: "yes" });
+
+    assert.equal(response.status, 400);
+  });
+
+  it("existing purchase records are not affected by deactivation", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+    // Simulate an existing purchase record by confirming the package still exists in the repo
+    const preDeactivationPackage = repository.records.find(
+      (r) => r.id === "package-request-1",
+    );
+    assert.ok(preDeactivationPackage, "package exists before deactivation");
+
+    await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: false });
+
+    // Package record still exists in the repository (not deleted)
+    assert.equal(repository.records.length, 1);
+    const postDeactivationPackage = repository.records.find(
+      (r) => r.id === "package-request-1",
+    );
+    assert.ok(postDeactivationPackage, "package still exists after deactivation");
+    assert.equal(postDeactivationPackage.isActive, false);
+  });
 });
 
 class InMemoryPackageRepository implements PackageRepository {
   readonly records: PackageRecord[] = [];
 
   async list(): Promise<PackageRecord[]> {
+    return this.records.filter((r) => r.isActive);
+  }
+
+  async listAll(): Promise<PackageRecord[]> {
     return [...this.records];
   }
 
@@ -133,10 +282,37 @@ class InMemoryPackageRepository implements PackageRepository {
     const record: PackageRecord = {
       id: input.requestId,
       ...input,
+      isActive: true,
       createdAt: "2026-11-19T12:00:00.000Z",
     };
     this.records.push(record);
     return { package: record, created: true };
+  }
+
+  async update(id: string, input: UpdatePackageInput): Promise<PackageRecord> {
+    const index = this.records.findIndex((r) => r.id === id);
+    if (index === -1) throw new PackageNotFoundError();
+    const existing = this.records[index];
+    if (existing === undefined) throw new PackageNotFoundError();
+    const updated: PackageRecord = {
+      ...existing,
+      name: input.name,
+      durationMonths: input.durationMonths,
+      price: input.price,
+      featureDescription: input.featureDescription,
+    };
+    this.records[index] = updated;
+    return updated;
+  }
+
+  async setActiveStatus(id: string, isActive: boolean): Promise<PackageRecord> {
+    const index = this.records.findIndex((r) => r.id === id);
+    if (index === -1) throw new PackageNotFoundError();
+    const existing = this.records[index];
+    if (existing === undefined) throw new PackageNotFoundError();
+    const updated: PackageRecord = { ...existing, isActive };
+    this.records[index] = updated;
+    return updated;
   }
 }
 

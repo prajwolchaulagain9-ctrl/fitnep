@@ -1,7 +1,11 @@
 import '../entities/package_entity.dart';
 
 abstract class PackageRepository {
+  /// Returns all packages (active + inactive) for admin management.
   Future<List<PackageEntity>> getPackages();
+
+  /// Returns only active packages for customer-facing screens.
+  Future<List<PackageEntity>> getActivePackages();
 
   Future<PackageEntity> createPackage({
     required String requestId,
@@ -9,5 +13,18 @@ abstract class PackageRepository {
     required int durationMonths,
     required double price,
     required String featureDescription,
+  });
+
+  Future<PackageEntity> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  });
+
+  Future<PackageEntity> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
   });
 }

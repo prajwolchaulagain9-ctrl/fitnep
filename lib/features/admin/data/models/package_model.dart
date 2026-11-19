@@ -7,6 +7,7 @@ class PackageModel extends PackageEntity {
     required super.durationMonths,
     required super.price,
     required super.featureDescription,
+    required super.isActive,
     required super.createdAt,
   });
 
@@ -16,6 +17,7 @@ class PackageModel extends PackageEntity {
     final duration = json['duration_months'];
     final price = json['price'];
     final featureDescription = json['feature_description'];
+    final isActiveRaw = json['is_active'];
     final createdAt = json['created_at'];
     if (id is! String || id.trim().isEmpty) {
       throw const FormatException('Package id is invalid.');
@@ -32,6 +34,8 @@ class PackageModel extends PackageEntity {
     if (featureDescription is! String || featureDescription.trim().isEmpty) {
       throw const FormatException('Package feature description is invalid.');
     }
+    // is_active defaults to true for legacy records that pre-date the field.
+    final isActive = isActiveRaw is bool ? isActiveRaw : true;
     final parsedCreatedAt = createdAt is String
         ? DateTime.tryParse(createdAt)
         : null;
@@ -45,7 +49,20 @@ class PackageModel extends PackageEntity {
       durationMonths: duration.toInt(),
       price: price.toDouble(),
       featureDescription: featureDescription,
+      isActive: isActive,
       createdAt: parsedCreatedAt,
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'duration_months': durationMonths,
+      'price': price,
+      'feature_description': featureDescription,
+      'is_active': isActive,
+      'created_at': createdAt.toIso8601String(),
+    };
   }
 }

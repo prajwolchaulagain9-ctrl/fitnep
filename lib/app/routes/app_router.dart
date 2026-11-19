@@ -10,11 +10,14 @@ import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
 import '../../features/admin/presentation/pages/create_package_page.dart';
+import '../../features/admin/presentation/pages/edit_package_page.dart';
 import '../../features/admin/presentation/pages/package_management_page.dart';
+import '../../features/admin/domain/entities/package_entity.dart';
 import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
 import '../../features/notifications/domain/entities/notification_entity.dart';
 import '../../features/notifications/presentation/pages/notification_destination_page.dart';
+import '../../features/packages/presentation/pages/package_selection_page.dart';
 import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -56,6 +59,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => const NotificationsPage(),
+      ),
+      // Customer-facing: active packages only
+      GoRoute(
+        path: AppRoutes.clientPackages,
+        name: AppRoutes.clientPackagesName,
+        builder: (context, state) => const PackageSelectionPage(),
       ),
       GoRoute(
         path: AppRoutes.notifications,
@@ -123,6 +132,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'create',
             name: 'admin-create-package',
             builder: (context, state) => const CreatePackagePage(),
+          ),
+          GoRoute(
+            path: ':packageId/edit',
+            name: 'admin-edit-package',
+            builder: (context, state) {
+              final package = state.extra as PackageEntity;
+              return EditPackagePage(package: package);
+            },
           ),
         ],
       ),

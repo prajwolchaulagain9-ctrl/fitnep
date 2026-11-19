@@ -108,77 +108,252 @@ class _PackageListBody extends StatelessWidget {
   }
 }
 
-class _PackageCard extends StatelessWidget {
+class _PackageCard extends ConsumerWidget {
   final PackageEntity package;
 
   const _PackageCard({required this.package});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(packageManagementControllerProvider.notifier);
+    final isSaving = ref.watch(
+      packageManagementControllerProvider.select((s) => s.isSaving),
+    );
+
     final currency = NumberFormat.currency(
       locale: 'en_NP',
       symbol: 'NPR ',
       decimalDigits: package.price % 1 == 0 ? 0 : 2,
     );
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+
+    return Opacity(
+      opacity: package.isActive ? 1.0 : 0.65,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: package.isActive
+                          ? AppColors.primaryContainer
+                          : AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.fitness_center_rounded,
+                      color: package.isActive
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
                   ),
-                  child: const Icon(
-                    Icons.fitness_center_rounded,
-                    color: AppColors.primary,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                package.name,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            // Active / Inactive badge
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: package.isActive
+                                    ? AppColors.statusActiveContainer
+                                    : AppColors.statusInactiveContainer,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                package.isActive ? 'Active' : 'Inactive',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: package.isActive
+                                      ? AppColors.statusActive
+                                      : AppColors.statusInactive,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${package.durationMonths} ${package.durationMonths == 1 ? 'month' : 'months'}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
                   ),
+                  const SizedBox(width: 8),
+                  Text(
+                    currency.format(package.price),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              const Divider(),
+              const SizedBox(height: 12),
+              Text(
+                package.featureDescription,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.textSecondary,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        package.name,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // Edit button
+                  OutlinedButton.icon(
+                    onPressed: isSaving
+                        ? null
+                        : () async {
+                            final updated = await context.push<PackageEntity>(
+                              AppRoutes.adminEditPackage(package.id),
+                              extra: package,
+                            );
+                            if (updated != null && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    '${updated.name} was updated.',
+                                  ),
+                                ),
+                              );
+                            }
+                          },
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: const Text('Edit'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${package.durationMonths} ${package.durationMonths == 1 ? 'month' : 'months'}',
-                        style: Theme.of(context).textTheme.bodySmall,
+                      textStyle: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Deactivate / Activate button
+                  TextButton.icon(
+                    onPressed: isSaving
+                        ? null
+                        : () => _confirmToggleActive(
+                              context,
+                              controller,
+                              package,
+                            ),
+                    icon: Icon(
+                      package.isActive
+                          ? Icons.block_rounded
+                          : Icons.check_circle_outline_rounded,
+                      size: 16,
+                      color: package.isActive
+                          ? AppColors.statusInactive
+                          : AppColors.statusActive,
+                    ),
+                    label: Text(
+                      package.isActive ? 'Deactivate' : 'Reactivate',
+                      style: TextStyle(
+                        color: package.isActive
+                            ? AppColors.statusInactive
+                            : AppColors.statusActive,
+                        fontSize: 13,
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                Text(
-                  currency.format(package.price),
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            const Divider(),
-            const SizedBox(height: 12),
-            Text(
-              package.featureDescription,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.textSecondary),
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+
+  Future<void> _confirmToggleActive(
+    BuildContext context,
+    PackageManagementController controller,
+    PackageEntity package,
+  ) async {
+    final willDeactivate = package.isActive;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(willDeactivate ? 'Deactivate Package?' : 'Reactivate Package?'),
+        content: Text(
+          willDeactivate
+              ? 'Customers will no longer see "${package.name}" in the package list. '
+                  'Existing purchases will remain intact.'
+              : 'Customers will be able to see and purchase "${package.name}" again.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor:
+                  willDeactivate ? AppColors.statusInactive : AppColors.statusActive,
+              minimumSize: Size.zero,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(willDeactivate ? 'Deactivate' : 'Reactivate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    try {
+      await controller.setPackageActiveStatus(
+        id: package.id,
+        isActive: !package.isActive,
+      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              willDeactivate
+                  ? '${package.name} was deactivated.'
+                  : '${package.name} was reactivated.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error.toString()),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
 }
+

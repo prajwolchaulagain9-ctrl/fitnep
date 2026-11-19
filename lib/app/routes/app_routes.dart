@@ -19,6 +19,7 @@ abstract final class AppRoutes {
   // Client
   static const clientHome = '/client/home';
   static const clientNotifications = '/client/notifications';
+  static const clientPackages = '/client/packages';
 
   static const dietPlanDetailsName = 'diet-plan-details';
   static const messageThreadName = 'message-thread';
@@ -26,6 +27,7 @@ abstract final class AppRoutes {
   static const paymentDetailsName = 'payment-details';
   static const clientHomeName = 'client-home';
   static const clientNotificationsName = 'client-notifications';
+  static const clientPackagesName = 'client-packages';
 
   // Admin
   static const adminClients = '/admin/clients';
@@ -33,4 +35,8 @@ abstract final class AppRoutes {
   static const auditLog = '/admin/audit-log';
   static const adminPackages = '/admin/packages';
   static const adminCreatePackage = '/admin/packages/create';
+
+  /// Returns the path for editing a specific package.
+  static String adminEditPackage(String packageId) =>
+      '/admin/packages/$packageId/edit';
 }

@@ -22,12 +22,14 @@ class PackageManagementState {
   final List<PackageEntity> packages;
   final bool isLoading;
   final bool isCreating;
+  final bool isSaving;
   final String? errorMessage;
 
   const PackageManagementState({
     this.packages = const [],
     this.isLoading = false,
     this.isCreating = false,
+    this.isSaving = false,
     this.errorMessage,
   });
 
@@ -35,6 +37,7 @@ class PackageManagementState {
     List<PackageEntity>? packages,
     bool? isLoading,
     bool? isCreating,
+    bool? isSaving,
     String? errorMessage,
     bool clearError = false,
   }) {
@@ -42,6 +45,7 @@ class PackageManagementState {
       packages: packages ?? this.packages,
       isLoading: isLoading ?? this.isLoading,
       isCreating: isCreating ?? this.isCreating,
+      isSaving: isSaving ?? this.isSaving,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
@@ -108,6 +112,65 @@ class PackageManagementController extends Notifier<PackageManagementState> {
       return created;
     } catch (error) {
       state = state.copyWith(isCreating: false);
+      rethrow;
+    }
+  }
+
+  Future<PackageEntity> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  }) async {
+    if (state.isSaving) throw const PackageSubmissionInProgressException();
+    state = state.copyWith(isSaving: true, clearError: true);
+    try {
+      final updated = await _repository.updatePackage(
+        id: id,
+        name: name,
+        durationMonths: durationMonths,
+        price: price,
+        featureDescription: featureDescription,
+      );
+      // Replace the updated package in the list optimistically.
+      final updatedList = state.packages.map((p) {
+        return p.id == updated.id ? updated : p;
+      }).toList(growable: false);
+      state = state.copyWith(
+        packages: updatedList,
+        isSaving: false,
+        clearError: true,
+      );
+      return updated;
+    } catch (error) {
+      state = state.copyWith(isSaving: false, errorMessage: error.toString());
+      rethrow;
+    }
+  }
+
+  Future<PackageEntity> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
+  }) async {
+    if (state.isSaving) throw const PackageSubmissionInProgressException();
+    state = state.copyWith(isSaving: true, clearError: true);
+    try {
+      final updated = await _repository.setPackageActiveStatus(
+        id: id,
+        isActive: isActive,
+      );
+      final updatedList = state.packages.map((p) {
+        return p.id == updated.id ? updated : p;
+      }).toList(growable: false);
+      state = state.copyWith(
+        packages: updatedList,
+        isSaving: false,
+        clearError: true,
+      );
+      return updated;
+    } catch (error) {
+      state = state.copyWith(isSaving: false, errorMessage: error.toString());
       rethrow;
     }
   }

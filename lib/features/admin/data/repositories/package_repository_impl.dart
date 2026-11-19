@@ -14,6 +14,12 @@ class PackageRepositoryImpl implements PackageRepository {
   }
 
   @override
+  Future<List<PackageEntity>> getActivePackages() async {
+    final packages = await _remoteDatasource.getActivePackages();
+    return List<PackageEntity>.unmodifiable(packages);
+  }
+
+  @override
   Future<PackageEntity> createPackage({
     required String requestId,
     required String name,
@@ -28,5 +34,30 @@ class PackageRepositoryImpl implements PackageRepository {
       price: price,
       featureDescription: featureDescription,
     );
+  }
+
+  @override
+  Future<PackageEntity> updatePackage({
+    required String id,
+    required String name,
+    required int durationMonths,
+    required double price,
+    required String featureDescription,
+  }) {
+    return _remoteDatasource.updatePackage(
+      id: id,
+      name: name,
+      durationMonths: durationMonths,
+      price: price,
+      featureDescription: featureDescription,
+    );
+  }
+
+  @override
+  Future<PackageEntity> setPackageActiveStatus({
+    required String id,
+    required bool isActive,
+  }) {
+    return _remoteDatasource.setPackageActiveStatus(id: id, isActive: isActive);
   }
 }
