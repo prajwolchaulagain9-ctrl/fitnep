@@ -1,95 +1,158 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../domain/entities/privacy_preferences.dart';
+import '../controllers/privacy_preferences_controller.dart';
 
-class PrivacyPreferencesPage extends StatefulWidget {
+class PrivacyPreferencesPage extends ConsumerStatefulWidget {
   const PrivacyPreferencesPage({super.key});
 
   @override
-  State<PrivacyPreferencesPage> createState() => _PrivacyPreferencesPageState();
+  ConsumerState<PrivacyPreferencesPage> createState() =>
+      _PrivacyPreferencesPageState();
 }
 
-class _PrivacyPreferencesPageState extends State<PrivacyPreferencesPage> {
-  var _preferences = PrivacyPreferences.defaults;
+class _PrivacyPreferencesPageState
+    extends ConsumerState<PrivacyPreferencesPage> {
+  bool _isSaving = false;
 
-  void _updatePreferences(PrivacyPreferences preferences) {
-    setState(() => _preferences = preferences);
+  Future<void> _save(PrivacyPreferences preferences) async {
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+
+    try {
+      await ref
+          .read(privacyPreferencesControllerProvider.notifier)
+          .savePreferences(preferences);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(
+              content: Text('Could not save your choices. Please try again.'),
+            ),
+          );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final preferences = ref.watch(privacyPreferencesControllerProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Privacy preferences')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        child: preferences.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, stackTrace) => _LoadError(
+            onRetry: () => ref.invalidate(privacyPreferencesControllerProvider),
+          ),
+          data: (value) => ListView(
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+            children: [
+              Icon(
+                Icons.verified_user_outlined,
+                size: 40,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'You’re in control',
+                style: theme.textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Choose which information you’re comfortable sharing with your '
+                'FitNEP care team. Sharing is off until you turn it on.',
+                style: theme.textTheme.bodyLarge,
+              ),
+              if (_isSaving) ...[
+                const SizedBox(height: 16),
+                const LinearProgressIndicator(),
+              ],
+              const SizedBox(height: 24),
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    _PrivacyOption(
+                      icon: Icons.restaurant_outlined,
+                      title: 'Meal photos',
+                      description:
+                          'Let your care team review meal photos you submit.',
+                      value: value.shareMealPhotos,
+                      onChanged: _isSaving
+                          ? null
+                          : (enabled) =>
+                                _save(value.copyWith(shareMealPhotos: enabled)),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    _PrivacyOption(
+                      icon: Icons.photo_camera_back_outlined,
+                      title: 'Progress photos',
+                      description: 'Share progress photos with your care team.',
+                      value: value.shareProgressPhotos,
+                      onChanged: _isSaving
+                          ? null
+                          : (enabled) => _save(
+                              value.copyWith(shareProgressPhotos: enabled),
+                            ),
+                    ),
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                    _PrivacyOption(
+                      icon: Icons.directions_run_outlined,
+                      title: 'Activity data',
+                      description:
+                          'Share activity information to support your plan.',
+                      value: value.shareActivityData,
+                      onChanged: _isSaving
+                          ? null
+                          : (enabled) => _save(
+                              value.copyWith(shareActivityData: enabled),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Your choices are saved on this device and can be changed at '
+                'any time.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadError extends StatelessWidget {
+  const _LoadError({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.verified_user_outlined,
-              size: 40,
-              color: theme.colorScheme.primary,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'You’re in control',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Choose which information you’re comfortable sharing with your '
-              'FitNEP care team. Sharing is off until you turn it on.',
-              style: theme.textTheme.bodyLarge,
-            ),
-            const SizedBox(height: 24),
-            Card(
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  _PrivacyOption(
-                    icon: Icons.restaurant_outlined,
-                    title: 'Meal photos',
-                    description:
-                        'Let your care team review meal photos you submit.',
-                    value: _preferences.shareMealPhotos,
-                    onChanged: (value) => _updatePreferences(
-                      _preferences.copyWith(shareMealPhotos: value),
-                    ),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  _PrivacyOption(
-                    icon: Icons.photo_camera_back_outlined,
-                    title: 'Progress photos',
-                    description: 'Share progress photos with your care team.',
-                    value: _preferences.shareProgressPhotos,
-                    onChanged: (value) => _updatePreferences(
-                      _preferences.copyWith(shareProgressPhotos: value),
-                    ),
-                  ),
-                  const Divider(height: 1, indent: 16, endIndent: 16),
-                  _PrivacyOption(
-                    icon: Icons.directions_run_outlined,
-                    title: 'Activity data',
-                    description:
-                        'Share activity information to support your plan.',
-                    value: _preferences.shareActivityData,
-                    onChanged: (value) => _updatePreferences(
-                      _preferences.copyWith(shareActivityData: value),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'You can change these choices at any time.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            const Text('Could not load your privacy choices.'),
+            const SizedBox(height: 12),
+            FilledButton(onPressed: onRetry, child: const Text('Try again')),
           ],
         ),
       ),
@@ -110,7 +173,7 @@ class _PrivacyOption extends StatelessWidget {
   final String title;
   final String description;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
