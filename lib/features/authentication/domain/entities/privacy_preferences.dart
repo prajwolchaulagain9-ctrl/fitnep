@@ -1,28 +1,17 @@
-/// The client's choices for sharing sensitive fitness and nutrition data.
+/// The client's choice for sharing nutrition records with a dietitian.
 ///
-/// Sharing is disabled by default. A client must opt in to each data category.
+/// Sharing is disabled by default and can be enabled only by the client.
 class PrivacyPreferences {
-  const PrivacyPreferences({
-    this.shareMealPhotos = false,
-    this.shareProgressPhotos = false,
-    this.shareActivityData = false,
-  });
+  const PrivacyPreferences({this.shareNutritionRecords = false});
 
   static const defaults = PrivacyPreferences();
 
-  final bool shareMealPhotos;
-  final bool shareProgressPhotos;
-  final bool shareActivityData;
+  final bool shareNutritionRecords;
 
-  PrivacyPreferences copyWith({
-    bool? shareMealPhotos,
-    bool? shareProgressPhotos,
-    bool? shareActivityData,
-  }) {
+  PrivacyPreferences copyWith({bool? shareNutritionRecords}) {
     return PrivacyPreferences(
-      shareMealPhotos: shareMealPhotos ?? this.shareMealPhotos,
-      shareProgressPhotos: shareProgressPhotos ?? this.shareProgressPhotos,
-      shareActivityData: shareActivityData ?? this.shareActivityData,
+      shareNutritionRecords:
+          shareNutritionRecords ?? this.shareNutritionRecords,
     );
   }
 
@@ -30,12 +19,9 @@ class PrivacyPreferences {
   bool operator ==(Object other) {
     return identical(this, other) ||
         other is PrivacyPreferences &&
-            other.shareMealPhotos == shareMealPhotos &&
-            other.shareProgressPhotos == shareProgressPhotos &&
-            other.shareActivityData == shareActivityData;
+            other.shareNutritionRecords == shareNutritionRecords;
   }
 
   @override
-  int get hashCode =>
-      Object.hash(shareMealPhotos, shareProgressPhotos, shareActivityData);
+  int get hashCode => shareNutritionRecords.hashCode;
 }

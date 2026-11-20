@@ -21,6 +21,8 @@ class FitNepApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
+      // The supplied Figma screens define the app's light appearance.
+      themeMode: ThemeMode.light,
       routerConfig: ref.watch(appRouterProvider),
       builder: (context, child) {
         if (authenticationBootstrap.isLoading ||

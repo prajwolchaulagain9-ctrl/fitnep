@@ -7,6 +7,7 @@ import { AuthVerifier, AuthenticationError } from "../src/auth";
 import { AuthenticatedUser } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
 import { UnconfiguredNotificationRepository } from "../src/notification_repository";
+import { PrivacyPreferences } from "../src/privacy_preferences_repository";
 import {
   NotificationWorkflowService,
   WorkflowAuthorizationError,
@@ -273,6 +274,57 @@ describe("recipient-based notification security", () => {
       "Notification storage has not been configured yet.",
     );
   });
+});
+
+it("stores privacy choices for the authenticated client only", async () => {
+  const stored = new Map<string, PrivacyPreferences>();
+  const app = createNotificationApp({
+    authVerifier: new FakeAuthVerifier({
+      "token-client-a": clientA,
+      "token-client-b": clientB,
+      "token-dietitian": dietitian,
+    }),
+    notificationRepository: new InMemoryNotificationRepository(),
+    privacyPreferencesRepository: {
+      async getForClient(uid) {
+        return stored.get(uid) ?? { shareNutritionRecords: false, updatedAt: null };
+      },
+      async setNutritionSharing(uid, enabled) {
+        const preference = { shareNutritionRecords: enabled, updatedAt: null };
+        stored.set(uid, preference);
+        return preference;
+      },
+    },
+  });
+  const path = "/privacy/preferences";
+  const firstClient = bearer("token-client-a");
+  await request(app).get(path).expect(401);
+  await request(app)
+    .patch(path)
+    .set(bearer("token-dietitian"))
+    .send({ share_nutrition_records: true })
+    .expect(403);
+  await request(app)
+    .patch(path)
+    .set(firstClient)
+    .send({ share_nutrition_records: true })
+    .expect(200);
+  const enabled = await request(app).get(path).set(firstClient).expect(200);
+  assert.equal(enabled.body.data.preferences.share_nutrition_records, true);
+
+  const other = await request(app)
+    .get(path)
+    .set(bearer("token-client-b"))
+    .expect(200);
+  assert.equal(other.body.data.preferences.share_nutrition_records, false);
+
+  const disabled = await request(app)
+    .patch(path)
+    .set(firstClient)
+    .send({ share_nutrition_records: false })
+    .expect(200);
+  assert.equal(disabled.body.data.preferences.share_nutrition_records, false);
+  assert.equal(stored.get(clientA.uid)?.shareNutritionRecords, false);
 });
 
 class FakeAuthVerifier implements AuthVerifier {

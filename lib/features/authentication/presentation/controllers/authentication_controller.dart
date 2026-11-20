@@ -28,7 +28,9 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
     sessionPreferences: ref.read(sessionPreferenceStoreProvider),
     googleCredentials: ref.read(googleCredentialProvider),
   );
-  await service.restoreSession();
+  // The named emulator app has its own session; live Remember Me preferences
+  // must not sign out a seeded local-demo account during startup.
+  if (!AppConfig.useFirebaseEmulators) await service.restoreSession();
   return service;
 }, retry: (retryCount, error) => null);
 

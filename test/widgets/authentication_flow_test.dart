@@ -115,7 +115,11 @@ void main() {
       ' client@example.com ',
     );
     await tester.enterText(find.byType(TextFormField).at(1), 'Password!12');
+    await tester.ensureVisible(find.byType(Checkbox));
+    await tester.pumpAndSettle();
     await tester.tap(find.byType(Checkbox));
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
     await tester.pumpAndSettle();
 
@@ -125,6 +129,8 @@ void main() {
     expect(find.text('App Under Development'), findsOneWidget);
     expect(find.text('Coming Soon'), findsOneWidget);
 
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Logout'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Logout'));
     await tester.pumpAndSettle();
 
@@ -148,6 +154,8 @@ void main() {
       'client@example.com',
     );
     await tester.enterText(find.byType(TextFormField).at(1), 'wrong');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
     await tester.pumpAndSettle();
 

@@ -32,7 +32,7 @@ emulatorDescribe("Firestore notification workflow triggers", () => {
 
   it(
     "creates recipient-correct, idempotent notifications for all workflows",
-    { timeout: 30_000 },
+    { timeout: 90_000 },
     async () => {
       await firestore.collection("diet_plans").doc("plan-trigger").create({
         client_id: "client-a",
@@ -116,7 +116,8 @@ async function waitForNotifications(
   recipientId: string,
   expectedCount: number,
 ): Promise<NotificationRecord[]> {
-  const deadline = Date.now() + 20_000;
+  // Cold emulators start a separate Node runtime for each workflow trigger.
+  const deadline = Date.now() + 60_000;
   let notifications: NotificationRecord[] = [];
 
   while (Date.now() < deadline) {

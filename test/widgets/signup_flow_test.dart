@@ -144,6 +144,13 @@ Future<void> _loadCaptureFonts() async {
           .then(ByteData.sublistView),
     );
   await icons.load();
+  final inter = FontLoader('Inter')
+    ..addFont(
+      File('assets/fonts/Inter-Variable.ttf')
+          .readAsBytes()
+          .then(ByteData.sublistView),
+    );
+  await inter.load();
   _fontsLoaded = true;
 }
 
@@ -180,12 +187,16 @@ Future<ProviderContainer> _open(
   );
   await tester.pumpAndSettle();
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
-    await tester.runAsync(
-      () => precacheImage(
+    await tester.runAsync(() async {
+      await precacheImage(
         const AssetImage('assets/icons/google_g.png'),
         tester.element(find.byType(FitNepApp)),
-      ),
-    );
+      );
+      await precacheImage(
+        const AssetImage(FitNepWordmark.assetPath),
+        tester.element(find.byType(FitNepApp)),
+      );
+    });
     await tester.pumpAndSettle();
   }
   return ProviderScope.containerOf(tester.element(find.byType(FitNepApp)));

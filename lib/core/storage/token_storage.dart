@@ -6,12 +6,21 @@ class TokenStorage {
 
   final FlutterSecureStorage _storage;
   final FirebaseAuth? auth;
+  final String? expectedUid;
 
-  const TokenStorage({this.auth}) : _storage = const FlutterSecureStorage();
+  const TokenStorage({this.auth, this.expectedUid})
+    : assert(expectedUid == null || auth != null),
+      _storage = const FlutterSecureStorage();
 
   Future<String?> readAccessToken() async {
     final currentAuth = auth;
-    if (currentAuth != null) return currentAuth.currentUser?.getIdToken();
+    if (currentAuth != null) {
+      final user = currentAuth.currentUser;
+      if (expectedUid != null && user?.uid != expectedUid) {
+        throw StateError('The signed-in account changed.');
+      }
+      return user?.getIdToken();
+    }
     return _storage.read(key: _accessTokenKey);
   }
 

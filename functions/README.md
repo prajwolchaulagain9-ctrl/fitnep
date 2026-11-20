@@ -49,6 +49,20 @@ Firebase Admin SDK. Never allow the mobile app to assign or edit its own role.
 All roles are scoped to their own `uid` for notification access. Admin and
 Dietitian roles do not receive an implicit bypass to client notifications.
 
+## Privacy preferences API
+
+- `GET /privacy/preferences`
+- `PATCH /privacy/preferences` with `{ "share_nutrition_records": true }`
+
+Only the authenticated Client can read or update their own preference; the
+server derives the client ID from the verified token. Preferences are stored in
+`privacy_preferences/{clientUid}` and default to sharing disabled. Nutrition
+record read handlers must call `NutritionRecordAccessService.assertCanRead`
+before returning records. The gate permits the client to read their own records;
+a dietitian must be the current assignee and sharing must be enabled. Assignment
+storage is not implemented in this backend yet, so the gate fails closed until a
+trusted assignment reader is configured.
+
 ## Notification APIs
 
 - `GET /notifications`
@@ -60,6 +74,49 @@ Recipient identity is always derived from the verified token. Requests that
 try to supply `recipient_id`, `recipientId`, `user_id`, or `userId` are rejected.
 Unknown and unauthorized notification IDs both return `404` to avoid leaking
 whether another user's notification exists.
+
+## Package APIs
+
+- `GET /packages` lists packages for any authenticated FitNep role.
+- `GET /admin/packages` lists active and inactive packages for administrators.
+- `GET /admin/package-history` lists durable package changes for administrators.
+- `POST /packages` creates a package for an `admin` role only.
+- `PATCH /packages/:packageId` edits the current offer for future purchases.
+- `PATCH /packages/:packageId/active` activates or deactivates an offer.
+
+The create body uses `request_id`, `name`, `duration_months`, `price`, and
+`feature_description`. The request identifier makes retries idempotent. Package
+name and feature description are required, duration must be a positive whole
+number of months, and price must be positive. Records are stored in the
+Firestore `packages` collection. Direct mobile reads and writes remain denied
+by Firestore rules.
+
+Create, edit, activate, and deactivate operations also write a record to
+Firestore `package_change_history` in the same transaction as the package
+mutation. Each record contains the package reference and name, verified admin
+UID and token-derived display name/email, action, changed timestamp, and the
+previous/new values that changed. Repeated idempotent creates and no-op edits or
+status requests do not create duplicate history. Direct mobile history reads
+and writes are denied; administrators read history through the API.
+
+## Customer purchase APIs
+
+- `POST /purchases` creates a Pending package selection for the authenticated
+  customer.
+- `GET /purchases/current` returns that customer's latest selection or verified
+  membership terms.
+
+The purchase body contains `package_id` and an idempotent `request_id`. The
+backend reads the current package and stores its immutable terms in a protected
+`package_memberships` record. Pending responses have no start or expiry dates;
+admin verification assigns them through the shared overlap guard. Membership
+reads use the saved terms rather than the mutable catalog document. Existing
+historical snapshots at `customer_purchases/{customerId}/purchases/{requestId}`
+remain readable through the API.
+
+These APIs process no money and include no payment gateway. Only trusted admin
+verification activates a membership; clients cannot override its owner, price
+or activation status.
 
 ## Workflow hooks
 
@@ -134,7 +191,7 @@ Run all four workflow-trigger integration tests with the Functions emulator:
 $env:FITNEP_RUN_TRIGGER_TESTS = 'true'
 npm --prefix functions run build
 npm --prefix functions run build:test
-npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only firestore,functions "node --test --test-isolation=none --test-concurrency=1 functions/.test-build/test/workflow_trigger_emulator.test.js"
+npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only firestore,functions "node --test --experimental-test-isolation=none --test-concurrency=1 functions/.test-build/test/workflow_trigger_emulator.test.js"
 ```
 
 Firestore uses port 18080 in the shared configuration. The emulator-only
@@ -143,3 +200,24 @@ commands work without deploying to the Spark project.
 The retained deployment script is outside the supported Spark workflow. No
 Functions deployment or billing upgrade is part of this integration. A live
 notification service needs a separately agreed hosting arrangement.
+
+## US 9 packages
+
+The shared API also implements authenticated `GET /packages`,
+`GET /memberships/me` and `POST /memberships`. Selection stores a Pending
+catalog snapshot. `onPackagePaymentVerified` activates only matching trusted,
+verified payment records and enforces date overlap in a Firestore transaction.
+See [package schema and integration](../docs/packages.md) for contracts, ownership,
+date boundaries, emulator checks and the outstanding live hosting/login handoff.
+
+The zero-budget project uses manual admin verification via
+`POST /admin/memberships/{id}/verify-payment`, with audited atomic activation.
+`npm run demo:serve` hosts the existing API locally against Auth/Firestore emulators.
+See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment is used.
+
+The development merge combines package management/history with the guarded
+membership workflow. `/purchases` creates a Pending selection, and
+`/purchases/current` displays that selection or its verified membership terms.
+Both selection endpoints share the same snapshots and overlap guard; existing
+historical purchase snapshots remain readable. Admin-created packages use the
+shared `packages` catalog and preserve calendar-month durations.

@@ -17,8 +17,9 @@ policy and logout. Signup now uses the same authentication UI and shared wordmar
 with Firebase account creation and Continue with Google on Signup and Login.
 Email signup requires Brevo OTP verification before protected navigation. A local
 USB runtime supports device testing while the existing serverless host is
-configured. Package selection and remaining flows are still to be implemented.
-The original logo export remains pending.
+configured. Package selection, membership and privacy preferences are integrated.
+The original Figma logo, Inter typography and Android/iOS launch screens are
+integrated; see [branding](docs/branding.md).
 
 See [password recovery integration](docs/password-recovery.md) for route names,
 Firebase setup, session enforcement and verification.
@@ -30,8 +31,8 @@ Dilochan's contribution adds the admin client list/profile/audit screens,
 client home, notifications and routes to related diet plans, conversations,
 tasks and payments. Admin data currently comes from the local mock datasource.
 The shared router starts at welcome, keeps recovery routes public and protects all
-feature routes behind Firebase authentication. Trusted role-based routing remains
-a future integration.
+feature routes behind Firebase authentication. Package, client and admin routes
+also enforce the verified user's allowed role.
 
 The notification API base URL defaults to empty because this Spark project has
 no deployed notification backend. The screens show a configuration error until
@@ -121,9 +122,9 @@ package operations.
 
 - `lib/app/app.dart`: app setup and startup boundary.
 - `lib/app/routes/`: named routes and router lifecycle.
-- `lib/app/theme/`: provisional light/dark theme.
+- `lib/app/theme/`: shared FitNEP theme and palette.
 - `lib/core/services/firebase_providers.dart`: initialization and injectable SDK dependencies.
-- `lib/shared/widgets/`: page layout, startup feedback and text wordmark.
+- `lib/shared/widgets/`: page layout, branded startup feedback and original logo.
 - `lib/features/`: existing feature folders; use the files needed for each story.
 
 Read Firebase SDK providers after initialization completes. Override the providers
@@ -166,6 +167,23 @@ do not commit build output.
 
 The four-day work plan, Firebase teammate handoff and release-notes template are
 maintained separately in `D:\fitnep_plan`.
+
+The project budget is zero. No payment gateway, real charges, paid hosting or
+Firebase billing upgrade is required. [Run the free local demo](docs/free-demo.md)
+to complete the client selection → manual admin verification → Active journey.
+
+US 9 package catalog, Pending selection and membership screens are implemented
+at `/client/packages`, with protected server operations and verified-payment
+activation. Local emulator checks cover ownership, snapshots, revoked sessions
+and concurrent date overlap. Manual admin verification is available without a
+gateway. The local demo includes test login and catalog data; the normal app's
+live catalog and US 1 login handoff remain team integration dependencies.
+See [package setup](docs/packages.md).
+
+The zero-budget package demo passed on the connected Android phone, including
+manual admin approval, saved Active dates and client approval denial. The final
+checks passed 77 Flutter tests, 18 backend unit tests and nine package emulator
+tests. See [demo setup and evidence](docs/free-demo.md).
 
 The Prajwol/Dilochan integration passed 70 Flutter tests, 18 backend unit tests,
 21 combined Firebase emulator checks, formatting, the analyzer and the Android

@@ -21,6 +21,12 @@ void main() {
     expect(find.byTooltip('More options'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    expect(find.text('Package Management'), findsOneWidget);
+    await tester.tapAt(const Offset(8, 300));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.byTooltip('Search clients'));
     await tester.pump(const Duration(milliseconds: 250));
 

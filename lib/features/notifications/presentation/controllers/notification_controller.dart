@@ -1,8 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/network/api_client.dart';
-import '../../../../core/services/firebase_providers.dart';
-import '../../../../core/storage/token_storage.dart';
+import '../../../../core/network/api_client_provider.dart';
+export '../../../../core/network/api_client_provider.dart';
 import '../../data/datasources/notification_remote_datasource.dart';
 import '../../data/repositories/notification_repository_impl.dart';
 import '../../domain/entities/notification_entity.dart';
@@ -10,14 +9,6 @@ import '../../domain/repositories/notification_repository.dart';
 import '../../domain/usecases/get_notifications_usecase.dart';
 import '../../domain/usecases/mark_all_notifications_as_read_usecase.dart';
 import '../../domain/usecases/mark_notification_as_read_usecase.dart';
-
-final tokenStorageProvider = Provider<TokenStorage>((ref) {
-  return TokenStorage(auth: ref.watch(firebaseAuthProvider));
-});
-
-final apiClientProvider = Provider<ApiClient>((ref) {
-  return ApiClient(tokenStorage: ref.watch(tokenStorageProvider));
-});
 
 final notificationRemoteDatasourceProvider =
     Provider<NotificationRemoteDatasource>((ref) {

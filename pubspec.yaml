@@ -40,11 +40,9 @@ flutter:
 
   assets:
     - assets/icons/google_g.png
-
-  # Enable asset directories once real files are added:
-  # assets:
-  #   - assets/images/
-  #   - assets/icons/
-  #   - assets/animations/
-
-  # Declare font families here after adding font files to assets/fonts/.
+    - assets/images/fitnep_logo.png
+    - assets/fonts/Inter-LICENSE.txt
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf

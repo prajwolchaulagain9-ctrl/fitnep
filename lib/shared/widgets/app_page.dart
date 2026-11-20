@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 class AppPage extends StatelessWidget {
   const AppPage({
@@ -14,16 +15,21 @@ class AppPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: title == null ? null : AppBar(title: Text(title!)),
-      body: SafeArea(
-        child: Align(
-          alignment: alignment,
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: SizedBox(width: double.infinity, child: child),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value:
+          Theme.of(context).appBarTheme.systemOverlayStyle ??
+          SystemUiOverlayStyle.dark,
+      child: Scaffold(
+        appBar: title == null ? null : AppBar(title: Text(title!)),
+        body: SafeArea(
+          child: Align(
+            alignment: alignment,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SizedBox(width: double.infinity, child: child),
+              ),
             ),
           ),
         ),

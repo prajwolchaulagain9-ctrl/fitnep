@@ -89,10 +89,16 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
               ),
               if (isCompact)
                 _ClientAppBarOverflow(
+                  onPackages: () => context.push(AppRoutes.adminPackages),
                   onNotifications: () => context.push(AppRoutes.notifications),
                   onAuditLog: () => context.push(AppRoutes.auditLog),
                 )
               else ...[
+                IconButton(
+                  icon: const Icon(Icons.inventory_2_outlined),
+                  tooltip: 'Package Management',
+                  onPressed: () => context.push(AppRoutes.adminPackages),
+                ),
                 IconButton(
                   icon: const Icon(Icons.notifications_none_rounded),
                   tooltip: 'Notifications',
@@ -333,13 +339,15 @@ class _FilterButton extends StatelessWidget {
   }
 }
 
-enum _ClientAppBarAction { notifications, auditLog }
+enum _ClientAppBarAction { packages, notifications, auditLog }
 
 class _ClientAppBarOverflow extends StatelessWidget {
+  final VoidCallback onPackages;
   final VoidCallback onNotifications;
   final VoidCallback onAuditLog;
 
   const _ClientAppBarOverflow({
+    required this.onPackages,
     required this.onNotifications,
     required this.onAuditLog,
   });
@@ -350,13 +358,25 @@ class _ClientAppBarOverflow extends StatelessWidget {
       tooltip: 'More options',
       icon: const Icon(Icons.more_vert_rounded),
       onSelected: (action) {
-        if (action == _ClientAppBarAction.notifications) {
+        if (action == _ClientAppBarAction.packages) {
+          onPackages();
+        } else if (action == _ClientAppBarAction.notifications) {
           onNotifications();
         } else {
           onAuditLog();
         }
       },
       itemBuilder: (context) => const [
+        PopupMenuItem(
+          value: _ClientAppBarAction.packages,
+          child: Row(
+            children: [
+              Icon(Icons.inventory_2_outlined),
+              SizedBox(width: 12),
+              Flexible(child: Text('Package Management')),
+            ],
+          ),
+        ),
         PopupMenuItem(
           value: _ClientAppBarAction.notifications,
           child: Row(

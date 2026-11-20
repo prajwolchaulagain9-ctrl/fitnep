@@ -48,3 +48,6 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: '-Xmx384m -XX:ActiveProcessorCount=2'
           FITNEP_RUN_TRIGGER_TESTS: 'true'
+      - run: npx --yes firebase-tools@15.32.0 emulators:exec --only auth,firestore --project demo-fitnep --non-interactive "npm --prefix functions run test:packages:emulator"
+        env:
+          JAVA_TOOL_OPTIONS: '-Xmx384m -XX:ActiveProcessorCount=2'
