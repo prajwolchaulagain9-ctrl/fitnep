@@ -36,9 +36,9 @@ class PrivacyPreferencesController extends AsyncNotifier<PrivacyPreferences> {
     return ref.watch(privacyPreferencesRepositoryProvider).loadPreferences();
   }
 
-  Future<void> savePreferences(PrivacyPreferences preferences) async {
+  Future<void> setSharing(PrivacySharingCategory category, bool enabled) async {
     final repository = ref.read(privacyPreferencesRepositoryProvider);
-    final saved = await repository.savePreferences(preferences);
+    final saved = await repository.setSharing(category, enabled);
     if (ref.mounted &&
         identical(ref.read(privacyPreferencesRepositoryProvider), repository)) {
       state = AsyncData(saved);

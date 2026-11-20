@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
+import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
@@ -62,6 +63,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.about,
         path: AppRoutes.aboutPath,
         builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.privacyPolicy,
+        path: AppRoutes.privacyPolicyPath,
+        builder: (context, state) => const PrivacyPolicyPage(),
       ),
       GoRoute(
         name: AppRoutes.forgotPassword,

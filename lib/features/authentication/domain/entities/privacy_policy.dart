@@ -1,0 +1,1 @@
+const privacyPolicyVersion = '1';

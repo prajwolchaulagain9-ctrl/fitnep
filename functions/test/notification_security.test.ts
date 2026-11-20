@@ -7,7 +7,9 @@ import { AuthVerifier, AuthenticationError } from "../src/auth";
 import { AuthenticatedUser } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
 import { UnconfiguredNotificationRepository } from "../src/notification_repository";
-import { PrivacyPreferences } from "../src/privacy_preferences_repository";
+import { PrivacyPreferences, defaultSharingChoices } from "../src/privacy_preferences_repository";
+import { PrivacyAcceptanceError, privacyPolicyVersion, validatePrivacyAcceptance } from "../src/privacy_policy_acceptance";
+import { PrivateRecordAccessService, PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
 import {
   NotificationWorkflowService,
   WorkflowAuthorizationError,
@@ -287,10 +289,10 @@ it("stores privacy choices for the authenticated client only", async () => {
     notificationRepository: new InMemoryNotificationRepository(),
     privacyPreferencesRepository: {
       async getForClient(uid) {
-        return stored.get(uid) ?? { shareNutritionRecords: false, updatedAt: null };
+        return stored.get(uid) ?? { ...defaultSharingChoices, updatedAt: null };
       },
-      async setNutritionSharing(uid, enabled) {
-        const preference = { shareNutritionRecords: enabled, updatedAt: null };
+      async updateSharing(uid, changes) {
+        const preference = { ...await this.getForClient(uid), ...changes };
         stored.set(uid, preference);
         return preference;
       },
@@ -307,10 +309,13 @@ it("stores privacy choices for the authenticated client only", async () => {
   await request(app)
     .patch(path)
     .set(firstClient)
-    .send({ share_nutrition_records: true })
+    .send({ share_nutrition_records: true, share_progress_photos: true })
     .expect(200);
   const enabled = await request(app).get(path).set(firstClient).expect(200);
   assert.equal(enabled.body.data.preferences.share_nutrition_records, true);
+  assert.equal(enabled.body.data.preferences.share_progress_photos, true);
+  assert.equal(enabled.body.data.preferences.share_meal_photos, false);
+  assert.equal(enabled.body.data.preferences.share_activity_data, false);
 
   const other = await request(app)
     .get(path)
@@ -324,7 +329,53 @@ it("stores privacy choices for the authenticated client only", async () => {
     .send({ share_nutrition_records: false })
     .expect(200);
   assert.equal(disabled.body.data.preferences.share_nutrition_records, false);
+  assert.equal(disabled.body.data.preferences.share_progress_photos, true);
   assert.equal(stored.get(clientA.uid)?.shareNutritionRecords, false);
+  await request(app).patch(path).set(firstClient).send({ share_activity_data: "true" }).expect(400);
+  await request(app).patch(path).set(firstClient).send({ role: "admin" }).expect(400);
+});
+
+it("validates the current policy and guardian confirmation before registration", () => {
+  const form = {
+    age: 17,
+    privacy_policy_version: privacyPolicyVersion,
+    privacy_policy_accepted: true,
+  };
+  assert.throws(() => validatePrivacyAcceptance({ ...form, privacy_policy_accepted: false }), PrivacyAcceptanceError);
+  assert.throws(() => validatePrivacyAcceptance({ ...form, privacy_policy_version: "old" }), PrivacyAcceptanceError);
+  assert.throws(() => validatePrivacyAcceptance(form), PrivacyAcceptanceError);
+  assert.deepEqual(
+    validatePrivacyAcceptance({ ...form, guardian_consent_confirmed: true }),
+    { guardianConsentConfirmed: true },
+  );
+  assert.deepEqual(
+    validatePrivacyAcceptance({ ...form, age: 18 }),
+    { guardianConsentConfirmed: false },
+  );
+});
+
+it("withdrawing optional consent blocks collection and dietitian access while preserving owner access", async () => {
+  let assignedDietitian = dietitian.uid;
+  let shareActivityData = false;
+  const access = new PrivateRecordAccessService({
+    async getCurrentDietitianId() { return assignedDietitian; },
+  }, {
+    async getForClient() { return { ...defaultSharingChoices, shareActivityData, updatedAt: null }; },
+  });
+  const choice = "shareActivityData";
+  await assert.rejects(access.assertCanCollect(clientA, clientA.uid, choice), PrivateRecordAuthorizationError);
+  shareActivityData = true;
+  await access.assertCanCollect(clientA, clientA.uid, choice);
+  await access.assertCanRead(dietitian, clientA.uid, choice);
+  await assert.rejects(access.assertCanRead(admin, clientA.uid, choice), PrivateRecordAuthorizationError);
+  await assert.rejects(access.assertCanRead(clientB, clientA.uid, choice), PrivateRecordAuthorizationError);
+  assignedDietitian = "replacement";
+  await assert.rejects(access.assertCanRead(dietitian, clientA.uid, choice), PrivateRecordAuthorizationError);
+  assignedDietitian = dietitian.uid;
+  shareActivityData = false;
+  await assert.rejects(access.assertCanRead(dietitian, clientA.uid, choice), PrivateRecordAuthorizationError);
+  await assert.rejects(access.assertCanCollect(clientA, clientA.uid, choice), PrivateRecordAuthorizationError);
+  await access.assertCanRead(clientA, clientA.uid, choice);
 });
 
 class FakeAuthVerifier implements AuthVerifier {

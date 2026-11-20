@@ -51,6 +51,21 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // The authenticated API reads consent and the current assignment before
+    // accessing records. No app can write or bypass those checks directly.
+    match /privacy_preferences/{clientId} {
+      allow read, write: if false;
+    }
+    match /privacy_acceptances/{clientId} {
+      allow read, write: if false;
+    }
+    match /client_assignments/{clientId} {
+      allow read, write: if false;
+    }
+    match /client_records/{record=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

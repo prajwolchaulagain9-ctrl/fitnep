@@ -1,14 +1,31 @@
-export interface PrivacyPreferences {
-  shareNutritionRecords: boolean;
+export const sharingFields = {
+  shareNutritionRecords: "share_nutrition_records",
+  shareMealPhotos: "share_meal_photos",
+  shareProgressPhotos: "share_progress_photos",
+  shareActivityData: "share_activity_data",
+} as const;
+
+export type SharingChoice = keyof typeof sharingFields;
+export type SharingChoices = Record<SharingChoice, boolean>;
+export const sharingChoices = Object.keys(sharingFields) as SharingChoice[];
+
+export const defaultSharingChoices: Readonly<SharingChoices> = Object.freeze({
+  shareNutritionRecords: false,
+  shareMealPhotos: false,
+  shareProgressPhotos: false,
+  shareActivityData: false,
+});
+
+export interface PrivacyPreferences extends SharingChoices {
   updatedAt: string | null;
 }
 
 export interface PrivacyPreferencesRepository {
   getForClient(clientId: string): Promise<PrivacyPreferences>;
 
-  setNutritionSharing(
+  updateSharing(
     clientId: string,
-    enabled: boolean,
+    changes: Partial<SharingChoices>,
   ): Promise<PrivacyPreferences>;
 }
 
@@ -30,7 +47,7 @@ export class UnconfiguredPrivacyPreferencesRepository
     return this.unavailable();
   }
 
-  async setNutritionSharing(): Promise<PrivacyPreferences> {
+  async updateSharing(): Promise<PrivacyPreferences> {
     return this.unavailable();
   }
 }
