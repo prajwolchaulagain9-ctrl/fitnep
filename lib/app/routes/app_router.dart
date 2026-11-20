@@ -26,6 +26,13 @@ import '../../features/notifications/presentation/pages/notification_destination
 import '../../features/packages/presentation/pages/package_selection_page.dart';
 import '../../features/purchases/presentation/pages/membership_page.dart';
 import 'app_routes.dart';
+import 'route_access_gate.dart';
+
+const _sharedRoles = {
+  FitNepRole.client,
+  FitNepRole.dietitian,
+  FitNepRole.admin,
+};
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
@@ -41,7 +48,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.adminPackageApprovals,
         name: 'admin-package-approvals',
-        builder: (context, state) => const PackageApprovalsPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const PackageApprovalsPage(),
+        ),
       ),
       GoRoute(
         name: AppRoutes.welcome,
@@ -71,72 +81,105 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.clientHome,
         name: AppRoutes.clientHomeName,
-        builder: (context, state) => const ClientHomePage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.client},
+          builder: (_) => const ClientHomePage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
-        builder: (context, state) => const NotificationsPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.client},
+          builder: (_) => const NotificationsPage(),
+        ),
       ),
       // Customer-facing: active packages only
       GoRoute(
         path: AppRoutes.clientPackages,
         name: AppRoutes.clientPackagesName,
-        builder: (context, state) => AppConfig.useFirebaseEmulators
-            ? const PackagesPage()
-            : const PackageSelectionPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.client},
+          builder: (_) => AppConfig.useFirebaseEmulators
+              ? const PackagesPage()
+              : const PackageSelectionPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.clientMembership,
         name: AppRoutes.clientMembershipName,
-        builder: (context, state) => const MembershipPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.client},
+          builder: (_) => const MembershipPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.clientPrivacyPreferences,
         name: 'client-privacy-preferences',
-        builder: (context, state) => const PrivacyPreferencesPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.client},
+          builder: (_) => const PrivacyPreferencesPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.notifications,
         name: 'notifications',
-        builder: (context, state) => const NotificationsPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: _sharedRoles,
+          builder: (_) => const NotificationsPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.dietPlanDetails,
         name: AppRoutes.dietPlanDetailsName,
-        builder: (context, state) => NotificationDestinationPage(
-          type: NotificationType.dietPlan,
-          referenceId: state.pathParameters['id']!,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: _sharedRoles,
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.dietPlan,
+            referenceId: state.pathParameters['id']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.messageThread,
         name: AppRoutes.messageThreadName,
-        builder: (context, state) => NotificationDestinationPage(
-          type: NotificationType.message,
-          referenceId: state.pathParameters['id']!,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: _sharedRoles,
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.message,
+            referenceId: state.pathParameters['id']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.taskDetails,
         name: AppRoutes.taskDetailsName,
-        builder: (context, state) => NotificationDestinationPage(
-          type: NotificationType.task,
-          referenceId: state.pathParameters['id']!,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: _sharedRoles,
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.task,
+            referenceId: state.pathParameters['id']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.paymentDetails,
         name: AppRoutes.paymentDetailsName,
-        builder: (context, state) => NotificationDestinationPage(
-          type: NotificationType.payment,
-          referenceId: state.pathParameters['id']!,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: _sharedRoles,
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.payment,
+            referenceId: state.pathParameters['id']!,
+          ),
         ),
       ),
       GoRoute(
         path: AppRoutes.adminClients,
         name: 'admin-clients',
-        builder: (context, state) => const ClientListPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const ClientListPage(),
+        ),
         routes: [
           GoRoute(
             path: ':id',
@@ -144,7 +187,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
             builder: (context, state) {
               final clientId = state.pathParameters['id']!;
-              return ClientProfilePage(clientId: clientId);
+              return RouteAccessGate(
+                allowedRoles: const {FitNepRole.admin},
+                builder: (_) => ClientProfilePage(clientId: clientId),
+              );
             },
           ),
         ],
@@ -152,30 +198,62 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.auditLog,
         name: 'audit-log',
-        builder: (context, state) => const AuditLogPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const AuditLogPage(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.adminPackages,
         name: 'admin-packages',
-        builder: (context, state) => const PackageManagementPage(),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const PackageManagementPage(),
+        ),
         routes: [
           GoRoute(
             path: 'history',
             name: 'admin-package-history',
-            builder: (context, state) => const PackageHistoryPage(),
+            builder: (context, state) => RouteAccessGate(
+              allowedRoles: const {FitNepRole.admin},
+              builder: (_) => const PackageHistoryPage(),
+            ),
           ),
           GoRoute(
             path: 'create',
             name: 'admin-create-package',
-            builder: (context, state) => const CreatePackagePage(),
+            builder: (context, state) => RouteAccessGate(
+              allowedRoles: const {FitNepRole.admin},
+              builder: (_) => const CreatePackagePage(),
+            ),
           ),
           GoRoute(
             path: ':packageId/edit',
             name: 'admin-edit-package',
-            builder: (context, state) {
-              final package = state.extra as PackageEntity;
-              return EditPackagePage(package: package);
-            },
+            builder: (context, state) => RouteAccessGate(
+              allowedRoles: const {FitNepRole.admin},
+              builder: (context) {
+                final package = state.extra;
+                if (package is PackageEntity &&
+                    package.id == state.pathParameters['packageId']) {
+                  return EditPackagePage(package: package);
+                }
+                return AppPage(
+                  title: 'Edit package',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text('Select a package from the list to edit it.'),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: () => context.go(AppRoutes.adminPackages),
+                        child: const Text('Manage packages'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -186,7 +264,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Letâ€™s get you back.',
+            'Let’s get you back.',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 16),
