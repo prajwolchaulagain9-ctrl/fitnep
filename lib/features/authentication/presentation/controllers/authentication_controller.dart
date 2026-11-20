@@ -35,6 +35,13 @@ final authenticationStateProvider = StreamProvider<User?>((ref) async* {
   yield* service.authStateChanges();
 }, retry: (retryCount, error) => null);
 
+final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
+  final user = await ref.watch(authenticationStateProvider.future);
+  if (user == null) return false;
+  final token = await user.getIdTokenResult();
+  return token.claims?['mustChangePassword'] == true;
+}, retry: (retryCount, error) => null);
+
 class AuthenticationActionState {
   const AuthenticationActionState({
     this.isLoading = false,

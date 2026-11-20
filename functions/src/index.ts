@@ -33,7 +33,7 @@ const packageRepository = new FirestorePackageRepository(getFirestore());
 const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
-  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth()),
+  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), getFirestore()),
   notificationRepository,
   privacyPreferencesRepository,
   privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository),

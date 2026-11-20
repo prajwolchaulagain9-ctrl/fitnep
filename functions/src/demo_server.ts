@@ -40,7 +40,7 @@ async function main() {
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
-    staffAccountRepository: new FirebaseStaffAccountRepository(auth),
+    staffAccountRepository: new FirebaseStaffAccountRepository(auth, db),
     notificationRepository: new FirestoreNotificationRepository(db),
     privacyPreferencesRepository,
     privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),

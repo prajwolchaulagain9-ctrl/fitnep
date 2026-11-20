@@ -246,7 +246,7 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
   withdrawal. The tracker and assignment features can use this contract when
   their screens are implemented.
 
-## US7 staff directory
+## US7 staff accounts
 
 `GET /admin/staff-accounts` requires a verified Firebase token with the admin
 role. It reads team accounts from Firebase Auth and returns only their UID,
@@ -257,6 +257,26 @@ excluded.
 Pass the returned `next_cursor` as the next request's `cursor`. A page can be
 empty if Firebase returned only client accounts, so continue until
 `next_cursor` is null.
+
+Admins can create a staff, dietitian or admin account with
+`POST /admin/staff-accounts`. Supply `request_id`, `name`, `email`, `role`,
+and `temporary_password`. The account becomes active once its setup and audit
+entry are saved. Reuse the same request ID and fields when retrying.
+
+At first sign-in, the app opens the password change screen. The pending
+session can use `POST /auth/staff/change-temporary-password` with
+`new_password` after a recent password sign-in. The server requires a
+different password, revokes existing sessions and clears the setup requirement.
+The user signs in again with the new password.
+
+Admins can change a staff account's `name`, `email`, or `role` with
+`PATCH /admin/staff-accounts/{uid}` and a `request_id`. Role or email changes
+require the affected account to sign in again. A different admin must make
+changes to an admin's own role or email.
+
+Creation and edits record the actor, target and before/after values in
+`staff_account_history`. Temporary passwords are omitted from API responses
+and audit records. Password setup and audit records are private to the backend.
 
 The development merge combines package management/history with the guarded
 membership workflow. `/purchases` creates a Pending selection, and

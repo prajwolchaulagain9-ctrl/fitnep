@@ -54,6 +54,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     api = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
+      staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore),
       packageRepository,
       purchaseRepository,
       packageService: new FirestorePackageService(firestore),
@@ -98,10 +99,8 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     const directory = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
-      staffAccountRepository: new FirebaseStaffAccountRepository({
-        // Force mixed-role pagination with a small fixture.
-        listUsers: (_maxResults, cursor) => auth.listUsers(2, cursor),
-      }),
+      // Force mixed-role pagination with a small fixture.
+      staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore, 2),
     });
     const path = "/admin/staff-accounts";
     await request(directory).get(path).expect(401);
@@ -145,6 +144,112 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       role: "staff",
       is_active: false,
     });
+  });
+
+  it("creates staff with an audited temporary password and requires a different password before granting access", async () => {
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    const client = bearer(await signIn("client-a@fitnep.test"));
+    const directory = "/admin/staff-accounts";
+    const passwordPath = "/auth/staff/change-temporary-password";
+    const input = {
+      request_id: "create-new-manager",
+      name: "New Manager",
+      email: "manager@fitnep.test",
+      role: "admin",
+      temporary_password: "TemporaryExample!12",
+    };
+    await request(api).post(directory).set(client).send(input).expect(403);
+    await request(api).post(directory).set(admin).send({ ...input, role: "client" }).expect(400);
+    const created = await request(api).post(directory).set(admin).send(input).expect(201);
+    const account = created.body.data.account;
+    assert.deepEqual(Object.keys(account).sort(), ["email", "is_active", "name", "role", "uid"]);
+    const retry = await request(api).post(directory).set(admin).send(input).expect(201);
+    assert.deepEqual(retry.body.data.account, account);
+    await request(api).post(directory).set(admin)
+      .send({ ...input, name: "Different Manager" }).expect(409);
+    await request(api).post(directory).set(admin)
+      .send({ ...input, request_id: "duplicate-email" }).expect(409);
+    assert.equal((await firestore.collection("staff_account_history").get()).size, 1);
+    assert.equal((await firestore.collection("staff_password_setup").get()).size, 1);
+    assert.equal((await auth.getUser(account.uid)).customClaims?.mustChangePassword, true);
+
+    const temporaryToken = await signIn(input.email, input.temporary_password);
+    const temporarySession = bearer(temporaryToken);
+    await request(api).get(directory).set(temporarySession).expect(403);
+    await request(api).post(directory).set(temporarySession).send(input).expect(403);
+    await request(api).post(passwordPath).set(temporarySession)
+      .send({ new_password: input.temporary_password }).expect(400);
+    const newPassword = "PermanentExample!34";
+    const pendingActor = await new FirebaseAuthVerifier().verifyIdToken(temporaryToken);
+    const claims = (await auth.getUser(account.uid)).customClaims;
+    await auth.setCustomUserClaims(account.uid, { ...claims, staffRoleVersion: "changed-during-setup" });
+    const staff = new FirebaseStaffAccountRepository(auth, firestore);
+    await assert.rejects(staff.changeTemporaryPassword(pendingActor, newPassword), { status: 403 });
+    const refreshedTemporarySession = bearer(await signIn(input.email, input.temporary_password));
+    await request(api).post(passwordPath).set(refreshedTemporarySession)
+      .send({ new_password: newPassword }).expect(204);
+    await assert.rejects(signIn(input.email, input.temporary_password));
+    await request(api).get(directory).set(refreshedTemporarySession).expect(401);
+    const newSession = bearer(await signIn(input.email, newPassword));
+    await request(api).get(directory).set(newSession).expect(200);
+    await request(api).post(passwordPath).set(newSession)
+      .send({ new_password: "DifferentPassword!45" }).expect(403);
+    assert.equal((await firestore.collection("staff_password_setup").doc(account.uid).get()).exists, false);
+
+    const audit = await firestore.collection("staff_account_history").where("target_uid", "==", account.uid).get();
+    assert.equal(audit.size, 1);
+    const entry = audit.docs[0]?.data();
+    assert.equal(entry?.actor_uid, "admin-1");
+    assert.equal(entry?.action, "created");
+    assert.equal(entry?.status, "completed");
+    assert(!JSON.stringify(entry).includes(input.temporary_password));
+  });
+
+  it("audits staff edits, keeps the account UID, and rejects the previous role session", async () => {
+    await createAccount(auth, "team-member", "team-member@fitnep.test", "staff");
+    await auth.setCustomUserClaims("team-member", { role: "staff", otherClaim: true });
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    const previousSession = bearer(await signIn("team-member@fitnep.test"));
+    const path = "/admin/staff-accounts/team-member";
+    const changes = { request_id: "edit-member-role", name: "Dietitian", role: "dietitian" };
+    await request(api).patch(path).set(previousSession).send(changes).expect(403);
+    await request(api).patch("/admin/staff-accounts/client-a").set(admin).send(changes).expect(404);
+    await request(api).patch("/admin/staff-accounts/admin-1").set(admin).send(changes).expect(403);
+    const response = await request(api).patch(path).set(admin).send(changes).expect(200);
+    assert.deepEqual(response.body.data.account, {
+      uid: "team-member",
+      name: "Dietitian",
+      email: "team-member@fitnep.test",
+      role: "dietitian",
+      is_active: true,
+    });
+    await request(api).get("/packages").set(previousSession).expect(401);
+    const currentSession = bearer(await signIn("team-member@fitnep.test"));
+    await request(api).get("/packages").set(currentSession).expect(200);
+    await request(api).patch(path).set(admin).send(changes).expect(200);
+    assert.equal((await auth.getUser("team-member")).customClaims?.otherClaim, true);
+    const audit = await firestore.collection("staff_account_history").where("target_uid", "==", "team-member").get();
+    assert.equal(audit.size, 1);
+    const event = audit.docs[0];
+    assert(event);
+    const entry = event.data();
+    assert.equal(entry?.action, "role_changed");
+    assert.equal(entry?.before.role, "staff");
+    assert.equal(entry?.after.role, "dietitian");
+
+    // Recover an edit whose Auth update finished before its audit was finalized.
+    await event.ref.update({ status: "pending" });
+    await request(api).patch(path).set(admin).send(changes).expect(200);
+    await request(api).get("/packages").set(currentSession).expect(200);
+    assert.equal((await event.ref.get()).get("status"), "completed");
+
+    // A later role change can bring the account back to the original role.
+    // Retrying the older pending edit must still preserve that newer change.
+    await event.ref.update({ status: "pending" });
+    await request(api).patch(path).set(admin)
+      .send({ request_id: "later-role-change", role: "staff" }).expect(200);
+    await request(api).patch(path).set(admin).send(changes).expect(409);
+    assert.equal((await auth.getUser("team-member")).customClaims?.role, "staff");
   });
 
   it("binds signup consent and its status to the signed-in Firebase account", async () => {
@@ -703,7 +808,7 @@ async function createAccount(
   await auth.setCustomUserClaims(uid, { role });
 }
 
-async function signIn(email: string): Promise<string> {
+async function signIn(email: string, password = "Password123!"): Promise<string> {
   const response = await fetch(
     `http://${authEmulatorHost}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
     {
@@ -711,7 +816,7 @@ async function signIn(email: string): Promise<string> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         email,
-        password: "Password123!",
+        password,
         returnSecureToken: true,
       }),
     },

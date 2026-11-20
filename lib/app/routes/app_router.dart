@@ -7,6 +7,7 @@ import '../../features/authentication/presentation/pages/login_page.dart';
 import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
 import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
+import '../../features/authentication/presentation/pages/change_staff_password_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../../features/authentication/presentation/pages/app_under_development_page.dart';
 import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
@@ -44,6 +45,7 @@ const _sharedRoles = {
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
   ref.listen(authenticationStateProvider, (_, _) => notifier.refresh());
+  ref.listen(staffPasswordChangeRequiredProvider, (_, _) => notifier.refresh());
   ref.onDispose(notifier.dispose);
   return notifier;
 });
@@ -59,7 +61,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authentication = ref.read(authenticationStateProvider);
       if (!authentication.hasValue) return null;
 
-      final isAuthenticated = authentication.value != null;
+      final user = authentication.value;
+      final isAuthenticated = user != null;
       final path = state.uri.path;
       final isPublicRoute = const {
         AppRoutes.welcomePath,
@@ -77,7 +80,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ? AppRoutes.demoEntry
             : AppRoutes.loginPath;
       }
-      if (isAuthenticated && !authentication.value!.emailVerified) {
+      if (user != null) {
+        final passwordChange = ref.read(staffPasswordChangeRequiredProvider);
+        if (passwordChange.isLoading || !passwordChange.hasValue) return null;
+        if (passwordChange.value == true) {
+          return path == AppRoutes.changeStaffPasswordPath
+              ? null
+              : AppRoutes.changeStaffPasswordPath;
+        }
+      }
+      if (isAuthenticated && !user.emailVerified) {
         // Recovery and the policy stay reachable before email verification.
         if (path != AppRoutes.verifyEmailPath &&
             path != AppRoutes.forgotPasswordPath &&
@@ -91,6 +103,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           (path == AppRoutes.welcomePath ||
               path == AppRoutes.loginPath ||
               path == AppRoutes.signupPath ||
+              path == AppRoutes.changeStaffPasswordPath ||
               path == AppRoutes.verifyEmailPath)) {
         return AppRoutes.appUnderDevelopmentPath;
       }
@@ -129,6 +142,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.signup,
         path: AppRoutes.signupPath,
         builder: (context, state) => const SignupPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.changeStaffPassword,
+        path: AppRoutes.changeStaffPasswordPath,
+        builder: (context, state) => const ChangeStaffPasswordPage(),
       ),
       GoRoute(
         name: AppRoutes.verifyEmail,

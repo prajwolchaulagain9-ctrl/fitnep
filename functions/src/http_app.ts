@@ -13,6 +13,7 @@ import {
   PackageChangeHistoryRecord,
   PackageHistoryValues,
   PurchaseRecord,
+  StaffAccount,
 } from "./domain";
 import { FirestorePackageService, PackageError } from "./package_membership_service";
 import {
@@ -70,13 +71,12 @@ import {
   PurchaseService,
 } from "./purchase_service";
 import {
-  InvalidStaffAccountCursorError,
+  StaffAccountError,
   StaffAccountRepository,
 } from "./staff_account_repository";
-import {
-  StaffAccountService,
-  StaffDirectoryUnavailableError,
-} from "./staff_account_service";
+import { StaffAccountService } from "./staff_account_service";
+
+const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
@@ -124,18 +124,37 @@ export function createNotificationApp(
       const page = await staffAccounts.list(currentUser(response), request.query.cursor);
       response.json({
         data: {
-          accounts: page.accounts.map((account) => ({
-            uid: account.uid,
-            name: account.name,
-            email: account.email,
-            role: account.role,
-            is_active: account.isActive,
-          })),
+          accounts: page.accounts.map(toApiStaffAccount),
           next_cursor: page.nextCursor,
         },
       });
     }),
   );
+
+  app.post("/admin/staff-accounts", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.create(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(201).json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.update(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.post(temporaryPasswordPath, asyncRoute(async (request, response) => {
+    await staffAccounts.changeTemporaryPassword(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(204).end();
+  }));
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -424,12 +443,8 @@ export function createNotificationApp(
         response.status(error.statusCode).json({ error: error.message });
         return;
       }
-      if (error instanceof InvalidStaffAccountCursorError) {
-        response.status(400).json({ error: error.message });
-        return;
-      }
-      if (error instanceof StaffDirectoryUnavailableError) {
-        response.status(503).json({ error: error.message });
+      if (error instanceof StaffAccountError) {
+        response.status(error.status).json({ error: error.message });
         return;
       }
       if (error instanceof PackageError) {
@@ -593,6 +608,16 @@ function toApiPurchase(purchase: PurchaseRecord) {
   };
 }
 
+function toApiStaffAccount(account: StaffAccount) {
+  return {
+    uid: account.uid,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    is_active: account.isActive,
+  };
+}
+
 function authenticate(authVerifier: AuthVerifier): RequestHandler {
   return asyncRoute(async (request, response, next) => {
     const authorization = request.header("authorization")?.trim();
@@ -600,7 +625,12 @@ function authenticate(authVerifier: AuthVerifier): RequestHandler {
     if (match?.[1] === undefined || match[1].trim().length === 0) {
       throw new AuthenticationError("A Firebase ID token is required.");
     }
-    response.locals.user = await authVerifier.verifyIdToken(match[1].trim());
+    const user = await authVerifier.verifyIdToken(match[1].trim());
+    if (user.mustChangePassword &&
+        !(request.method === "POST" && request.path === temporaryPasswordPath)) {
+      throw new AuthenticationError("Change your temporary password before continuing.", 403);
+    }
+    response.locals.user = user;
     next();
   });
 }

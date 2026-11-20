@@ -16,6 +16,10 @@ export interface AuthenticatedUser {
   uid: string;
   role: UserRole;
   displayName?: string;
+  email?: string;
+  mustChangePassword?: boolean;
+  passwordAuthenticatedAt?: number;
+  staffRoleVersion?: string;
 }
 
 export interface StaffAccount {

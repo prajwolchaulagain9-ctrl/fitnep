@@ -15,6 +15,8 @@ class FitNepApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final authenticationBootstrap = ref.watch(authenticationBootstrapProvider);
     final authenticationState = ref.watch(authenticationStateProvider);
+    final passwordChange = ref.watch(staffPasswordChangeRequiredProvider);
+    final signedIn = authenticationState.value != null;
 
     return MaterialApp.router(
       title: 'FitNEP',
@@ -26,15 +28,19 @@ class FitNepApp extends ConsumerWidget {
       routerConfig: ref.watch(appRouterProvider),
       builder: (context, child) {
         if (authenticationBootstrap.isLoading ||
-            authenticationState.isLoading) {
+            authenticationState.isLoading ||
+            (signedIn && passwordChange.isLoading)) {
           return const AppStartupView();
         }
-        if (authenticationBootstrap.hasError || authenticationState.hasError) {
+        if (authenticationBootstrap.hasError ||
+            authenticationState.hasError ||
+            (signedIn && passwordChange.hasError)) {
           return AppStartupView(
             onRetry: () {
               ref.invalidate(firebaseInitializationProvider);
               ref.invalidate(authenticationBootstrapProvider);
               ref.invalidate(authenticationStateProvider);
+              ref.invalidate(staffPasswordChangeRequiredProvider);
             },
           );
         }
