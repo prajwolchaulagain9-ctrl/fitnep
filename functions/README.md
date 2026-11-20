@@ -47,6 +47,18 @@ Firebase Admin SDK. Never allow the mobile app to assign or edit its own role.
 All roles are scoped to their own `uid` for notification access. Admin and
 Dietitian roles do not receive an implicit bypass to client notifications.
 
+## Privacy preferences API
+
+- `GET /privacy/preferences`
+- `PATCH /privacy/preferences` with `{ "share_nutrition_records": true }`
+
+Only the authenticated Client can read or update their own preference; the
+server derives the client ID from the verified token. Preferences are stored in
+`privacy_preferences/{clientUid}` and default to sharing disabled. Nutrition
+record read handlers must use `canReadNutritionRecords` with the current
+assigned dietitian loaded from trusted assignment data before returning records.
+Client access to their own records remains allowed when sharing is disabled.
+
 ## Notification APIs
 
 - `GET /notifications`

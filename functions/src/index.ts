@@ -4,6 +4,7 @@ import { onRequest } from "firebase-functions/v2/https";
 
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
+import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
@@ -16,9 +17,13 @@ export const checkSession = require("../src/index.cjs").checkSession;
 const notificationRepository = new FirestoreNotificationRepository(
   getFirestore(),
 );
+const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(
+  getFirestore(),
+);
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
   notificationRepository,
+  privacyPreferencesRepository,
 });
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(notificationRepository),

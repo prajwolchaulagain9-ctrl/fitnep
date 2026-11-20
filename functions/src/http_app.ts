@@ -12,6 +12,16 @@ import {
   NotificationStorageNotConfiguredError,
 } from "./notification_repository";
 import {
+  PrivacyPreferencesRepository,
+  PrivacyPreferencesStorageNotConfiguredError,
+  UnconfiguredPrivacyPreferencesRepository,
+} from "./privacy_preferences_repository";
+import {
+  InvalidPrivacyPreferencesError,
+  PrivacyPreferencesAuthorizationError,
+  PrivacyPreferencesService,
+} from "./privacy_preferences_service";
+import {
   InvalidWorkflowEventError,
   NotificationNotFoundError,
   NotificationService,
@@ -20,6 +30,7 @@ import {
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
+  privacyPreferencesRepository?: PrivacyPreferencesRepository;
 }
 
 export function createNotificationApp(
@@ -28,6 +39,10 @@ export function createNotificationApp(
   const app = express();
   const service = new NotificationService(
     dependencies.notificationRepository,
+  );
+  const privacyPreferences = new PrivacyPreferencesService(
+    dependencies.privacyPreferencesRepository ??
+      new UnconfiguredPrivacyPreferencesRepository(),
   );
 
   app.disable("x-powered-by");
@@ -38,6 +53,32 @@ export function createNotificationApp(
   });
   app.use(authenticate(dependencies.authVerifier));
   app.use(rejectRecipientOverrides);
+
+  app.get(
+    "/privacy/preferences",
+    asyncRoute(async (_request, response) => {
+      const preferences = await privacyPreferences.getForUser(
+        currentUser(response),
+      );
+      response.status(200).json({
+        data: { preferences: toApiPrivacyPreferences(preferences) },
+      });
+    }),
+  );
+
+  app.patch(
+    "/privacy/preferences",
+    asyncRoute(async (request, response) => {
+      const enabled = requestedNutritionSharing(request.body);
+      const preferences = await privacyPreferences.setNutritionSharing(
+        currentUser(response),
+        enabled,
+      );
+      response.status(200).json({
+        data: { preferences: toApiPrivacyPreferences(preferences) },
+      });
+    }),
+  );
 
   app.get(
     "/notifications",
@@ -112,6 +153,20 @@ export function createNotificationApp(
         });
         return;
       }
+      if (error instanceof PrivacyPreferencesAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidPrivacyPreferencesError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PrivacyPreferencesStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Privacy preferences storage has not been configured yet.",
+        });
+        return;
+      }
 
       console.error("Unhandled notification API error", error);
       response.status(500).json({ error: "Internal server error." });
@@ -167,6 +222,27 @@ function toApiNotification(notification: NotificationRecord) {
     is_read: notification.isRead,
     created_at: notification.createdAt,
   };
+}
+
+function toApiPrivacyPreferences(preferences: {
+  shareNutritionRecords: boolean;
+  updatedAt: string | null;
+}) {
+  return {
+    share_nutrition_records: preferences.shareNutritionRecords,
+    updated_at: preferences.updatedAt,
+  };
+}
+
+function requestedNutritionSharing(body: unknown): unknown {
+  if (
+    !isObject(body) ||
+    Object.keys(body).length !== 1 ||
+    !Object.hasOwn(body, "share_nutrition_records")
+  ) {
+    throw new InvalidPrivacyPreferencesError();
+  }
+  return body.share_nutrition_records;
 }
 
 function asyncRoute(
