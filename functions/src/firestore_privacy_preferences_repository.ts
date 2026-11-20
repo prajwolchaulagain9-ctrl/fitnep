@@ -1,63 +1,52 @@
-import { Firestore, Timestamp } from "firebase-admin/firestore";
+import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 
 import {
   PrivacyPreferences,
   PrivacyPreferencesRepository,
+  SharingChoices,
+  defaultSharingChoices,
+  sharingChoices,
+  sharingFields,
 } from "./privacy_preferences_repository";
-
-const collectionName = "privacy_preferences";
-const fields = {
-  shareNutritionRecords: "share_nutrition_records",
-  updatedAt: "updated_at",
-} as const;
 
 export class FirestorePrivacyPreferencesRepository
   implements PrivacyPreferencesRepository
 {
   constructor(private readonly firestore: Firestore) {}
 
-  async getForClient(clientId: string): Promise<PrivacyPreferences> {
-    const snapshot = await this.collection.doc(clientId).get();
-    if (!snapshot.exists) return defaults;
-
+  async getForClient(clientId: string, transaction?: Transaction): Promise<PrivacyPreferences> {
+    const reference = this.firestore.collection("privacy_preferences").doc(clientId);
+    const snapshot = transaction ? await transaction.get(reference) : await reference.get();
     return fromData(snapshot.data());
   }
 
-  async setNutritionSharing(
+  async updateSharing(
     clientId: string,
-    enabled: boolean,
+    changes: Partial<SharingChoices>,
   ): Promise<PrivacyPreferences> {
-    const reference = this.collection.doc(clientId);
-    const updatedAt = Timestamp.now();
-    await reference.set(
-      {
-        [fields.shareNutritionRecords]: enabled,
-        [fields.updatedAt]: updatedAt,
-      },
-      { merge: true },
-    );
-
-    return {
-      shareNutritionRecords: enabled,
-      updatedAt: updatedAt.toDate().toISOString(),
-    };
-  }
-
-  private get collection() {
-    return this.firestore.collection(collectionName);
+    const reference = this.firestore.collection("privacy_preferences").doc(clientId);
+    return this.firestore.runTransaction(async (transaction) => {
+      const current = fromData((await transaction.get(reference)).data());
+      const updatedAt = Timestamp.now();
+      const update: Record<string, boolean | Timestamp> = { updated_at: updatedAt };
+      for (const choice of sharingChoices) {
+        const value = changes[choice];
+        if (value !== undefined) update[sharingFields[choice]] = value;
+      }
+      transaction.set(reference, update, { merge: true });
+      return { ...current, ...changes, updatedAt: updatedAt.toDate().toISOString() };
+    });
   }
 }
 
-const defaults: PrivacyPreferences = {
-  shareNutritionRecords: false,
-  updatedAt: null,
-};
-
 function fromData(data: Record<string, unknown> | undefined): PrivacyPreferences {
-  const updatedAt = data?.[fields.updatedAt];
+  const choices = { ...defaultSharingChoices };
+  for (const choice of sharingChoices) {
+    choices[choice] = data?.[sharingFields[choice]] === true;
+  }
+  const updatedAt = data?.updated_at;
   return {
-    // Missing or malformed consent is always interpreted as disabled.
-    shareNutritionRecords: data?.[fields.shareNutritionRecords] === true,
+    ...choices,
     updatedAt: updatedAt instanceof Timestamp
       ? updatedAt.toDate().toISOString()
       : null,

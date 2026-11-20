@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../domain/entities/privacy_preferences.dart';
 import '../controllers/privacy_preferences_controller.dart';
 
@@ -16,14 +18,14 @@ class _PrivacyPreferencesPageState
     extends ConsumerState<PrivacyPreferencesPage> {
   bool _isSaving = false;
 
-  Future<void> _save(PrivacyPreferences preferences) async {
+  Future<void> _save(PrivacySharingCategory category, bool enabled) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
 
     try {
       await ref
           .read(privacyPreferencesControllerProvider.notifier)
-          .savePreferences(preferences);
+          .setSharing(category, enabled);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -45,7 +47,15 @@ class _PrivacyPreferencesPageState
     final preferences = ref.watch(privacyPreferencesControllerProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Privacy preferences')),
+      appBar: AppBar(
+        title: const Text('Privacy preferences'),
+        actions: [
+          TextButton(
+            onPressed: () => context.pushNamed(AppRoutes.privacyPolicy),
+            child: const Text('Privacy Policy'),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: preferences.when(
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -69,9 +79,15 @@ class _PrivacyPreferencesPageState
               ),
               const SizedBox(height: 8),
               Text(
-                'Choose whether your assigned dietitian can view your nutrition '
-                'records. Sharing is off until you turn it on.',
+                'Choose what your assigned dietitian can view. Each choice '
+                'is off until you turn it on.',
                 style: theme.textTheme.bodyLarge,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'You can always view your saved records. An assigned '
+                'dietitian can view only the categories you share. '
+                'Other dietitians, staff and admins cannot view them.',
               ),
               if (_isSaving) ...[
                 const SizedBox(height: 16),
@@ -82,27 +98,26 @@ class _PrivacyPreferencesPageState
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    _PrivacyOption(
-                      icon: Icons.restaurant_outlined,
-                      title: 'Share nutrition records',
-                      description:
-                          'Allow your assigned dietitian to view your '
-                          'nutrition logs.',
-                      value: value.shareNutritionRecords,
-                      onChanged: _isSaving
-                          ? null
-                          : (enabled) => _save(
-                              value.copyWith(shareNutritionRecords: enabled),
-                            ),
-                    ),
+                    for (final (category, icon, title) in _sharingOptions)
+                      _PrivacyOption(
+                        icon: icon,
+                        title: title,
+                        description: value.isShared(category)
+                            ? 'Visible to you and your assigned dietitian.'
+                            : 'Visible only to you.',
+                        value: value.isShared(category),
+                        onChanged: _isSaving
+                            ? null
+                            : (enabled) => _save(category, enabled),
+                      ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               Text(
-                'Your own nutrition records remain available to you regardless '
-                'of this setting. This preference is saved to your account and '
-                'can be changed at any time.',
+                'Turning off photo or activity sharing stops new collection '
+                'in FitNEP and removes dietitian access. Your saved entries '
+                'stay in your account.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -114,6 +129,29 @@ class _PrivacyPreferencesPageState
     );
   }
 }
+
+const _sharingOptions = [
+  (
+    PrivacySharingCategory.nutritionRecords,
+    Icons.restaurant_outlined,
+    'Share nutrition records',
+  ),
+  (
+    PrivacySharingCategory.mealPhotos,
+    Icons.photo_camera_outlined,
+    'Share meal photos',
+  ),
+  (
+    PrivacySharingCategory.progressPhotos,
+    Icons.photo_library_outlined,
+    'Share progress photos',
+  ),
+  (
+    PrivacySharingCategory.activityData,
+    Icons.directions_walk_outlined,
+    'Share device activity',
+  ),
+];
 
 class _LoadError extends StatelessWidget {
   const _LoadError({required this.onRetry});

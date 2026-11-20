@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/core/network/api_client.dart';
 import 'package:fitnep/core/storage/token_storage.dart';
 import 'package:fitnep/features/authentication/data/repositories/privacy_preferences_repository_impl.dart';
+import 'package:fitnep/features/authentication/domain/entities/privacy_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -25,7 +26,7 @@ void main() {
           expect(request.uri.path, '/privacy/preferences');
           expect(request.headers['Authorization'], 'Bearer token-first');
           if (request.method == 'PATCH') {
-            expect(request.data, {'share_nutrition_records': true});
+            expect(request.data, {'share_progress_photos': true});
             enabled = true;
           }
           handler.resolve(
@@ -34,7 +35,10 @@ void main() {
               statusCode: 200,
               data: {
                 'data': {
-                  'preferences': {'share_nutrition_records': enabled},
+                  'preferences': {
+                    'share_nutrition_records': true,
+                    'share_progress_photos': enabled,
+                  },
                 },
               },
             ),
@@ -44,16 +48,21 @@ void main() {
     );
 
     final initial = await repository.loadPreferences();
-    expect(initial.shareNutritionRecords, isFalse);
-    final saved = await repository.savePreferences(
-      initial.copyWith(shareNutritionRecords: true),
+    expect(initial.shareNutritionRecords, isTrue);
+    expect(initial.shareProgressPhotos, isFalse);
+    expect(initial.shareActivityData, isFalse);
+    final saved = await repository.setSharing(
+      PrivacySharingCategory.progressPhotos,
+      true,
     );
     expect(saved.shareNutritionRecords, isTrue);
-    expect((await repository.loadPreferences()).shareNutritionRecords, isTrue);
+    expect(saved.shareProgressPhotos, isTrue);
+    expect(saved.shareMealPhotos, isFalse);
+    expect((await repository.loadPreferences()).shareProgressPhotos, isTrue);
 
     auth.user = _User('second');
     await expectLater(
-      repository.savePreferences(initial),
+      repository.setSharing(PrivacySharingCategory.progressPhotos, false),
       throwsA(isA<DioException>()),
     );
     expect(requests.map((request) => request.method), ['GET', 'PATCH', 'GET']);

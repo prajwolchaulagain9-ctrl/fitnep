@@ -4,6 +4,12 @@ import '../../domain/repositories/privacy_preferences_repository.dart';
 
 class PrivacyPreferencesRepositoryImpl implements PrivacyPreferencesRepository {
   static const _endpoint = 'privacy/preferences';
+  static const _fields = {
+    PrivacySharingCategory.nutritionRecords: 'share_nutrition_records',
+    PrivacySharingCategory.mealPhotos: 'share_meal_photos',
+    PrivacySharingCategory.progressPhotos: 'share_progress_photos',
+    PrivacySharingCategory.activityData: 'share_activity_data',
+  };
   final ApiClient _apiClient;
 
   const PrivacyPreferencesRepositoryImpl(this._apiClient);
@@ -16,13 +22,14 @@ class PrivacyPreferencesRepositoryImpl implements PrivacyPreferencesRepository {
   }
 
   @override
-  Future<PrivacyPreferences> savePreferences(
-    PrivacyPreferences preferences,
+  Future<PrivacyPreferences> setSharing(
+    PrivacySharingCategory category,
+    bool enabled,
   ) async {
     _ensureConfigured();
     final response = await _apiClient.dio.patch<Object?>(
       _endpoint,
-      data: {'share_nutrition_records': preferences.shareNutritionRecords},
+      data: {_fields[category]!: enabled},
     );
     return _decodePreferences(response.data);
   }
@@ -34,10 +41,16 @@ class PrivacyPreferencesRepositoryImpl implements PrivacyPreferencesRepository {
   }
 
   PrivacyPreferences _decodePreferences(Object? body) {
-    if (body case {
-      'data': {'preferences': {'share_nutrition_records': final bool enabled}},
-    }) {
-      return PrivacyPreferences(shareNutritionRecords: enabled);
+    if (body case {'data': {'preferences': final Map preferences}}) {
+      bool shared(PrivacySharingCategory category) =>
+          preferences[_fields[category]] == true;
+
+      return PrivacyPreferences(
+        shareNutritionRecords: shared(PrivacySharingCategory.nutritionRecords),
+        shareMealPhotos: shared(PrivacySharingCategory.mealPhotos),
+        shareProgressPhotos: shared(PrivacySharingCategory.progressPhotos),
+        shareActivityData: shared(PrivacySharingCategory.activityData),
+      );
     }
     throw const FormatException('Invalid privacy preferences response.');
   }

@@ -9,6 +9,9 @@ import request from "supertest";
 import { FirebaseAuthVerifier } from "../src/auth";
 import { UserRole } from "../src/domain";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
+import { FirestorePrivacyAcceptanceStore, PrivacyAcceptanceError, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
+import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
+import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
 import { FirestorePackageRepository } from "../src/firestore_package_repository";
 import { FirestorePackageService } from "../src/package_membership_service";
 import {
@@ -44,12 +47,15 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     packageRepository = new FirestorePackageRepository(firestore);
     purchaseRepository = new FirestorePurchaseRepository(firestore);
     workflows = new NotificationWorkflowService(repository);
+    const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(firestore);
     api = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
       packageRepository,
       purchaseRepository,
       packageService: new FirestorePackageService(firestore),
+      privacyPreferencesRepository,
+      privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacyPreferencesRepository),
     });
   });
 
@@ -76,6 +82,65 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
 
   after(async () => {
     await deleteApp(firebaseApp);
+  });
+
+  it("stores the server acceptance date once and requires confirmation for minors", async () => {
+    const acceptanceStore = new FirestorePrivacyAcceptanceStore(firestore);
+    const reference = firestore.collection("privacy_acceptances").doc("client-a");
+    const form = {
+      age: 17,
+      privacy_policy_version: privacyPolicyVersion,
+      privacy_policy_accepted: true,
+    };
+    await assert.rejects(acceptanceStore.recordForClient("client-a", form), PrivacyAcceptanceError);
+    assert.equal((await reference.get()).exists, false);
+    const confirmed = { ...form, guardian_consent_confirmed: true };
+    await acceptanceStore.recordForClient("client-a", confirmed);
+    const stored = await reference.get();
+    assert.equal(stored.get("policy_version"), privacyPolicyVersion);
+    assert(stored.get("accepted_at") instanceof Timestamp);
+    assert(stored.get("guardian_consent_confirmed_at") instanceof Timestamp);
+    await acceptanceStore.recordForClient("client-a", confirmed);
+    assert.deepEqual((await reference.get()).get("accepted_at"), stored.get("accepted_at"));
+  });
+
+  it("withdrawal blocks new records and dietitian reads without deleting existing data", async () => {
+    const [clientToken, dietitianToken, adminToken] = await Promise.all([
+      signIn("client-a@fitnep.test"), signIn("dietitian@fitnep.test"), signIn("admin@fitnep.test"),
+    ]);
+    const client = bearer(clientToken);
+    const dietitian = bearer(dietitianToken);
+    const assignment = firestore.collection("client_assignments").doc("client-a");
+    await assignment.set({ active: true, dietitian_id: "dietitian-1" });
+    const activity = "/clients/client-a/records/activity-data";
+    const progress = "/clients/client-a/records/progress-photos";
+    const prefs = "/privacy/preferences";
+    const sample = { steps: 1000, active_minutes: 30 };
+    const photo = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aN84AAAAASUVORK5CYII=", "base64");
+
+    await request(api).post(activity).set(client).send(sample).expect(403);
+    await request(api).patch(prefs).set(client).send({ share_progress_photos: true }).expect(200);
+    await request(api).post(activity).set(client).send(sample).expect(403);
+    const created = await request(api).post(progress).set(client).type("png").send(photo).expect(201);
+    const imagePath = `${progress}/${created.body.data.record.id}/photo`;
+    await request(api).get(imagePath).set(dietitian).expect(200).expect("Content-Type", "image/png");
+    await request(api).get(imagePath).set(bearer(adminToken)).expect(403);
+    await request(api).patch(prefs).set(client).send({ share_activity_data: true }).expect(200);
+    await request(api).post(activity).set(client).send(sample).expect(201);
+    await request(api).get(activity).set(dietitian).expect(200);
+    await assignment.update({ dietitian_id: "replacement" });
+    await request(api).get(activity).set(dietitian).expect(403);
+    await assignment.update({ dietitian_id: "dietitian-1" });
+
+    await request(api).patch(prefs).set(client)
+      .send({ share_activity_data: false, share_progress_photos: false }).expect(200);
+    await request(api).post(activity).set(client).send(sample).expect(403);
+    await request(api).post(progress).set(client).type("png").send(photo).expect(403);
+    await request(api).get(activity).set(dietitian).expect(403);
+    await request(api).get(imagePath).set(dietitian).expect(403);
+    await request(api).get(imagePath).set(client).expect(200);
+    const own = await request(api).get(activity).set(client).expect(200);
+    assert.deepEqual(own.body.data.records.map((record: { details: unknown }) => record.details), [sample]);
   });
 
   it("enforces ownership with real emulator ID tokens and persisted records", async () => {

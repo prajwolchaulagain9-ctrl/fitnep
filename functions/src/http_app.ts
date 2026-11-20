@@ -20,7 +20,10 @@ import {
 } from "./notification_repository";
 import {
   PrivacyPreferencesRepository,
+  PrivacyPreferences,
   PrivacyPreferencesStorageNotConfiguredError,
+  sharingChoices,
+  sharingFields,
   UnconfiguredPrivacyPreferencesRepository,
 } from "./privacy_preferences_repository";
 import {
@@ -28,10 +31,14 @@ import {
   PrivacyPreferencesAuthorizationError,
   PrivacyPreferencesService,
 } from "./privacy_preferences_service";
+import { PrivateRecordAuthorizationError } from "./nutrition_record_access_service";
 import {
-  AssignmentStorageNotConfiguredError,
-  NutritionRecordsAuthorizationError,
-} from "./nutrition_record_access_service";
+  PrivateRecordsError,
+  PrivateRecordsStore,
+  parseRecordCategory,
+  parseRecordId,
+  photoUploadOptions,
+} from "./private_records";
 import {
   InvalidWorkflowEventError,
   NotificationNotFoundError,
@@ -66,6 +73,7 @@ export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
   privacyPreferencesRepository?: PrivacyPreferencesRepository;
+  privateRecordsStore?: PrivateRecordsStore;
   packageService?: FirestorePackageService;
   packageRepository?: PackageRepository;
   purchaseRepository?: PurchaseRepository;
@@ -95,6 +103,7 @@ export function createNotificationApp(
     response.setHeader("Cache-Control", "no-store");
     next();
   });
+
   app.use(authenticate(dependencies.authVerifier));
   app.use(rejectRecipientOverrides);
 
@@ -153,16 +162,55 @@ export function createNotificationApp(
   app.patch(
     "/privacy/preferences",
     asyncRoute(async (request, response) => {
-      const enabled = requestedNutritionSharing(request.body);
-      const preferences = await privacyPreferences.setNutritionSharing(
+      const preferences = await privacyPreferences.updateSharing(
         currentUser(response),
-        enabled,
+        request.body,
       );
       response.status(200).json({
         data: { preferences: toApiPrivacyPreferences(preferences) },
       });
     }),
   );
+
+  const privateRecords = () => {
+    if (!dependencies.privateRecordsStore) {
+      throw new PrivateRecordsError(503, "Private record storage is temporarily unavailable.");
+    }
+    return dependencies.privateRecordsStore;
+  };
+  const recordPath = "/clients/:clientId/records/:category";
+  app.get(recordPath, asyncRoute(async (request, response) => {
+    const after = request.query.after;
+    if (after !== undefined && typeof after !== "string") {
+      throw new PrivateRecordsError(400, "Invalid record cursor.");
+    }
+    const records = await privateRecords().list(
+      currentUser(response),
+      parseRecordId(request.params.clientId),
+      parseRecordCategory(request.params.category),
+      after === undefined ? undefined : parseRecordId(after),
+    );
+    response.json({ data: { records, next_cursor: records.length === 50 ? records.at(-1)?.id : null } });
+  }));
+  app.post(recordPath, express.raw(photoUploadOptions), asyncRoute(async (request, response) => {
+    const record = await privateRecords().collect(
+      currentUser(response),
+      parseRecordId(request.params.clientId),
+      parseRecordCategory(request.params.category),
+      request.body,
+    );
+    response.status(201).json({ data: { record } });
+  }));
+  app.get(`${recordPath}/:recordId/photo`, asyncRoute(async (request, response) => {
+    const photo = await privateRecords().readPhoto(
+      currentUser(response),
+      parseRecordId(request.params.clientId),
+      parseRecordCategory(request.params.category),
+      parseRecordId(request.params.recordId),
+    );
+    response.set("X-Content-Type-Options", "nosniff");
+    response.type(photo.contentType).send(photo.bytes);
+  }));
 
   app.get(
     "/notifications",
@@ -375,14 +423,20 @@ export function createNotificationApp(
         });
         return;
       }
-      if (error instanceof NutritionRecordsAuthorizationError) {
+      if (error instanceof PrivateRecordAuthorizationError) {
         response.status(403).json({ error: error.message });
         return;
       }
-      if (error instanceof AssignmentStorageNotConfiguredError) {
-        response.status(503).json({
-          error: "Client assignment storage has not been configured yet.",
-        });
+      if (error instanceof PrivateRecordsError) {
+        response.status(error.status).json({ error: error.message });
+        return;
+      }
+      if (isObject(error) && error.type === "entity.too.large") {
+        response.status(413).json({ error: "The submitted data is too large." });
+        return;
+      }
+      if (isObject(error) && error.type === "entity.parse.failed") {
+        response.status(400).json({ error: "Invalid request body." });
         return;
       }
       if (error instanceof PackageAuthorizationError) {
@@ -546,25 +600,14 @@ function toApiNotification(notification: NotificationRecord) {
   };
 }
 
-function toApiPrivacyPreferences(preferences: {
-  shareNutritionRecords: boolean;
-  updatedAt: string | null;
-}) {
-  return {
-    share_nutrition_records: preferences.shareNutritionRecords,
+function toApiPrivacyPreferences(preferences: PrivacyPreferences) {
+  const result: Record<string, boolean | string | null> = {
     updated_at: preferences.updatedAt,
   };
-}
-
-function requestedNutritionSharing(body: unknown): unknown {
-  if (
-    !isObject(body) ||
-    Object.keys(body).length !== 1 ||
-    !Object.hasOwn(body, "share_nutrition_records")
-  ) {
-    throw new InvalidPrivacyPreferencesError();
+  for (const choice of sharingChoices) {
+    result[sharingFields[choice]] = preferences[choice];
   }
-  return body.share_nutrition_records;
+  return result;
 }
 
 function asyncRoute(

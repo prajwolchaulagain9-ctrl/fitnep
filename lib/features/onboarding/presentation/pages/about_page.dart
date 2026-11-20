@@ -72,6 +72,10 @@ class AboutPage extends StatelessWidget {
             icon: const Icon(Icons.privacy_tip_outlined),
             label: const Text('Privacy preferences'),
           ),
+          TextButton(
+            onPressed: () => context.pushNamed(AppRoutes.privacyPolicy),
+            child: const Text('Read the Privacy Policy'),
+          ),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: () => context.goNamed(AppRoutes.welcome),

@@ -4,6 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
+import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
 import { createNotificationApp } from "./http_app";
 import { FirestorePackageService } from "./package_membership_service";
 
@@ -32,10 +33,12 @@ async function main() {
   ] as const) {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
   }
+  const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
     notificationRepository: new FirestoreNotificationRepository(db),
-    privacyPreferencesRepository: new FirestorePrivacyPreferencesRepository(db),
+    privacyPreferencesRepository,
+    privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),
     packageService: new FirestorePackageService(db),
   });
   const server = api.listen(3000, "127.0.0.1", () => {

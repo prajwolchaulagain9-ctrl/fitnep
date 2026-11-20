@@ -241,6 +241,33 @@ Future<void> _snapshot(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets('privacy policy is readable before signup and OTP verification', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final container = await _open(tester, auth, otp: true);
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.privacyPolicy);
+    await tester.pumpAndSettle();
+    expect(find.text('How FitNEP handles your data'), findsOneWidget);
+
+    await auth.createUserWithEmailAndPassword(
+      email: 'client@example.com',
+      password: 'Password!12',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('How FitNEP handles your data'), findsOneWidget);
+
+    router.go(AppRoutes.clientHome);
+    await tester.pumpAndSettle();
+    expect(find.text('Verify your email'), findsOneWidget);
+    router.goNamed(AppRoutes.privacyPolicy);
+    await tester.pumpAndSettle();
+    expect(find.text('How FitNEP handles your data'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await _close(tester, auth);
+  });
+
   testWidgets('login links to branded signup with consistent mobile fields', (
     tester,
   ) async {

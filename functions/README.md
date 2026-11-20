@@ -215,6 +215,34 @@ The zero-budget project uses manual admin verification via
 `npm run demo:serve` hosts the existing API locally against Auth/Firestore emulators.
 See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment is used.
 
+## US8 privacy and consent
+
+- In the registration feature, link to `AppRoutes.privacyPolicy` and pass
+  `age`, `privacy_policy_accepted`, `privacy_policy_version`, and
+  `guardian_consent_confirmed` to `validatePrivacyAcceptance` before creating
+  an account. The backend helper rejects missing policy acceptance and requires
+  guardian confirmation for an entered age under 18. Before activating the
+  account, call `FirestorePrivacyAcceptanceStore.recordForClient(uid, input)`
+  with the UID assigned by the registration backend. It stores the policy
+  version and a Firestore server timestamp in `privacy_acceptances/{uid}`.
+  Keep the policy version in sync with Flutter's `privacyPolicyVersion`.
+- `GET /privacy/preferences` returns the client's current choices.
+  `PATCH /privacy/preferences` accepts individual boolean fields
+  `share_nutrition_records`, `share_meal_photos`, `share_progress_photos`,
+  and `share_activity_data`. Missing values in older accounts default to false.
+- The private record API is `/clients/:clientId/records/:category`. The
+  categories are `nutrition-records`, `meal-photos`, `progress-photos`, and
+  `activity-data`. GET lists up to 50 records and accepts the returned
+  `next_cursor` as `after`. POST accepts a nutrition JSON record
+  (`food_name`, `calories`), an activity JSON record (`steps`,
+  `active_minutes`), or raw JPEG, PNG, or WebP photo bytes up to 512 KiB.
+  GET `/:recordId/photo` serves photo bytes under the same access check.
+- Optional collection must go through this API. Read authorization uses the
+  current trusted `client_assignments/{clientId}` document with
+  `active: true` and `dietitian_id`. Clients keep owner access after
+  withdrawal. The tracker and assignment features can use this contract when
+  their screens are implemented.
+
 The development merge combines package management/history with the guarded
 membership workflow. `/purchases` creates a Pending selection, and
 `/purchases/current` displays that selection or its verified membership terms.

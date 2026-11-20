@@ -8,6 +8,7 @@ import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../../features/authentication/presentation/pages/app_under_development_page.dart';
+import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
@@ -62,6 +63,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final isPublicRoute = const {
         AppRoutes.welcomePath,
         AppRoutes.aboutPath,
+        AppRoutes.privacyPolicyPath,
         AppRoutes.loginPath,
         AppRoutes.signupPath,
         AppRoutes.forgotPasswordPath,
@@ -82,10 +84,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             user.providerData.any(
               (provider) => provider.providerId == 'password',
             )) {
-          // Recovery stays reachable while the email address is unverified.
+          // Recovery and the policy stay reachable before email verification.
           if (path != AppRoutes.verifyEmailPath &&
               path != AppRoutes.forgotPasswordPath &&
-              path != AppRoutes.resetPasswordPath) {
+              path != AppRoutes.resetPasswordPath &&
+              path != AppRoutes.privacyPolicyPath) {
             return AppRoutes.verifyEmailPath;
           }
           return null;
@@ -143,6 +146,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.appUnderDevelopment,
         path: AppRoutes.appUnderDevelopmentPath,
         builder: (context, state) => const AppUnderDevelopmentPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.privacyPolicy,
+        path: AppRoutes.privacyPolicyPath,
+        builder: (context, state) => const PrivacyPolicyPage(),
       ),
       GoRoute(
         name: AppRoutes.forgotPassword,
