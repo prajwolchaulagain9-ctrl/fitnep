@@ -1,6 +1,6 @@
 import { getAuth } from "firebase-admin/auth";
 
-import { AuthenticatedUser, isUserRole, UserRole } from "./domain";
+import { AuthenticatedUser, normalizeUserRole } from "./domain";
 
 export interface AuthVerifier {
   verifyIdToken(token: string): Promise<AuthenticatedUser>;
@@ -20,7 +20,7 @@ export class FirebaseAuthVerifier implements AuthVerifier {
   async verifyIdToken(token: string): Promise<AuthenticatedUser> {
     try {
       const decodedToken = await getAuth().verifyIdToken(token, true);
-      const role = normalizeRole(decodedToken.role);
+      const role = normalizeUserRole(decodedToken.role);
       if (role === null) {
         throw new AuthenticationError(
           "This account does not have a valid FitNep role.",
@@ -33,10 +33,4 @@ export class FirebaseAuthVerifier implements AuthVerifier {
       throw new AuthenticationError("The authentication token is invalid.");
     }
   }
-}
-
-function normalizeRole(value: unknown): UserRole | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase();
-  return isUserRole(normalized) ? normalized : null;
 }

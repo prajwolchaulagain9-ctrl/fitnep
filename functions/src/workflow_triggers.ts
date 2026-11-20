@@ -4,7 +4,7 @@ import {
   onDocumentUpdated,
 } from "firebase-functions/v2/firestore";
 
-import { AuthenticatedUser, isUserRole } from "./domain";
+import { AuthenticatedUser, normalizeUserRole } from "./domain";
 import {
   InvalidWorkflowEventError,
   NotificationWorkflowService,
@@ -96,12 +96,13 @@ export function createNotificationWorkflowTriggers(
 
 function actorFrom(data: Record<string, unknown>): AuthenticatedUser {
   const uid = requiredField(data, ["assigned_by_id", "assignedById"]);
-  const rawRole = requiredField(data, ["assigned_by_role", "assignedByRole"])
-    .toLowerCase();
-  if (!isUserRole(rawRole)) {
+  const role = normalizeUserRole(
+    requiredField(data, ["assigned_by_role", "assignedByRole"]),
+  );
+  if (role === null) {
     throw new InvalidWorkflowEventError("assignedByRole is invalid.");
   }
-  return { uid, role: rawRole };
+  return { uid, role };
 }
 
 function requiredField(
