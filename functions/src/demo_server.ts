@@ -2,6 +2,7 @@ import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { FirebaseAuthVerifier } from "./auth";
+import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
@@ -36,6 +37,7 @@ async function main() {
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
+    staffAccountRepository: new FirebaseStaffAccountRepository(auth),
     notificationRepository: new FirestoreNotificationRepository(db),
     privacyPreferencesRepository,
     privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),

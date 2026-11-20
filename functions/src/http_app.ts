@@ -6,6 +6,7 @@ import express, {
 } from "express";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
+import { roleCanPerformAction } from "./authorization_policy";
 import {
   AuthenticatedUser,
   NotificationRecord,
@@ -68,6 +69,14 @@ import {
   PurchaseAuthorizationError,
   PurchaseService,
 } from "./purchase_service";
+import {
+  InvalidStaffAccountCursorError,
+  StaffAccountRepository,
+} from "./staff_account_repository";
+import {
+  StaffAccountService,
+  StaffDirectoryUnavailableError,
+} from "./staff_account_service";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
@@ -77,6 +86,7 @@ export interface NotificationAppDependencies {
   packageService?: FirestorePackageService;
   packageRepository?: PackageRepository;
   purchaseRepository?: PurchaseRepository;
+  staffAccountRepository?: StaffAccountRepository;
 }
 
 export function createNotificationApp(
@@ -96,6 +106,7 @@ export function createNotificationApp(
   const purchaseService = new PurchaseService(
     dependencies.purchaseRepository ?? new UnconfiguredPurchaseRepository(),
   );
+  const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
 
   app.disable("x-powered-by");
   app.use(express.json({ limit: "32kb" }));
@@ -106,6 +117,25 @@ export function createNotificationApp(
 
   app.use(authenticate(dependencies.authVerifier));
   app.use(rejectRecipientOverrides);
+
+  app.get(
+    "/admin/staff-accounts",
+    asyncRoute(async (request, response) => {
+      const page = await staffAccounts.list(currentUser(response), request.query.cursor);
+      response.json({
+        data: {
+          accounts: page.accounts.map((account) => ({
+            uid: account.uid,
+            name: account.name,
+            email: account.email,
+            role: account.role,
+            is_active: account.isActive,
+          })),
+          next_cursor: page.nextCursor,
+        },
+      });
+    }),
+  );
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -247,6 +277,9 @@ export function createNotificationApp(
   app.get(
     "/packages",
     asyncRoute(async (_request, response) => {
+      if (!roleCanPerformAction(currentUser(response).role, "viewPackageCatalog")) {
+        throw new AuthenticationError("This account cannot view the package catalog.", 403);
+      }
       if (dependencies.packageRepository === undefined) {
         response.json({ data: { packages: await packages().catalog() } });
         return;
@@ -389,6 +422,14 @@ export function createNotificationApp(
     ) => {
       if (error instanceof AuthenticationError) {
         response.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidStaffAccountCursorError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof StaffDirectoryUnavailableError) {
+        response.status(503).json({ error: error.message });
         return;
       }
       if (error instanceof PackageError) {

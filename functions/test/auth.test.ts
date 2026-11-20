@@ -20,7 +20,7 @@ it("a verified account without an assigned role receives client access", async (
 });
 
 it("assigned roles are preserved and normalized", async () => {
-  for (const role of ["admin", "dietitian", "client"]) {
+  for (const role of ["admin", "dietitian", "client", "staff"]) {
     const user = await verifier({ role: ` ${role.toUpperCase()} `, email_verified: true })
       .verifyIdToken("signed-token");
     assert.equal(user.role, role);

@@ -39,7 +39,7 @@ void main() {
     },
   );
 
-  test('signed admin and dietitian roles are preserved', () async {
+  test('signed roles, including staff, are preserved and normalized', () async {
     for (final role in FitNepRole.values) {
       final user = _User({
         'role': ' ${role.name.toUpperCase()} ',

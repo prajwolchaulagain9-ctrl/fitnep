@@ -1,9 +1,11 @@
-import { UserRole, userRoles } from "./domain";
+import { UserRole } from "./domain";
 
 /** Role requirements for protected actions implemented by the backend. */
 export const protectedActionRoles = {
-  readOwnNotifications: userRoles,
-  updateOwnNotifications: userRoles,
+  readOwnNotifications: ["admin", "dietitian", "client"],
+  updateOwnNotifications: ["admin", "dietitian", "client"],
+  viewPackageCatalog: ["admin", "dietitian", "client"],
+  listStaffAccounts: ["admin"],
   createDietPlanAssignmentNotification: ["admin", "dietitian"],
   createTaskAssignmentNotification: ["admin", "dietitian"],
 } as const satisfies Record<string, readonly UserRole[]>;

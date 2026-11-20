@@ -262,6 +262,18 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
   withdrawal. The tracker and assignment features can use this contract when
   their screens are implemented.
 
+## US7 staff directory
+
+`GET /admin/staff-accounts` requires a verified Firebase token with the admin
+role. It reads team accounts from Firebase Auth and returns only their UID,
+name, email, role and active status. The result includes inactive staff,
+dietitians and admins. Client accounts and accounts with no recognized role are
+excluded.
+
+Pass the returned `next_cursor` as the next request's `cursor`. A page can be
+empty if Firebase returned only client accounts, so continue until
+`next_cursor` is null.
+
 The development merge combines package management/history with the guarded
 membership workflow. `/purchases` creates a Pending selection, and
 `/purchases/current` displays that selection or its verified membership terms.

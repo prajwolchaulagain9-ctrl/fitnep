@@ -28,11 +28,14 @@ class _PrivacyPreferencesPageState
           .setSharing(category, enabled);
     } catch (_) {
       if (mounted) {
+        ref.invalidate(privacyPreferencesControllerProvider);
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
           ..showSnackBar(
             const SnackBar(
-              content: Text('Could not save your choices. Please try again.'),
+              content: Text(
+                'Could not confirm the change. Refreshing your choices.',
+              ),
             ),
           );
       }
@@ -58,6 +61,7 @@ class _PrivacyPreferencesPageState
       ),
       body: SafeArea(
         child: preferences.when(
+          skipLoadingOnRefresh: false,
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, stackTrace) => _LoadError(
             onRetry: () => ref.invalidate(privacyPreferencesControllerProvider),

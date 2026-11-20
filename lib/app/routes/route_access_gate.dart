@@ -7,17 +7,19 @@ import '../../core/services/firebase_providers.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import 'app_routes.dart';
 
-enum FitNepRole { admin, dietitian, client }
+enum FitNepRole {
+  admin,
+  dietitian,
+  client,
+  staff;
+
+  static final _byName = values.asNameMap();
+
+  static FitNepRole? fromClaim(Object? claim) =>
+      claim is String ? _byName[claim.trim().toLowerCase()] : null;
+}
 
 typedef RouteSession = ({String uid, FitNepRole? role});
-
-FitNepRole? _roleClaim(Object? claim) =>
-    switch (claim is String ? claim.trim().toLowerCase() : null) {
-      'admin' => FitNepRole.admin,
-      'dietitian' => FitNepRole.dietitian,
-      'client' => FitNepRole.client,
-      _ => null,
-    };
 
 Future<FitNepRole?> resolveVerifiedRole(User user, FirebaseAuth auth) async {
   if (auth.currentUser?.uid != user.uid) return null;
@@ -29,7 +31,7 @@ Future<FitNepRole?> resolveVerifiedRole(User user, FirebaseAuth auth) async {
   if (!claims.containsKey('role') && claims['email_verified'] == true) {
     return FitNepRole.client;
   }
-  return _roleClaim(claims['role']);
+  return FitNepRole.fromClaim(claims['role']);
 }
 
 final _routeUserProvider = StreamProvider.autoDispose<User?>((ref) async* {
