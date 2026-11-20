@@ -31,24 +31,30 @@ class PackageHistoryState {
 
 class PackageHistoryController extends Notifier<PackageHistoryState> {
   late PackageRepository _repository;
+  int _generation = 0;
 
   @override
   PackageHistoryState build() {
+    _generation++;
     _repository = ref.watch(packageRepositoryProvider);
     Future<void>.microtask(refresh);
     return const PackageHistoryState(isLoading: true);
   }
 
   Future<void> refresh() async {
+    if (!ref.mounted) return;
+    final generation = _generation;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final history = await _repository.getPackageHistory();
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(
         history: history,
         isLoading: false,
         clearError: true,
       );
     } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }

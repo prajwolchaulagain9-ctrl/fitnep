@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
+import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:flutter/material.dart';
@@ -64,14 +65,20 @@ class _Auth extends Fake implements FirebaseAuth {
 Future<ProviderContainer> _open(
   WidgetTester tester,
   _Auth auth,
-  MemorySessionPreferenceStore preferences,
-) async {
+  MemorySessionPreferenceStore preferences, {
+  FitNepRole? role = FitNepRole.client,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(preferences),
+        routeSessionProvider.overrideWith(
+          (ref) async => auth.currentUser == null
+              ? null
+              : (uid: auth.currentUser!.uid, role: role),
+        ),
       ],
       child: const FitNepApp(),
     ),
@@ -101,14 +108,14 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('real Firebase login reaches development screen and logs out', (
+  testWidgets('Firebase login reaches package selection and logs out', (
     tester,
   ) async {
     final auth = _Auth();
     final preferences = MemorySessionPreferenceStore();
     await _open(tester, auth, preferences);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.byKey(const Key('welcome_login_button')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
@@ -126,12 +133,10 @@ void main() {
     expect(auth.email, 'client@example.com');
     expect(auth.password, 'Password!12');
     expect(preferences.rememberSession, isTrue);
-    expect(find.text('App Under Development'), findsOneWidget);
-    expect(find.text('Coming Soon'), findsOneWidget);
+    expect(find.text('Choose a Package'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsNothing);
 
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Logout'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Logout'));
+    await tester.tap(find.byTooltip('Sign out'));
     await tester.pumpAndSettle();
 
     expect(auth.signOuts, 1);
@@ -147,7 +152,7 @@ void main() {
       ..signInError = FirebaseAuthException(code: 'invalid-credential');
     await _open(tester, auth, MemorySessionPreferenceStore());
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.byKey(const Key('welcome_login_button')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
@@ -170,7 +175,35 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('remembered sessions open the development screen on startup', (
+  testWidgets('a verified admin signs in to client management', (tester) async {
+    final auth = _Auth();
+    final container = await _open(
+      tester,
+      auth,
+      MemorySessionPreferenceStore(),
+      role: FitNepRole.admin,
+    );
+    final router = container.read(appRouterProvider);
+    router.go(AppRoutes.loginPath);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byType(TextFormField).at(0),
+      'demo-admin@fitnep.test',
+    );
+    await tester.enterText(find.byType(TextFormField).at(1), 'Password!12');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.pumpAndSettle();
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      AppRoutes.adminClients,
+    );
+    expect(find.text('Choose a Package'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await _close(tester, auth);
+  });
+
+  testWidgets('remembered sessions open package selection on startup', (
     tester,
   ) async {
     final auth = _Auth(user: _User());
@@ -180,7 +213,7 @@ void main() {
       MemorySessionPreferenceStore(rememberSession: true),
     );
 
-    expect(find.text('App Under Development'), findsOneWidget);
+    expect(find.text('Choose a Package'), findsOneWidget);
     expect(auth.signOuts, 0);
     await _close(tester, auth);
   });
@@ -196,8 +229,32 @@ void main() {
     );
 
     expect(find.text('App Under Development'), findsNothing);
-    expect(find.text('Learn about FitNEP'), findsOneWidget);
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
     expect(auth.signOuts, 1);
+    await _close(tester, auth);
+  });
+
+  testWidgets('an unsupported account can sign out of the access screen', (
+    tester,
+  ) async {
+    final auth = _Auth(user: _User());
+    final container = await _open(
+      tester,
+      auth,
+      MemorySessionPreferenceStore(rememberSession: true),
+      role: null,
+    );
+    expect(find.text('Access denied'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Sign out'));
+    await tester.pumpAndSettle();
+    expect(auth.user, isNull);
+    expect(find.text('Access denied'), findsNothing);
+    expect(
+      container.read(appRouterProvider).routeInformationProvider.value.uri.path,
+      AppRoutes.welcomePath,
+    );
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await _close(tester, auth);
   });
 }

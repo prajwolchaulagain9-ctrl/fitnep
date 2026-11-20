@@ -25,12 +25,16 @@ class MembershipState {
   final PackagePurchaseEntity? purchase;
   final bool isLoading;
   final bool isPurchasing;
+  final String? purchasingPackageId;
+  final bool hasMembershipCheckFailed;
   final String? errorMessage;
 
   const MembershipState({
     this.purchase,
     this.isLoading = false,
     this.isPurchasing = false,
+    this.purchasingPackageId,
+    this.hasMembershipCheckFailed = false,
     this.errorMessage,
   });
 
@@ -38,6 +42,8 @@ class MembershipState {
     PackagePurchaseEntity? purchase,
     bool? isLoading,
     bool? isPurchasing,
+    String? purchasingPackageId,
+    bool? hasMembershipCheckFailed,
     String? errorMessage,
     bool clearError = false,
   }) {
@@ -45,6 +51,11 @@ class MembershipState {
       purchase: purchase ?? this.purchase,
       isLoading: isLoading ?? this.isLoading,
       isPurchasing: isPurchasing ?? this.isPurchasing,
+      purchasingPackageId: (isPurchasing ?? this.isPurchasing)
+          ? purchasingPackageId ?? this.purchasingPackageId
+          : null,
+      hasMembershipCheckFailed:
+          hasMembershipCheckFailed ?? this.hasMembershipCheckFailed,
       errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
@@ -54,27 +65,44 @@ class MembershipController extends Notifier<MembershipState> {
   late PackagePurchaseRepository _repository;
   String? _pendingPackageId;
   String? _pendingRequestId;
+  int _generation = 0;
 
   @override
   MembershipState build() {
+    _generation++;
+    _pendingPackageId = null;
+    _pendingRequestId = null;
     _repository = ref.watch(packagePurchaseRepositoryProvider);
     Future<void>.microtask(refresh);
     return const MembershipState(isLoading: true);
   }
 
   Future<void> refresh() async {
+    if (!ref.mounted || state.isPurchasing) return;
+    final generation = _generation;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final purchase = await _repository.getCurrentPurchase();
+      if (!ref.mounted || generation != _generation) return;
       state = MembershipState(purchase: purchase);
     } catch (error) {
-      state = state.copyWith(isLoading: false, errorMessage: error.toString());
+      if (!ref.mounted || generation != _generation) return;
+      state = state.copyWith(
+        isLoading: false,
+        hasMembershipCheckFailed: true,
+        errorMessage: error.toString(),
+      );
     }
   }
 
   Future<PackagePurchaseEntity> purchasePackage(String packageId) async {
     if (state.isPurchasing) throw const PurchaseInProgressException();
-    state = state.copyWith(isPurchasing: true, clearError: true);
+    final generation = ++_generation;
+    state = state.copyWith(
+      isPurchasing: true,
+      purchasingPackageId: packageId,
+      clearError: true,
+    );
     if (_pendingPackageId != packageId || _pendingRequestId == null) {
       _pendingPackageId = packageId;
       _pendingRequestId = 'purchase-${DateTime.now().microsecondsSinceEpoch}';
@@ -84,15 +112,20 @@ class MembershipController extends Notifier<MembershipState> {
         packageId: packageId,
         requestId: _pendingRequestId!,
       );
-      _pendingPackageId = null;
-      _pendingRequestId = null;
-      state = MembershipState(purchase: purchase);
+      if (ref.mounted && generation == _generation) {
+        _pendingPackageId = null;
+        _pendingRequestId = null;
+        state = MembershipState(purchase: purchase);
+      }
       return purchase;
     } catch (error) {
-      state = state.copyWith(
-        isPurchasing: false,
-        errorMessage: error.toString(),
-      );
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(
+          isPurchasing: false,
+          isLoading: false,
+          errorMessage: error.toString(),
+        );
+      }
       rethrow;
     }
   }

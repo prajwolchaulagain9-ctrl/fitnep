@@ -24,6 +24,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
   final _confirmation = TextEditingController();
   bool _hidePassword = true;
   bool _hideConfirmation = true;
+  bool _privacyAccepted = false;
 
   @override
   void dispose() {
@@ -38,7 +39,10 @@ class _SignupPageState extends ConsumerState<SignupPage> {
       ref.read(authenticationControllerProvider.notifier).clearError();
 
   Future<void> _submit() async {
-    if (ref.read(authenticationControllerProvider).isLoading) return;
+    if (!_privacyAccepted ||
+        ref.read(authenticationControllerProvider).isLoading) {
+      return;
+    }
     FocusScope.of(context).unfocus();
     if (!_form.currentState!.validate()) return;
     final created = await ref
@@ -57,6 +61,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
   Widget build(BuildContext context) {
     final action = ref.watch(authenticationControllerProvider);
     final busy = action.isLoading;
+    final canAuthenticate = !busy && _privacyAccepted;
     final otpEnabled = ref.watch(signupEmailOtpEnabledProvider);
     return RecoveryPage(
       title: 'Create your account',
@@ -69,13 +74,36 @@ class _SignupPageState extends ConsumerState<SignupPage> {
             children: [
               if (action.errorMessage != null)
                 RecoveryMessage(action.errorMessage!),
+              CheckboxListTile(
+                key: const Key('signup_privacy_agreement'),
+                value: _privacyAccepted,
+                onChanged: busy
+                    ? null
+                    : (value) =>
+                          setState(() => _privacyAccepted = value ?? false),
+                controlAffinity: ListTileControlAffinity.leading,
+                contentPadding: EdgeInsets.zero,
+                title: const Text('I agree to the Privacy Policy'),
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('signup_privacy_policy_button'),
+                  onPressed: busy
+                      ? null
+                      : () => context.pushNamed(AppRoutes.privacyPolicy),
+                  icon: const Icon(Icons.privacy_tip_outlined, size: 20),
+                  label: const Text('Read Privacy Policy'),
+                ),
+              ),
+              const SizedBox(height: 12),
               GoogleSignInButton(
                 isLoading: busy && action.isGoogleSignIn,
-                onPressed: busy
-                    ? null
-                    : () => ref
+                onPressed: canAuthenticate
+                    ? () => ref
                           .read(authenticationControllerProvider.notifier)
-                          .signInWithGoogle(rememberSession: true),
+                          .signInWithGoogle(rememberSession: true)
+                    : null,
               ),
               const AuthenticationDivider(),
               TextFormField(
@@ -171,7 +199,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: busy ? null : _submit,
+                onPressed: canAuthenticate ? _submit : null,
                 child: Text(
                   busy && !action.isGoogleSignIn
                       ? 'Creating account\u2026'

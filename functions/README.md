@@ -35,7 +35,7 @@ Every API request must include a Firebase ID token:
 Authorization: Bearer <firebase-id-token>
 ```
 
-The token must have one of these trusted custom claims:
+Assigned roles use one of these trusted custom claims:
 
 ```json
 { "role": "admin" }
@@ -45,6 +45,10 @@ The token must have one of these trusted custom claims:
 
 Role claims must be assigned by a trusted administrative process using the
 Firebase Admin SDK. Never allow the mobile app to assign or edit its own role.
+An account with a signed `email_verified: true` claim and no assigned `role`
+receives standard client access. Unsupported assigned roles and unverified
+accounts without a role are rejected. Firebase token verification always checks
+revocation before resolving the role.
 
 All roles are scoped to their own `uid` for notification access. Admin and
 Dietitian roles do not receive an implicit bypass to client notifications.
@@ -196,6 +200,21 @@ npx --yes firebase-tools@latest emulators:exec --config firebase.json --project 
 
 Firestore uses port 18080 in the shared configuration. The emulator-only
 commands work without deploying to the Spark project.
+
+## Seeded demo admin
+
+From the repository root, use the existing Firebase CLI login to seed an admin
+in the same Firebase project as the Android app:
+
+```powershell
+npm --prefix functions run seed:admin
+```
+
+The account uses `demo-admin@fitnep.test`, has a verified email and the trusted
+`admin` role, and opens client management after login. Its generated password
+is saved in the ignored `.dart_tool/demo-admin.credentials.json` file. Rerunning
+the seed preserves the password and verifies that login returns an admin token.
+The seed only modifies its own saved demo account.
 
 The retained deployment script is outside the supported Spark workflow. No
 Functions deployment or billing upgrade is part of this integration. A live

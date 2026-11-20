@@ -1,4 +1,4 @@
-import { getAuth } from "firebase-admin/auth";
+import { Auth, getAuth } from "firebase-admin/auth";
 
 import { AuthenticatedUser, normalizeUserRole } from "./domain";
 
@@ -17,10 +17,14 @@ export class AuthenticationError extends Error {
 }
 
 export class FirebaseAuthVerifier implements AuthVerifier {
+  constructor(private readonly auth: Pick<Auth, "verifyIdToken"> = getAuth()) {}
+
   async verifyIdToken(token: string): Promise<AuthenticatedUser> {
     try {
-      const decodedToken = await getAuth().verifyIdToken(token, true);
-      const role = normalizeUserRole(decodedToken.role);
+      const decodedToken = await this.auth.verifyIdToken(token, true);
+      const role = decodedToken.role === undefined && decodedToken.email_verified === true
+        ? "client"
+        : normalizeUserRole(decodedToken.role);
       if (role === null) {
         throw new AuthenticationError(
           "This account does not have a valid FitNep role.",

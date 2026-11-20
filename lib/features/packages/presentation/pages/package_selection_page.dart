@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
+import '../../../authentication/presentation/controllers/authentication_controller.dart';
 import '../../../admin/domain/entities/package_entity.dart';
 import '../../../admin/domain/repositories/package_repository.dart';
 import '../../../admin/presentation/controllers/package_management_controller.dart';
@@ -40,20 +41,26 @@ class _ActivePackageState {
 
 class _ActivePackageController extends Notifier<_ActivePackageState> {
   late PackageRepository _repository;
+  int _generation = 0;
 
   @override
   _ActivePackageState build() {
+    _generation++;
     _repository = ref.watch(packageRepositoryProvider);
     Future<void>.microtask(refresh);
     return const _ActivePackageState(isLoading: true);
   }
 
   Future<void> refresh() async {
+    if (!ref.mounted) return;
+    final generation = _generation;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final packages = await _repository.getActivePackages();
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(packages: packages, isLoading: false);
     } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }
@@ -74,6 +81,12 @@ class PackageSelectionPage extends ConsumerWidget {
     final state = ref.watch(_activePackageControllerProvider);
     final controller = ref.read(_activePackageControllerProvider.notifier);
     final membership = ref.watch(membershipControllerProvider);
+    Future<void> refresh() async {
+      await Future.wait([
+        controller.refresh(),
+        ref.read(membershipControllerProvider.notifier).refresh(),
+      ]);
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -82,15 +95,23 @@ class PackageSelectionPage extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: 'Refresh',
-            onPressed: state.isLoading ? null : controller.refresh,
+            onPressed: state.isLoading || membership.isPurchasing
+                ? null
+                : refresh,
             icon: const Icon(Icons.refresh_rounded),
+          ),
+          IconButton(
+            tooltip: 'Sign out',
+            onPressed: () =>
+                ref.read(authenticationControllerProvider.notifier).signOut(),
+            icon: const Icon(Icons.logout_rounded),
           ),
         ],
       ),
       body: _PackageSelectionBody(
         state: state,
-        isPurchasing: membership.isPurchasing,
-        onRefresh: controller.refresh,
+        membership: membership,
+        onRefresh: refresh,
         onPurchase: (package) => _purchasePackage(context, ref, package),
       ),
     );
@@ -99,13 +120,13 @@ class PackageSelectionPage extends ConsumerWidget {
 
 class _PackageSelectionBody extends StatelessWidget {
   final _ActivePackageState state;
-  final bool isPurchasing;
+  final MembershipState membership;
   final Future<void> Function() onRefresh;
   final Future<void> Function(PackageEntity package) onPurchase;
 
   const _PackageSelectionBody({
     required this.state,
-    required this.isPurchasing,
+    required this.membership,
     required this.onRefresh,
     required this.onPurchase,
   });
@@ -154,112 +175,256 @@ class _PackageSelectionBody extends StatelessWidget {
           16,
           24 + MediaQuery.paddingOf(context).bottom,
         ),
-        itemCount: state.packages.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) => _CustomerPackageCard(
-          package: state.packages[index],
-          isPurchasing: isPurchasing,
-          onPurchase: onPurchase,
-        ),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: state.packages.length + 1,
+        separatorBuilder: (_, _) => const SizedBox(height: 16),
+        itemBuilder: (context, index) => index == 0
+            ? _intro(context)
+            : _CustomerPackageCard(
+                package: state.packages[index - 1],
+                membership: membership,
+                onPurchase: onPurchase,
+              ),
       ),
+    );
+  }
+
+  Widget _intro(BuildContext context) {
+    final theme = Theme.of(context);
+    final purchase = membership.purchase;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Support that fits your goals.',
+          style: theme.textTheme.headlineSmall,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Explore your options and take the next step at your pace.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (purchase != null && purchase.isCurrent) ...[
+          const SizedBox(height: 20),
+          Container(
+            key: const Key('current_package_summary'),
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${purchase.packageName} is your current package',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  purchase.isPending
+                      ? 'Your selection is saved and awaiting payment verification. You can continue to your home.'
+                      : 'Your membership is ${purchase.statusLabel.toLowerCase()}. This package is already selected.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Tooltip(
+                  message: 'Continue to home',
+                  child: FilledButton.icon(
+                    onPressed: () => context.go(AppRoutes.clientHome),
+                    icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                    iconAlignment: IconAlignment.end,
+                    label: const Text('Continue to home'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+        if (membership.hasMembershipCheckFailed) ...[
+          const SizedBox(height: 16),
+          Text(
+            'We couldn’t check your current membership. Please retry before choosing a package.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.error,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onRefresh,
+            icon: const Icon(Icons.refresh_rounded),
+            label: const Text('Retry membership check'),
+          ),
+        ],
+      ],
     );
   }
 }
 
 class _CustomerPackageCard extends StatelessWidget {
   final PackageEntity package;
-  final bool isPurchasing;
+  final MembershipState membership;
   final Future<void> Function(PackageEntity package) onPurchase;
 
   const _CustomerPackageCard({
     required this.package,
-    required this.isPurchasing,
+    required this.membership,
     required this.onPurchase,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final purchase = membership.purchase;
+    final isSelected =
+        purchase?.isCurrent == true && purchase?.packageId == package.id;
+    final pending = purchase?.isPending == true;
+    final saving =
+        membership.isPurchasing && membership.purchasingPackageId == package.id;
+    final enabled =
+        !membership.isLoading &&
+        !membership.isPurchasing &&
+        !isSelected &&
+        !pending &&
+        !membership.hasMembershipCheckFailed;
     final currency = NumberFormat.currency(
       locale: 'en_NP',
       symbol: 'NPR ',
       decimalDigits: package.price % 1 == 0 ? 0 : 2,
     );
+    final label = isSelected
+        ? 'Selected'
+        : membership.isLoading
+        ? 'Checking membership…'
+        : saving
+        ? 'Saving selection…'
+        : pending
+        ? 'Available after verification'
+        : 'Choose ${package.name}';
 
     return Card(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(
+          color: isSelected ? colors.primary : colors.outlineVariant,
+          width: isSelected ? 1.5 : 1,
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(22),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: AppColors.primaryContainer,
-                    borderRadius: BorderRadius.circular(14),
+                    color: colors.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(
-                    Icons.fitness_center_rounded,
-                    color: AppColors.primary,
-                    size: 24,
+                  child: Icon(
+                    isSelected
+                        ? Icons.check_rounded
+                        : Icons.fitness_center_rounded,
+                    color: colors.primary,
+                    size: 22,
                   ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        package.name,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${package.durationMonths} '
-                        '${package.durationMonths == 1 ? 'month' : 'months'}',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
+                  child: Text(
+                    package.name,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      currency.format(package.price),
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.statusActive,
+                    size: 22,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 10,
+              runSpacing: 4,
+              children: [
+                Text(
+                  currency.format(package.price),
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontSize: 26,
+                    fontWeight: FontWeight.w800,
+                    color: colors.primary,
+                  ),
+                ),
+                Text(
+                  'for ${package.durationMonths} ${package.durationMonths == 1 ? 'month' : 'months'}',
+                  style: theme.textTheme.bodySmall,
                 ),
               ],
             ),
-            const SizedBox(height: 14),
-            const Divider(),
-            const SizedBox(height: 12),
+            const SizedBox(height: 18),
+            Divider(color: colors.outlineVariant),
+            const SizedBox(height: 18),
             Text(
               package.featureDescription,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.textSecondary, height: 1.5),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.55,
+              ),
             ),
-            const SizedBox(height: 18),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
+            const SizedBox(height: 22),
+            Semantics(
+              selected: isSelected,
+              child: FilledButton.icon(
                 key: Key('select_package_${package.id}'),
-                onPressed: isPurchasing ? null : () => onPurchase(package),
-                child: isPurchasing
+                onPressed: enabled ? () => onPurchase(package) : null,
+                style: isSelected
+                    ? FilledButton.styleFrom(
+                        disabledBackgroundColor: colors.primaryContainer,
+                        disabledForegroundColor: colors.onSurface,
+                      )
+                    : null,
+                icon: saving
                     ? const SizedBox.square(
-                        dimension: 20,
+                        dimension: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text('Choose ${package.name}'),
+                    : Icon(
+                        isSelected
+                            ? Icons.check_rounded
+                            : pending
+                            ? Icons.lock_outline_rounded
+                            : Icons.arrow_forward_rounded,
+                        size: 20,
+                      ),
+                iconAlignment: isSelected || pending
+                    ? IconAlignment.start
+                    : IconAlignment.end,
+                label: Text(label, textAlign: TextAlign.center),
               ),
             ),
           ],
@@ -274,6 +439,15 @@ Future<void> _purchasePackage(
   WidgetRef ref,
   PackageEntity package,
 ) async {
+  final membership = ref.read(membershipControllerProvider);
+  final current = membership.purchase;
+  if (membership.isLoading ||
+      membership.isPurchasing ||
+      membership.hasMembershipCheckFailed ||
+      current?.isPending == true ||
+      (current?.isCurrent == true && current?.packageId == package.id)) {
+    return;
+  }
   final confirmed = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -294,12 +468,13 @@ Future<void> _purchasePackage(
     ),
   );
   if (confirmed != true || !context.mounted) return;
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
 
   try {
     await ref
         .read(membershipControllerProvider.notifier)
         .purchasePackage(package.id);
-    if (context.mounted) context.go(AppRoutes.clientMembership);
+    if (context.mounted) context.go(AppRoutes.clientHome);
   } catch (error) {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context)

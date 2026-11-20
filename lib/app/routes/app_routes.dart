@@ -4,7 +4,6 @@ abstract final class AppRoutes {
   static const login = 'login';
   static const signup = 'signup';
   static const verifyEmail = 'verifyEmail';
-  static const appUnderDevelopment = 'appUnderDevelopment';
   static const forgotPassword = 'forgotPassword';
   static const resetPassword = 'resetPassword';
   static const privacyPolicy = 'privacyPolicy';
@@ -14,11 +13,9 @@ abstract final class AppRoutes {
   static const loginPath = '/login';
   static const signupPath = '/signup';
   static const verifyEmailPath = '/verify-email';
-  static const appUnderDevelopmentPath = '/app-under-development';
   static const forgotPasswordPath = '/forgot-password';
   static const resetPasswordPath = '/reset-password';
   static const privacyPolicyPath = '/privacy-policy';
-  static const demoEntry = '/demo';
 
   // Shared
   static const notifications = '/notifications';
