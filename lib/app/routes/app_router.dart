@@ -8,6 +8,7 @@ import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../../features/authentication/presentation/pages/app_under_development_page.dart';
+import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
@@ -130,6 +131,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => const NotificationsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientPrivacyPreferences,
+        name: 'client-privacy-preferences',
+        builder: (context, state) => const PrivacyPreferencesPage(),
       ),
       GoRoute(
         path: AppRoutes.notifications,

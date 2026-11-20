@@ -60,6 +60,12 @@ class AboutPage extends StatelessWidget {
             title: 'Your next step',
             description: 'A suitable package is the starting point for your FitNEP journey.',
           ),
+          const SizedBox(height: 16),
+          OutlinedButton.icon(
+            onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
+            icon: const Icon(Icons.privacy_tip_outlined),
+            label: const Text('Privacy preferences'),
+          ),
           const SizedBox(height: 8),
           FilledButton(
             onPressed: () => context.goNamed(AppRoutes.welcome),

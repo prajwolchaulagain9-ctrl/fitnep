@@ -27,6 +27,7 @@ abstract final class AppRoutes {
   // Client
   static const clientHome = '/client/home';
   static const clientNotifications = '/client/notifications';
+  static const clientPrivacyPreferences = '/client/privacy-preferences';
 
   static const dietPlanDetailsName = 'diet-plan-details';
   static const messageThreadName = 'message-thread';
