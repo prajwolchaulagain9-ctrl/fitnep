@@ -146,7 +146,7 @@ Run all four workflow-trigger integration tests with the Functions emulator:
 $env:FITNEP_RUN_TRIGGER_TESTS = 'true'
 npm --prefix functions run build
 npm --prefix functions run build:test
-npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only firestore,functions "node --test --test-isolation=none --test-concurrency=1 functions/.test-build/test/workflow_trigger_emulator.test.js"
+npx --yes firebase-tools@latest emulators:exec --config firebase.json --project demo-fitnep --only firestore,functions "node --test --experimental-test-isolation=none --test-concurrency=1 functions/.test-build/test/workflow_trigger_emulator.test.js"
 ```
 
 Firestore uses port 18080 in the shared configuration. The emulator-only
