@@ -7,34 +7,34 @@ import '../../core/config/app_config.dart';
 import '../../core/services/firebase_providers.dart';
 import 'app_routes.dart';
 
-/// Emits the role from Firebase's verified ID token whenever auth changes.
-///
-/// Firebase initialization is awaited before the auth provider is read because
-/// the app creates its router while the startup screen is still visible.
-final authenticatedRoleProvider = StreamProvider.autoDispose<String?>((ref) {
-  final initialized = ref.watch(firebaseInitializationProvider.future);
-  return _rolesAfterInitialization(
-    initialized,
-    () => ref.read(firebaseAuthProvider),
-  );
+enum FitNepRole { admin, dietitian, client }
+
+typedef RouteSession = ({String uid, FitNepRole? role});
+
+final _routeUserProvider = StreamProvider.autoDispose<User?>((ref) async* {
+  await ref.watch(firebaseInitializationProvider.future);
+  if (ref.mounted) {
+    yield* ref.read(firebaseAuthProvider).idTokenChanges();
+  }
 });
 
-Stream<String?> _rolesAfterInitialization(
-  Future<void> initialized,
-  FirebaseAuth Function() auth,
-) async* {
-  await initialized;
-  await for (final user in auth().idTokenChanges()) {
-    if (user == null) {
-      yield null;
-      continue;
-    }
-
-    final token = await user.getIdTokenResult();
-    final role = token.claims?['role'];
-    yield role is String ? role.trim().toLowerCase() : null;
-  }
-}
+/// Rechecks the role from Firebase's ID token when the current user or token
+/// changes. The server separately verifies tokens on protected API requests.
+final routeSessionProvider = FutureProvider.autoDispose<RouteSession?>((
+  ref,
+) async {
+  final user = await ref.watch(_routeUserProvider.future);
+  if (user == null) return null;
+  final token = await user.getIdTokenResult();
+  final claim = token.claims?['role'];
+  final role = switch (claim is String ? claim.trim().toLowerCase() : null) {
+    'admin' => FitNepRole.admin,
+    'dietitian' => FitNepRole.dietitian,
+    'client' => FitNepRole.client,
+    _ => null,
+  };
+  return (uid: user.uid, role: role);
+}, retry: (retryCount, error) => null);
 
 /// Prevents route builders from exposing protected content to the wrong role.
 class RouteAccessGate extends ConsumerWidget {
@@ -44,45 +44,41 @@ class RouteAccessGate extends ConsumerWidget {
     super.key,
   });
 
-  /// An empty set means any authenticated FitNEP role is allowed.
-  final Set<String> allowedRoles;
+  final Set<FitNepRole> allowedRoles;
   final WidgetBuilder builder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final initialization = ref.watch(firebaseInitializationProvider);
-    return initialization.when(
-      loading: _loading,
-      error: (error, stackTrace) => const _AccessMessage(
-        title: 'Access unavailable',
-        message: 'FitNEP could not verify your session. Please try again.',
-      ),
-      data: (_) => ref
-          .watch(authenticatedRoleProvider)
-          .when(
-            loading: _loading,
-            error: (error, stackTrace) => const _AccessMessage(
-              title: 'Access unavailable',
-              message:
-                  'FitNEP could not verify your session. Please try again.',
-            ),
-            data: (role) {
-              if (role == null) {
-                return const _AccessMessage(
-                  title: 'Sign in required',
-                  message: 'Sign in to access this FitNEP page.',
-                );
-              }
-              if (allowedRoles.isNotEmpty && !allowedRoles.contains(role)) {
-                return const _AccessMessage(
-                  title: 'Access denied',
-                  message: 'Your account does not have access to this page.',
-                );
-              }
-              return builder(context);
-            },
+    return ref
+        .watch(routeSessionProvider)
+        .when(
+          skipLoadingOnRefresh: false,
+          skipLoadingOnReload: false,
+          loading: _loading,
+          error: (error, stackTrace) => _AccessMessage(
+            title: 'Access unavailable',
+            message: 'FitNEP could not verify your session. Please try again.',
+            onRetry: () => ref.invalidate(routeSessionProvider),
           ),
-    );
+          data: (session) {
+            if (session == null) {
+              return const _AccessMessage(
+                title: 'Sign in required',
+                message: 'Sign in to access this FitNEP page.',
+              );
+            }
+            if (!allowedRoles.contains(session.role)) {
+              return const _AccessMessage(
+                title: 'Access denied',
+                message: 'Your account does not have access to this page.',
+              );
+            }
+            return KeyedSubtree(
+              key: ValueKey(session.uid),
+              child: builder(context),
+            );
+          },
+        );
   }
 
   Widget _loading() =>
@@ -90,10 +86,15 @@ class RouteAccessGate extends ConsumerWidget {
 }
 
 class _AccessMessage extends StatelessWidget {
-  const _AccessMessage({required this.title, required this.message});
+  const _AccessMessage({
+    required this.title,
+    required this.message,
+    this.onRetry,
+  });
 
   final String title;
   final String message;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -111,6 +112,11 @@ class _AccessMessage extends StatelessWidget {
               const SizedBox(height: 12),
               Text(message),
               const SizedBox(height: 20),
+              if (onRetry case final retry?)
+                OutlinedButton(
+                  onPressed: retry,
+                  child: const Text('Try again'),
+                ),
               FilledButton(
                 onPressed: () => context.go(
                   AppConfig.useFirebaseEmulators

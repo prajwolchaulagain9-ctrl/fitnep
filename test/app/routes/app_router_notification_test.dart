@@ -1,5 +1,10 @@
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
+import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_destination_record.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_destination_repository.dart';
@@ -27,6 +32,9 @@ void main() {
       final repository = _FakeDestinationRepository();
       final container = ProviderContainer(
         overrides: [
+          routeSessionProvider.overrideWith(
+            (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
+          ),
           notificationDestinationRepositoryProvider.overrideWithValue(
             repository,
           ),
@@ -50,6 +58,79 @@ void main() {
       expect(repository.lastReferenceId, 'record-99');
     });
   }
+
+  testWidgets('direct links enforce role changes and sign-out', (tester) async {
+    final auth = _RouteAuth();
+    addTearDown(auth.users.close);
+    final repository = _FakeDestinationRepository();
+    final container = ProviderContainer(
+      overrides: [
+        firebaseInitializationProvider.overrideWith((ref) async {}),
+        firebaseAuthProvider.overrideWithValue(auth),
+        notificationDestinationRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.messageThreadName, pathParameters: {'id': 'one'});
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+    auth.users.add(null);
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in required'), findsOneWidget);
+
+    auth.users.add(_RouteUser('staff'));
+    await tester.pumpAndSettle();
+    expect(find.text('Access denied'), findsOneWidget);
+    expect(repository.lastReferenceId, isNull);
+
+    auth.users.add(_RouteUser(' Dietitian '));
+    await tester.pumpAndSettle();
+    expect(find.text('Loaded record'), findsOneWidget);
+
+    router.go(AppRoutes.adminClients);
+    await tester.pumpAndSettle();
+    expect(find.text('Access denied'), findsOneWidget);
+
+    auth.users.add(null);
+    await tester.pumpAndSettle();
+    expect(find.text('Sign in required'), findsOneWidget);
+  });
+}
+
+class _RouteAuth extends Fake implements FirebaseAuth {
+  final users = StreamController<User?>();
+
+  @override
+  Stream<User?> idTokenChanges() => users.stream;
+}
+
+class _RouteUser extends Fake implements User {
+  _RouteUser(this.role);
+
+  final String role;
+
+  @override
+  String get uid => 'account-1';
+
+  @override
+  Future<IdTokenResult> getIdTokenResult([bool forceRefresh = false]) async =>
+      _RoleToken(role);
+}
+
+class _RoleToken extends Fake implements IdTokenResult {
+  _RoleToken(this.role);
+
+  final String role;
+
+  @override
+  Map<String, dynamic> get claims => {'role': role};
 }
 
 class _FakeDestinationRepository implements NotificationDestinationRepository {

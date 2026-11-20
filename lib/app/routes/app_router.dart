@@ -21,6 +21,12 @@ import '../../features/notifications/presentation/pages/notification_destination
 import 'app_routes.dart';
 import 'route_access_gate.dart';
 
+const _sharedRoles = {
+  FitNepRole.client,
+  FitNepRole.dietitian,
+  FitNepRole.admin,
+};
+
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     initialLocation: AppConfig.useFirebaseEmulators
@@ -36,7 +42,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminPackageApprovals,
         name: 'admin-package-approvals',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'admin'},
+          allowedRoles: const {FitNepRole.admin},
           builder: (_) => const PackageApprovalsPage(),
         ),
       ),
@@ -70,7 +76,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientHome,
         name: AppRoutes.clientHomeName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'client'},
+          allowedRoles: const {FitNepRole.client},
           builder: (_) => const ClientHomePage(),
         ),
       ),
@@ -78,7 +84,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPackages,
         name: 'client-packages',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'client'},
+          allowedRoles: const {FitNepRole.client},
           builder: (_) => const PackagesPage(),
         ),
       ),
@@ -86,7 +92,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'client'},
+          allowedRoles: const {FitNepRole.client},
           builder: (_) => const NotificationsPage(),
         ),
       ),
@@ -94,7 +100,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPrivacyPreferences,
         name: 'client-privacy-preferences',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'client'},
+          allowedRoles: const {FitNepRole.client},
           builder: (_) => const PrivacyPreferencesPage(),
         ),
       ),
@@ -102,7 +108,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.notifications,
         name: 'notifications',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {},
+          allowedRoles: _sharedRoles,
           builder: (_) => const NotificationsPage(),
         ),
       ),
@@ -110,7 +116,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.dietPlanDetails,
         name: AppRoutes.dietPlanDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {},
+          allowedRoles: _sharedRoles,
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.dietPlan,
             referenceId: state.pathParameters['id']!,
@@ -121,7 +127,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.messageThread,
         name: AppRoutes.messageThreadName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {},
+          allowedRoles: _sharedRoles,
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.message,
             referenceId: state.pathParameters['id']!,
@@ -132,7 +138,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.taskDetails,
         name: AppRoutes.taskDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {},
+          allowedRoles: _sharedRoles,
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.task,
             referenceId: state.pathParameters['id']!,
@@ -143,7 +149,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.paymentDetails,
         name: AppRoutes.paymentDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {},
+          allowedRoles: _sharedRoles,
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.payment,
             referenceId: state.pathParameters['id']!,
@@ -154,7 +160,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminClients,
         name: 'admin-clients',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'admin'},
+          allowedRoles: const {FitNepRole.admin},
           builder: (_) => const ClientListPage(),
         ),
         routes: [
@@ -164,7 +170,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final clientId = state.pathParameters['id']!;
               return RouteAccessGate(
-                allowedRoles: const {'admin'},
+                allowedRoles: const {FitNepRole.admin},
                 builder: (_) => ClientProfilePage(clientId: clientId),
               );
             },
@@ -175,7 +181,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.auditLog,
         name: 'audit-log',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {'admin'},
+          allowedRoles: const {FitNepRole.admin},
           builder: (_) => const AuditLogPage(),
         ),
       ),

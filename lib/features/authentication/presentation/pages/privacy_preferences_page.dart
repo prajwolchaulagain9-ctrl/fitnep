@@ -101,7 +101,7 @@ class _PrivacyPreferencesPageState
               const SizedBox(height: 16),
               Text(
                 'Your own nutrition records remain available to you regardless '
-                'of this setting. This preference is stored on this device and '
+                'of this setting. This preference is saved to your account and '
                 'can be changed at any time.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
