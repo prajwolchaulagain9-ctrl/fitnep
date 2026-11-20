@@ -4,7 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { createNotificationApp } from "./http_app";
-import { FirestorePackageService } from "./package_service";
+import { FirestorePackageService } from "./package_membership_service";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {

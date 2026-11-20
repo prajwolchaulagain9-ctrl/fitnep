@@ -58,7 +58,7 @@ class _PackageContentState extends ConsumerState<_PackageContent> {
       builder: (context) => AlertDialog(
         title: Text('Choose ${item.name}?'),
         content: Text(
-          '${_price(item.priceNpr)} for ${item.durationDays} days. Your package will remain Pending until payment is verified.',
+          '${_price(item.priceNpr)} for ${item.durationLabel}. Your package will remain Pending until payment is verified.',
         ),
         actions: [
           TextButton(
@@ -200,7 +200,7 @@ class _PackageContentState extends ConsumerState<_PackageContent> {
                                     style: theme.textTheme.headlineMedium,
                                   ),
                                   Text(
-                                    '${item.durationDays} days of support',
+                                    '${item.durationLabel} of support',
                                     style: theme.textTheme.bodySmall,
                                   ),
                                   const SizedBox(height: 16),
@@ -326,7 +326,7 @@ class _Failure extends StatelessWidget {
   );
 }
 
-String _price(int amount) => 'Rs. ${NumberFormat('#,##0').format(amount)}';
+String _price(num amount) => 'Rs. ${NumberFormat('#,##0.##').format(amount)}';
 String _nepalDate(DateTime date) =>
     DateFormat('d MMM yyyy, HH:mm')
         .format(date.toUtc().add(const Duration(hours: 5, minutes: 45)));

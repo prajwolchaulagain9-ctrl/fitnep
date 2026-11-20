@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
-import { FirestorePackageService } from "../src/package_service";
+import { FirestorePackageService } from "../src/package_membership_service";
 
 const enabled = process.env.FITNEP_RUN_TRIGGER_TESTS === "true" && process.env.FIRESTORE_EMULATOR_HOST;
 (enabled ? describe : describe.skip)("Package verified-payment Firestore trigger", () => {

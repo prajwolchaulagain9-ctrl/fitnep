@@ -5,12 +5,14 @@ import { onRequest } from "firebase-functions/v2/https";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
+import { FirestorePackageRepository } from "./firestore_package_repository";
+import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
-import { FirestorePackageService, PackageError } from "./package_service";
+import { FirestorePackageService, PackageError } from "./package_membership_service";
 
 if (getApps().length === 0) initializeApp();
 
@@ -20,15 +22,17 @@ export const checkSession = require("../src/index.cjs").checkSession;
 const notificationRepository = new FirestoreNotificationRepository(
   getFirestore(),
 );
-const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(
-  getFirestore(),
-);
+const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(getFirestore());
 const packageService = new FirestorePackageService(getFirestore());
+const packageRepository = new FirestorePackageRepository(getFirestore());
+const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
   notificationRepository,
   privacyPreferencesRepository,
   packageService,
+  packageRepository,
+  purchaseRepository,
 });
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(notificationRepository),

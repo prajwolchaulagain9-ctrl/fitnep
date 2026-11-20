@@ -5,25 +5,37 @@ class PackageOption {
     required this.durationDays,
     required this.priceNpr,
     required this.features,
+    this.durationMonths,
   });
   final String id;
   final String name;
   final int durationDays;
-  final int priceNpr;
+  final num priceNpr;
   final List<String> features;
+  final int? durationMonths;
+
+  String get durationLabel => durationMonths == null
+      ? '$durationDays days'
+      : '$durationMonths ${durationMonths == 1 ? 'month' : 'months'}';
 
   factory PackageOption.fromJson(Map<String, dynamic> json) {
     final item = PackageOption(
       id: json['id'] as String,
       name: json['name'] as String,
-      durationDays: json['duration_days'] as int,
-      priceNpr: json['price_npr'] as int,
-      features: List<String>.unmodifiable(json['features'] as List),
+      durationDays:
+          (json['duration_days'] ?? (json['duration_months'] as int) * 30)
+              as int,
+      durationMonths: json['duration_months'] as int?,
+      priceNpr: (json['price_npr'] ?? json['price']) as num,
+      features: json['features'] == null
+          ? [json['feature_description'] as String]
+          : List<String>.unmodifiable(json['features'] as List),
     );
     if (item.id.isEmpty ||
         item.name.isEmpty ||
         item.durationDays < 1 ||
-        item.priceNpr < 1 ||
+        !item.priceNpr.isFinite ||
+        item.priceNpr <= 0 ||
         item.features.isEmpty) {
       throw const FormatException('Invalid package record.');
     }

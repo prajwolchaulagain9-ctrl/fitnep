@@ -6,8 +6,14 @@ import express, {
 } from "express";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
-import { AuthenticatedUser, NotificationRecord } from "./domain";
-import { FirestorePackageService, PackageError } from "./package_service";
+import {
+  AuthenticatedUser,
+  NotificationRecord,
+  PackageChangeHistoryRecord,
+  PackageHistoryValues,
+  PurchaseRecord,
+} from "./domain";
+import { FirestorePackageService, PackageError } from "./package_membership_service";
 import {
   NotificationRepository,
   NotificationStorageNotConfiguredError,
@@ -31,12 +37,38 @@ import {
   NotificationNotFoundError,
   NotificationService,
 } from "./notification_service";
+import {
+  PackageNotFoundError,
+  PackageRepository,
+  PackageRequestConflictError,
+  PackageStorageNotConfiguredError,
+  UnconfiguredPackageRepository,
+} from "./package_repository";
+import {
+  InvalidPackageError,
+  PackageAuthorizationError,
+  PackageService,
+} from "./package_service";
+import {
+  PurchasablePackageNotFoundError,
+  PurchaseRepository,
+  PurchaseRequestConflictError,
+  PurchaseStorageNotConfiguredError,
+  UnconfiguredPurchaseRepository,
+} from "./purchase_repository";
+import {
+  InvalidPurchaseError,
+  PurchaseAuthorizationError,
+  PurchaseService,
+} from "./purchase_service";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
   privacyPreferencesRepository?: PrivacyPreferencesRepository;
   packageService?: FirestorePackageService;
+  packageRepository?: PackageRepository;
+  purchaseRepository?: PurchaseRepository;
 }
 
 export function createNotificationApp(
@@ -49,6 +81,12 @@ export function createNotificationApp(
   const privacyPreferences = new PrivacyPreferencesService(
     dependencies.privacyPreferencesRepository ??
       new UnconfiguredPrivacyPreferencesRepository(),
+  );
+  const packageService = new PackageService(
+    dependencies.packageRepository ?? new UnconfiguredPackageRepository(),
+  );
+  const purchaseService = new PurchaseService(
+    dependencies.purchaseRepository ?? new UnconfiguredPurchaseRepository(),
   );
 
   app.disable("x-powered-by");
@@ -86,9 +124,6 @@ export function createNotificationApp(
     }
     const membership = await packages().verifyManually(actor, request.params.id ?? "", body.reference);
     response.json({ data: { membership } });
-  }));
-  app.get("/packages", asyncRoute(async (_request, response) => {
-    response.json({ data: { packages: await packages().catalog() } });
   }));
   app.get("/memberships/me", asyncRoute(async (_request, response) => {
     response.json({ data: { memberships: await packages().memberships(client(response)) } });
@@ -157,6 +192,126 @@ export function createNotificationApp(
     asyncRoute(async (_request, response) => {
       const updatedCount = await service.markAllRead(currentUser(response));
       response.status(200).json({ data: { updated_count: updatedCount } });
+    }),
+  );
+
+  // â”€â”€ Customer-facing: returns only active packages â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  app.get(
+    "/packages",
+    asyncRoute(async (_request, response) => {
+      if (dependencies.packageRepository === undefined) {
+        response.json({ data: { packages: await packages().catalog() } });
+        return;
+      }
+      const activePackages = await packageService.list();
+      response.status(200).json({
+        data: { packages: activePackages.map(toApiPackage) },
+      });
+    }),
+  );
+
+  // â”€â”€ Admin: returns all packages including inactive â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  app.get(
+    "/admin/packages",
+    asyncRoute(async (_request, response) => {
+      const user = currentUser(response);
+      if (user.role !== "admin") {
+        throw new PackageAuthorizationError();
+      }
+      const packages = await packageService.listAll();
+      response.status(200).json({
+        data: { packages: packages.map(toApiPackage) },
+      });
+    }),
+  );
+
+  app.get(
+    "/admin/package-history",
+    asyncRoute(async (_request, response) => {
+      const history = await packageService.listHistory(currentUser(response));
+      response.status(200).json({
+        data: { history: history.map(toApiPackageHistory) },
+      });
+    }),
+  );
+
+  app.post(
+    "/packages",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const created = await packageService.create(currentUser(response), {
+        name: body.name,
+        durationMonths: body.duration_months,
+        price: body.price,
+        featureDescription: body.feature_description,
+        requestId: body.request_id,
+      });
+      response.status(201).json({ data: { package: toApiPackage(created) } });
+    }),
+  );
+
+  // â”€â”€ Admin: edit a package â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  app.patch(
+    "/packages/:packageId",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const updated = await packageService.update(
+        currentUser(response),
+        request.params.packageId ?? "",
+        {
+          name: body.name,
+          durationMonths: body.duration_months,
+          price: body.price,
+          featureDescription: body.feature_description,
+        },
+      );
+      response.status(200).json({ data: { package: toApiPackage(updated) } });
+    }),
+  );
+
+  // â”€â”€ Admin: activate or deactivate a package â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  app.patch(
+    "/packages/:packageId/active",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      const isActive = body.is_active;
+      if (typeof isActive !== "boolean") {
+        response.status(400).json({ error: "is_active must be a boolean." });
+        return;
+      }
+      const updated = await packageService.setActiveStatus(
+        currentUser(response),
+        request.params.packageId ?? "",
+        isActive,
+      );
+      response.status(200).json({ data: { package: toApiPackage(updated) } });
+    }),
+  );
+
+  app.get(
+    "/purchases/current",
+    asyncRoute(async (_request, response) => {
+      const purchase = await purchaseService.getCurrent(currentUser(response));
+      response.status(200).json({
+        data: { purchase: purchase === null ? null : toApiPurchase(purchase) },
+      });
+    }),
+  );
+
+  app.post(
+    "/purchases",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      if (Object.keys(body).some(key => !["package_id", "request_id"].includes(key))) {
+        throw new InvalidPurchaseError("Only package_id and request_id may be supplied.");
+      }
+      const purchase = await purchaseService.create(currentUser(response), {
+        packageId: body.package_id,
+        requestId: body.request_id,
+      });
+      response.status(201).json({
+        data: { purchase: toApiPurchase(purchase) },
+      });
     }),
   );
 
@@ -230,6 +385,50 @@ export function createNotificationApp(
         });
         return;
       }
+      if (error instanceof PackageAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidPackageError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PackageRequestConflictError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PackageNotFoundError) {
+        response.status(404).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PackageStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Package storage has not been configured yet.",
+        });
+        return;
+      }
+      if (error instanceof PurchaseAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof InvalidPurchaseError) {
+        response.status(400).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchaseRequestConflictError) {
+        response.status(409).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchasablePackageNotFoundError) {
+        response.status(404).json({ error: error.message });
+        return;
+      }
+      if (error instanceof PurchaseStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Purchase storage has not been configured yet.",
+        });
+        return;
+      }
 
       console.error("Unhandled FitNEP API error", error);
       response.status(500).json({ error: "Internal server error." });
@@ -237,6 +436,66 @@ export function createNotificationApp(
   );
 
   return app;
+}
+
+function toApiPackage(packageRecord: import("./domain").PackageRecord) {
+  return {
+    id: packageRecord.id,
+    name: packageRecord.name,
+    duration_months: packageRecord.durationMonths,
+    price: packageRecord.price,
+    feature_description: packageRecord.featureDescription,
+    is_active: packageRecord.isActive,
+    created_at: packageRecord.createdAt,
+  };
+}
+
+function toApiPackageHistory(history: PackageChangeHistoryRecord) {
+  return {
+    id: history.id,
+    package_id: history.packageId,
+    package_name: history.packageName,
+    admin_id: history.adminId,
+    admin_name: history.adminName,
+    action: history.action,
+    previous_values: history.previousValues === null
+      ? null
+      : toApiHistoryValues(history.previousValues),
+    new_values: toApiHistoryValues(history.newValues),
+    changed_at: history.changedAt,
+  };
+}
+
+function toApiHistoryValues(values: PackageHistoryValues) {
+  return {
+    ...(values.name === undefined ? {} : { name: values.name }),
+    ...(values.durationMonths === undefined
+      ? {}
+      : { duration_months: values.durationMonths }),
+    ...(values.price === undefined ? {} : { price: values.price }),
+    ...(values.featureDescription === undefined
+      ? {}
+      : { feature_description: values.featureDescription }),
+    ...(values.isActive === undefined
+      ? {}
+      : { is_active: values.isActive }),
+  };
+}
+
+function toApiPurchase(purchase: PurchaseRecord) {
+  return {
+    id: purchase.id,
+    package_id: purchase.packageId,
+    package_name: purchase.packageName,
+    price_paid: purchase.pricePaid,
+    duration_months: purchase.durationMonths,
+    feature_description: purchase.featureDescription,
+    purchased_at: purchase.purchasedAt,
+    expires_at: purchase.expiresAt,
+    ...(purchase.status === undefined ? {} : { status: purchase.status }),
+    ...(purchase.daysRemaining === undefined ? {} : { days_remaining: purchase.daysRemaining }),
+    ...(purchase.durationDays === undefined ? {} : { duration_days: purchase.durationDays }),
+  };
 }
 
 function authenticate(authVerifier: AuthVerifier): RequestHandler {

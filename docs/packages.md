@@ -16,9 +16,10 @@ demo connects client/admin login, seeded packages, Pending selection and Active
 membership using only Firebase emulators and a laptop-hosted API; see
 [free demo setup](free-demo.md). It requires no cloud deployment or billing upgrade.
 
-The normal app still needs the US 1 login handoff and the US 68 real catalog if
-the team later wants a live shared app. The demonstration's fictional catalog
-and accounts are confined to the emulator build.
+The normal app still needs the US 1 login handoff. Dilochan's package management
+contribution supplies the shared `packages` catalog, including editing,
+deactivation and immutable change history. The demonstration's fictional
+catalog and accounts are confined to the emulator build.
 
 ## API and ownership
 
@@ -52,6 +53,15 @@ selection is a future operation, not an activation shortcut.
 
 Catalog activation is rechecked inside the selection transaction. Changes to
 catalog prices/features do not alter an existing membership's snapshot.
+The integrated app reads the managed catalog's `duration_months`, `price`,
+`feature_description` and `is_active` fields. Both `/memberships` and `/purchases`
+create the same protected Pending membership record. The purchase API projects
+that record into the membership screen and supplies dates only after verified
+activation. Existing `customer_purchases` snapshots remain readable.
+
+The emulator demo retains its `package_catalog` fixtures. A managed package with
+the same ID takes precedence, including its deactivation state. Managed packages
+preserve their calendar-month duration; legacy fixtures retain fixed-day terms.
 Membership and guard collections remain inaccessible to direct client writes
 and reads. The API is the only client data path.
 
@@ -89,6 +99,8 @@ Activation sets `start_at`, `end_at`, and `payment_id`. The default start is the
 verification time; trusted processing may supply a future ISO UTC
 `membership_start_at`. A day is 24 hours. Membership intervals include the start
 and exclude the end: `[start_at, end_at)`. Adjacent intervals are allowed.
+Calendar-month packages clamp the end date to the last valid day of the target
+month. Existing historical purchase intervals also participate in overlap checks.
 Every selection/activation transaction touches
 `package_membership_guards/{uid}`. Concurrent activations are serialized and
 recheck all that client's active intervals before committing. Malformed existing
@@ -139,3 +151,16 @@ client sign-in displaying Active dates and 30 days remaining. The saved API
 state and client approval denial were verified. The final check set passed 77
 Flutter tests, 18 backend unit tests and nine package emulator tests, with clean
 formatting and analysis. See [the verified demo evidence](free-demo.md#verified-on-19-november-2026).
+
+## Development merge on 20 November 2026
+
+Dilochan's package management, editing/deactivation and change history are
+integrated with Pending selection and manual admin verification. Both selection
+APIs retain the same immutable terms, activation guard and historical-overlap
+checks. Calendar-month dates and fractional NPR prices are verified.
+
+The merged code passed 91 Flutter tests, 32 backend unit tests, 39 combined
+Firebase tests and 11 package transaction tests, plus formatting, analysis and
+the Functions build. Notification-trigger tests allow 60 seconds for emulator
+cold starts while retaining the recipient and idempotency assertions.
+Barsha's login/first-login navigation integration remains a separate handoff.

@@ -14,10 +14,17 @@ import '../../core/config/app_config.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
+import '../../features/admin/presentation/pages/create_package_page.dart';
+import '../../features/admin/presentation/pages/edit_package_page.dart';
+import '../../features/admin/presentation/pages/package_management_page.dart';
+import '../../features/admin/presentation/pages/package_history_page.dart';
+import '../../features/admin/domain/entities/package_entity.dart';
 import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
 import '../../features/notifications/domain/entities/notification_entity.dart';
 import '../../features/notifications/presentation/pages/notification_destination_page.dart';
+import '../../features/packages/presentation/pages/package_selection_page.dart';
+import '../../features/purchases/presentation/pages/membership_page.dart';
 import 'app_routes.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -56,7 +63,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.resetPasswordPath,
         builder: (context, state) => ResetPasswordPage(
           key: ValueKey(state.uri.toString()),
-          // Preserve the mode/duplicate parameters for service validation.
           initialLink: state.uri.query.isEmpty
               ? null
               : 'fitnep://auth/reset-password?${state.uri.query}',
@@ -68,14 +74,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ClientHomePage(),
       ),
       GoRoute(
-        path: AppRoutes.clientPackages,
-        name: 'client-packages',
-        builder: (context, state) => const PackagesPage(),
-      ),
-      GoRoute(
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => const NotificationsPage(),
+      ),
+      // Customer-facing: active packages only
+      GoRoute(
+        path: AppRoutes.clientPackages,
+        name: AppRoutes.clientPackagesName,
+        builder: (context, state) => AppConfig.useFirebaseEmulators
+            ? const PackagesPage()
+            : const PackageSelectionPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.clientMembership,
+        name: AppRoutes.clientMembershipName,
+        builder: (context, state) => const MembershipPage(),
       ),
       GoRoute(
         path: AppRoutes.clientPrivacyPreferences,
@@ -127,6 +141,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: ':id',
             name: 'client-profile',
+
             builder: (context, state) {
               final clientId = state.pathParameters['id']!;
               return ClientProfilePage(clientId: clientId);
@@ -139,6 +154,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'audit-log',
         builder: (context, state) => const AuditLogPage(),
       ),
+      GoRoute(
+        path: AppRoutes.adminPackages,
+        name: 'admin-packages',
+        builder: (context, state) => const PackageManagementPage(),
+        routes: [
+          GoRoute(
+            path: 'history',
+            name: 'admin-package-history',
+            builder: (context, state) => const PackageHistoryPage(),
+          ),
+          GoRoute(
+            path: 'create',
+            name: 'admin-create-package',
+            builder: (context, state) => const CreatePackagePage(),
+          ),
+          GoRoute(
+            path: ':packageId/edit',
+            name: 'admin-edit-package',
+            builder: (context, state) {
+              final package = state.extra as PackageEntity;
+              return EditPackagePage(package: package);
+            },
+          ),
+        ],
+      ),
     ],
     errorBuilder: (context, state) => AppPage(
       title: 'Page unavailable',
@@ -146,7 +186,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Let’s get you back.',
+            'Letâ€™s get you back.',
             style: Theme.of(context).textTheme.headlineMedium,
           ),
           const SizedBox(height: 16),

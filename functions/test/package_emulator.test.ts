@@ -3,12 +3,12 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { setTimeout } from "node:timers/promises";
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore } from "firebase-admin/firestore";
+import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import request from "supertest";
 import { FirebaseAuthVerifier } from "../src/auth";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
 import { createNotificationApp } from "../src/http_app";
-import { FirestorePackageService, PackageError } from "../src/package_service";
+import { FirestorePackageService, PackageError } from "../src/package_membership_service";
 
 const projectId = "demo-fitnep";
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -162,6 +162,35 @@ suite("US 9 package catalog, selection and verified activation", () => {
     await corrupt.update({ start_at: new Date(now.getTime() + 86_400_000).toISOString() });
     await assert.rejects(service.activateVerifiedPayment("corrupt-payment"), /needs attention/);
     assert.equal((await db.collection("package_memberships").doc(member.id).get()).get("status"), "pending");
+  });
+
+  it("uses managed catalog snapshots, fractional NPR prices and calendar-month dates", async () => {
+    now = new Date("2026-01-31T12:00:00.000Z");
+    const catalog = db.collection("packages").doc("monthly");
+    await catalog.set({ name: "Monthly", duration_months: 1, price: 2500.50, feature_description: "Nutrition support", is_active: true });
+    const selected = await service.select("package-b", "monthly", "monthly-selection-01");
+    assert.equal(selected.status, "pending");
+    assert.equal(selected.start_at, undefined);
+    await catalog.update({ price: 9000, duration_months: 6 });
+    const active = await service.verifyManually({ uid: "package-admin", role: "admin" }, selected.id, "MONTHLY-RECEIPT");
+    assert.equal(active.package.price_npr, 2500.50);
+    assert.equal(active.package.duration_months, 1);
+    assert.equal(active.end_at, "2026-02-28T12:00:00.000Z");
+    assert.equal(active.days_remaining, 28);
+    await db.collection("package_catalog").doc("monthly").set(basic);
+    await catalog.update({ is_active: false });
+    await assert.rejects(service.select("package-b", "monthly", "deactivated-monthly-01"), /no longer available/);
+  });
+
+  it("manual activation also rejects overlapping historical purchase records", async () => {
+    const selected = await service.select("package-b", "basic", "historical-overlap-01");
+    await db.collection("customer_purchases").doc("package-b").collection("purchases").doc("historical").set({
+      purchased_at: Timestamp.fromDate(now),
+      expires_at: Timestamp.fromDate(new Date(now.getTime() + 2 * 86_400_000)),
+    });
+    await assert.rejects(service.verifyManually({ uid: "package-admin", role: "admin" }, selected.id, "OVERLAP-OLD"), /already covers/);
+    assert.equal((await db.collection("payments").doc(`manual_${selected.id}`).get()).exists, false);
+    assert.equal((await db.collection("package_memberships").doc(selected.id).get()).get("status"), "pending");
   });
   function choose(token: string, id: string, extra = {}) { return request(api).post("/memberships").auth(token, { type: "bearer" }).send({ package_id: "basic", request_id: id, ...extra }); }
   async function payment(id: string, membership: string, extra = {}) { await db.collection("payments").doc(id).set({ membership_id: membership, recipient_id: "package-a", amount_npr: 2500, currency: "NPR", status: "paid", verified: true, ...extra }); }

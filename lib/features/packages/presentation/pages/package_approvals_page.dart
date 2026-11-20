@@ -191,7 +191,7 @@ class _PackageApprovalsPageState extends ConsumerState<PackageApprovalsPage> {
                                         : 'Client: ${member.clientId}',
                                   ),
                                   Text(
-                                    'Rs. ${NumberFormat('#,##0').format(member.package.priceNpr)} · ${member.package.durationDays} days',
+                                    'Rs. ${NumberFormat('#,##0.##').format(member.package.priceNpr)} · ${member.package.durationLabel}',
                                   ),
                                   const SizedBox(height: 16),
                                   FilledButton(
