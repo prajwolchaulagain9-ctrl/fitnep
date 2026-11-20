@@ -124,7 +124,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(recovery.resets, 1);
       expect(recovery.signOuts, 1);
-      expect(find.text('Back to FitNEP'), findsOneWidget);
+      expect(find.text('Back to login'), findsOneWidget);
     },
   );
   testWidgets('recovery routes remain gated on Firebase initialization', (
@@ -189,7 +189,7 @@ void main() {
   });
 
   testWidgets(
-    'reset validates matching passwords, clears secrets, and returns to FitNEP',
+    'reset validates matching passwords, clears secrets, and returns to login',
     (tester) async {
       final recovery = _Recovery();
       await _open(
@@ -212,9 +212,9 @@ void main() {
       expect(recovery.password, '  Stronger!12  ');
       expect(find.text('Password updated'), findsOneWidget);
       expect(find.byType(TextFormField), findsNothing);
-      await tester.tap(find.text('Back to FitNEP'));
+      await tester.tap(find.text('Back to login'));
       await tester.pumpAndSettle();
-      expect(find.text('Learn about FitNEP'), findsOneWidget);
+      expect(find.text('Welcome back'), findsOneWidget);
     },
   );
 

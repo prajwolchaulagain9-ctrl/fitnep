@@ -24,6 +24,8 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>1005066655980-sqn2mcjmojfi2dol96lolric34cnl1b6.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -31,6 +33,14 @@
 			<string>com.example.fitnep.recovery</string>
 			<key>CFBundleURLSchemes</key>
 			<array><string>fitnep</string></array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.1005066655980-sqn2mcjmojfi2dol96lolric34cnl1b6</string>
+			</array>
 		</dict>
 	</array>
 	<key>LSRequiresIPhoneOS</key>

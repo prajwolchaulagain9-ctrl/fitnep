@@ -283,23 +283,12 @@ class _SearchField extends StatelessWidget {
       controller: controller,
       autofocus: true,
       onChanged: onChanged,
-      style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
       decoration: InputDecoration(
         hintText: 'Search by name...',
         prefixIcon: const Icon(Icons.search_rounded, size: 20),
         suffixIcon: IconButton(
           icon: const Icon(Icons.close_rounded, size: 20),
           onPressed: onClose,
-        ),
-        filled: true,
-        fillColor: AppColors.surfaceVariant,
-        contentPadding: const EdgeInsets.symmetric(
-          vertical: 10,
-          horizontal: 16,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: BorderSide.none,
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,61 +8,109 @@ import '../../../../shared/widgets/app_page.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../data/password_recovery_service.dart';
 
-// Recovery uses the supplied auth screenshots. Login/registration remain US 1.
+// Shared authentication layout, based on the supplied recovery screenshots.
 class RecoveryPage extends StatelessWidget {
   const RecoveryPage({
     super.key,
     required this.title,
     required this.description,
     required this.child,
+    this.showBackButton = true,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AppPage(
-      alignment: Alignment.topCenter,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.goNamed(AppRoutes.welcome);
-                }
-              },
-              icon: const Icon(Icons.arrow_back, size: 20),
-              label: const Text('Back'),
+    final scheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFFF6B00),
+      brightness: Brightness.light,
+    ).copyWith(primary: const Color(0xFFFF6B00), onPrimary: Colors.white);
+    final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+    return Theme(
+      data: base.copyWith(
+        scaffoldBackgroundColor: Colors.white,
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFFF5F5F5),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(double.infinity, 52),
+            shape: const StadiumBorder(),
+            textStyle: base.textTheme.labelLarge?.copyWith(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(height: 16),
-          const Center(child: FitNepWordmark()),
-          const SizedBox(height: 32),
-          Text(title, style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 8),
-          Text(
-            description,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+        ),
+      ),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.dark.copyWith(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.white,
+          systemNavigationBarIconBrightness: Brightness.dark,
+        ),
+        child: AppPage(
+          alignment: Alignment.topCenter,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (showBackButton) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.goNamed(AppRoutes.welcome);
+                      }
+                    },
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    label: const Text('Back'),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              const Center(child: FitNepWordmark()),
+              const SizedBox(height: 32),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF102637),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: Color(0xFF657A8C),
+                ),
+              ),
+              const SizedBox(height: 24),
+              child,
+              const SizedBox(height: 40),
+              const Text(
+                'Move better. Feel stronger. Live healthier.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
+              ),
+            ],
           ),
-          const SizedBox(height: 24),
-          child,
-          const SizedBox(height: 40),
-          Text(
-            'Move better. Feel stronger. Live healthier.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -344,13 +393,13 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                 ? null
                 : _needsSignOut
                 ? _finishSignOut
-                : () => context.goNamed(AppRoutes.welcome),
+                : () => context.goNamed(AppRoutes.login),
             child: Text(
               _busy
                   ? 'Signing out…'
                   : _needsSignOut
                   ? 'Finish signing out'
-                  : 'Back to FitNEP',
+                  : 'Back to login',
             ),
           )
         else if (_invalidLink)

@@ -3,6 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
+import '../../features/authentication/presentation/pages/login_page.dart';
+import '../../features/authentication/presentation/pages/signup_page.dart';
+import '../../features/authentication/presentation/pages/verify_email_page.dart';
+import '../../features/authentication/presentation/controllers/authentication_controller.dart';
+import '../../features/authentication/presentation/pages/app_under_development_page.dart';
 import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
@@ -35,11 +40,69 @@ const _sharedRoles = {
   FitNepRole.admin,
 };
 
+final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
+  final notifier = _RouterRefreshNotifier();
+  ref.listen(authenticationStateProvider, (_, _) => notifier.refresh());
+  ref.onDispose(notifier.dispose);
+  return notifier;
+});
+
 final appRouterProvider = Provider<GoRouter>((ref) {
+  final refreshNotifier = ref.watch(_routerRefreshProvider);
   final router = GoRouter(
     initialLocation: AppConfig.useFirebaseEmulators
         ? AppRoutes.demoEntry
         : AppRoutes.welcomePath,
+    refreshListenable: refreshNotifier,
+    redirect: (context, state) {
+      final authentication = ref.read(authenticationStateProvider);
+      if (!authentication.hasValue) return null;
+
+      final isAuthenticated = authentication.value != null;
+      final path = state.uri.path;
+      final isPublicRoute = const {
+        AppRoutes.welcomePath,
+        AppRoutes.aboutPath,
+        AppRoutes.privacyPolicyPath,
+        AppRoutes.loginPath,
+        AppRoutes.signupPath,
+        AppRoutes.forgotPasswordPath,
+        AppRoutes.resetPasswordPath,
+        if (AppConfig.useFirebaseEmulators) AppRoutes.demoEntry,
+      }.contains(path);
+
+      if (!isAuthenticated && !isPublicRoute) {
+        return AppConfig.useFirebaseEmulators
+            ? AppRoutes.demoEntry
+            : AppRoutes.loginPath;
+      }
+      if (isAuthenticated &&
+          !AppConfig.useFirebaseEmulators &&
+          ref.read(signupEmailOtpEnabledProvider)) {
+        final user = authentication.value!;
+        if (!user.emailVerified &&
+            user.providerData.any(
+              (provider) => provider.providerId == 'password',
+            )) {
+          // Recovery and the policy stay reachable before email verification.
+          if (path != AppRoutes.verifyEmailPath &&
+              path != AppRoutes.forgotPasswordPath &&
+              path != AppRoutes.resetPasswordPath &&
+              path != AppRoutes.privacyPolicyPath) {
+            return AppRoutes.verifyEmailPath;
+          }
+          return null;
+        }
+      }
+      if (isAuthenticated &&
+          (path == AppRoutes.welcomePath ||
+              path == AppRoutes.loginPath ||
+              path == AppRoutes.signupPath ||
+              path == AppRoutes.verifyEmailPath)) {
+        return AppRoutes.appUnderDevelopmentPath;
+      }
+      return null;
+    },
     routes: [
       if (AppConfig.useFirebaseEmulators)
         GoRoute(
@@ -63,6 +126,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.about,
         path: AppRoutes.aboutPath,
         builder: (context, state) => const AboutPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.login,
+        path: AppRoutes.loginPath,
+        builder: (context, state) => const LoginPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.signup,
+        path: AppRoutes.signupPath,
+        builder: (context, state) => const SignupPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.verifyEmail,
+        path: AppRoutes.verifyEmailPath,
+        builder: (context, state) => const VerifyEmailPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.appUnderDevelopment,
+        path: AppRoutes.appUnderDevelopmentPath,
+        builder: (context, state) => const AppUnderDevelopmentPage(),
       ),
       GoRoute(
         name: AppRoutes.privacyPolicy,
@@ -289,3 +372,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.onDispose(router.dispose);
   return router;
 });
+
+class _RouterRefreshNotifier extends ChangeNotifier {
+  void refresh() => notifyListeners();
+}

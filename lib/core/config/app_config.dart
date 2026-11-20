@@ -1,6 +1,22 @@
 class AppConfig {
   AppConfig._();
 
+  // Email/password sessions require verification before protected navigation.
+  static const signupEmailOtpEnabled = bool.fromEnvironment(
+    'SIGNUP_EMAIL_OTP_ENABLED',
+    defaultValue: true,
+  );
+  static const googleWebClientId = String.fromEnvironment(
+    'GOOGLE_WEB_CLIENT_ID',
+  );
+  static const googleIosClientId = String.fromEnvironment(
+    'GOOGLE_IOS_CLIENT_ID',
+  );
+  static const signupOtpSendUrl = String.fromEnvironment('SIGNUP_OTP_SEND_URL');
+  static const signupOtpVerifyUrl = String.fromEnvironment(
+    'SIGNUP_OTP_VERIFY_URL',
+  );
+
   static const useFirebaseEmulators = bool.fromEnvironment(
     'USE_FIREBASE_EMULATORS',
   );
@@ -12,6 +28,15 @@ class AppConfig {
   static const functionsRegion = String.fromEnvironment(
     'FIREBASE_FUNCTIONS_REGION',
     defaultValue: 'us-central1',
+  );
+
+  // Local development only; the SDK override is ignored in release builds.
+  static const functionsEmulatorHost = String.fromEnvironment(
+    'FIREBASE_FUNCTIONS_EMULATOR_HOST',
+  );
+  static const functionsEmulatorPort = int.fromEnvironment(
+    'FIREBASE_FUNCTIONS_EMULATOR_PORT',
+    defaultValue: 5001,
   );
 
   static const String _configuredApiBaseUrl = String.fromEnvironment(

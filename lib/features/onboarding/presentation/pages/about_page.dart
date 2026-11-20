@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../shared/widgets/app_page.dart';
+import '../../../../shared/widgets/fitnep_wordmark.dart';
 
 class AboutPage extends StatelessWidget {
   const AboutPage({super.key});
@@ -12,20 +13,40 @@ class AboutPage extends StatelessWidget {
     final theme = Theme.of(context);
 
     return AppPage(
-      title: 'About FitNEP',
+      alignment: Alignment.topCenter,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.goNamed(AppRoutes.welcome);
+                }
+              },
+              icon: const Icon(Icons.arrow_back, size: 20),
+              label: const Text('Back'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Center(child: FitNepWordmark()),
+          const SizedBox(height: 32),
+          Text('About FitNEP', style: theme.textTheme.headlineMedium),
+          const SizedBox(height: 8),
           Text(
             'Nutrition shaped around you.',
-            style: theme.textTheme.headlineMedium,
+            style: theme.textTheme.bodyMedium,
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'FitNEP brings clients and their nutrition team into one place, '
             'with a focus on practical plans and steady progress.',
+            style: theme.textTheme.bodyMedium,
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
           const _Detail(
             title: 'Your goals',
             description: 'Start with what you want to achieve and the habits that fit your life.',
@@ -88,7 +109,7 @@ class _Detail extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Text(description),
+          Text(description, style: theme.textTheme.bodyMedium),
         ],
       ),
     );

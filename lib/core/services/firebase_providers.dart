@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../firebase_options.dart';
@@ -69,8 +70,18 @@ final firestoreProvider = Provider<FirebaseFirestore>(
 );
 
 final firebaseFunctionsProvider = Provider<FirebaseFunctions>((ref) {
-  return FirebaseFunctions.instanceFor(
+  final functions = FirebaseFunctions.instanceFor(
     app: _activeApp(),
     region: AppConfig.functionsRegion,
   );
+  if (kDebugMode &&
+      !AppConfig.useFirebaseEmulators &&
+      AppConfig.functionsEmulatorHost.isNotEmpty) {
+    functions.useFunctionsEmulator(
+      AppConfig.functionsEmulatorHost,
+      AppConfig.functionsEmulatorPort,
+      automaticHostMapping: false,
+    );
+  }
+  return functions;
 });

@@ -11,20 +11,28 @@ Riverpod provides shared Firebase Auth, Firestore and Functions dependencies.
 US 2 password recovery now has email requests, reset-link/code verification,
 new-password forms, Firebase password-policy checks and local sign-out. Revoked
 sessions are also checked on app resume and every 30 seconds in the foreground. The
-recovery screens follow the supplied auth screenshots. Login/registration (US 1)
-belong to the authentication teammate; package selection and the remaining flows
-are still to be integrated. The original Figma logo, a shared Inter/orange/navy
-theme, and Android/iOS launch screens are now integrated. See
-[branding](docs/branding.md) for source references and platform validation.
+recovery screens follow the supplied auth screenshots. Email/password login now
+uses Firebase Auth with Riverpod state, protected GoRouter routes, remembered-session
+policy and logout. Signup now uses the same authentication UI and shared wordmark,
+with Firebase account creation and Continue with Google on Signup and Login.
+Email signup requires Brevo OTP verification before protected navigation. A local
+USB runtime supports device testing while the existing serverless host is
+configured. Package selection, membership and privacy preferences are integrated.
+The original Figma logo, Inter typography and Android/iOS launch screens are
+integrated; see [branding](docs/branding.md).
 
 See [password recovery integration](docs/password-recovery.md) for route names,
 Firebase setup, session enforcement and verification.
 
+See [signup and verification setup](docs/signup.md) for Google OAuth configuration,
+Brevo server secrets, the optional email OTP flag and hosting requirements.
+
 Dilochan's contribution adds the admin client list/profile/audit screens,
 client home, notifications and routes to related diet plans, conversations,
 tasks and payments. Admin data currently comes from the local mock datasource.
-The shared router starts at welcome and retains all recovery and feature routes;
-US 1 must connect authenticated navigation and trusted role claims.
+The shared router starts at welcome, keeps recovery routes public and protects all
+feature routes behind Firebase authentication. Package, client and admin routes
+also enforce the verified user's allowed role.
 
 The notification API base URL defaults to empty because this Spark project has
 no deployed notification backend. The screens show a configuration error until
@@ -146,8 +154,9 @@ retry, reset completion and keyboard use with larger text on a small display.
 Functions unit/emulator tests cover reset-code replay, changed credentials and
 revoked-session access. Live Android recovery, mailbox delivery, actual provider
 expiry, equivalent public email responses and rejection of old credentials and
-multiple session tokens were verified on 18 November 2026. The login handoff and
-iOS checks remain pending. Protected-data features need authorization and
+multiple session tokens were verified on 18 November 2026. Login, logout, restored
+sessions and route protection have widget coverage; iOS checks remain pending.
+Protected-data features need authorization and
 revocation rules designed for Spark before integration; see the recovery
 document for the evidence and its limits.
 

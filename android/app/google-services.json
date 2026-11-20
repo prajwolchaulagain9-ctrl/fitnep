@@ -12,7 +12,20 @@
           "package_name": "com.example.fitnep"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1005066655980-dfo11q0p42nqq2rah21q7103eae2ed55.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitnep",
+            "certificate_hash": "218d7e0f4dcfcff49bdeadd1405cba742cc90ad7"
+          }
+        },
+        {
+          "client_id": "1005066655980-rdsmnfi2dqnid054bv0icbe4o4omq64m.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB1osBZADes1iRhYvonewMgTwcjUUOTPTE"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1005066655980-rdsmnfi2dqnid054bv0icbe4o4omq64m.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1005066655980-sqn2mcjmojfi2dol96lolric34cnl1b6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.fitnep"
+              }
+            }
+          ]
         }
       }
     }

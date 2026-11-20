@@ -69,7 +69,7 @@ class _PasswordResetSessionObserverState
         // Recovery stays usable while signed out; preserve reset confirmation.
         if (path != AppRoutes.forgotPasswordPath &&
             path != AppRoutes.resetPasswordPath) {
-          router.goNamed(AppRoutes.welcome);
+          router.goNamed(AppRoutes.login);
         }
       }
     } catch (_) {
