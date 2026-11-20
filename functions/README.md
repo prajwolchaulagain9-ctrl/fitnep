@@ -16,6 +16,8 @@ defaults to empty until a supported backend is supplied.
 - Runtime: Node.js 22
 - Exported HTTPS function: `api`
 - Recovery callable: `checkSession`, in `us-central1`
+- Optional signup callables: `sendSignupEmailCode` and `verifySignupEmailCode`,
+  in `us-central1`; see [signup configuration](../docs/signup.md).
 - Shared entry point: `lib/index.js`, built from TypeScript; it also exports
   the existing CommonJS recovery callable from `src/index.cjs`.
 

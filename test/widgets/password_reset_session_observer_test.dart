@@ -5,6 +5,7 @@ import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
@@ -12,7 +13,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../support/memory_session_preference_store.dart';
+
 class _User extends Fake implements User {
+  @override
+  bool get emailVerified => true;
   FirebaseAuthException? error;
   int refreshes = 0;
   @override
@@ -58,6 +63,9 @@ Future<ProviderContainer> _open(
       overrides: [
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        sessionPreferenceStoreProvider.overrideWithValue(
+          MemorySessionPreferenceStore(rememberSession: true),
+        ),
         if (notifications != null)
           notificationRepositoryProvider.overrideWithValue(notifications),
       ],
@@ -133,7 +141,7 @@ void main() {
     expect(notifications.loads, 2);
     await _close(tester, auth);
   });
-  testWidgets('revoked session is cleared on resume and returns to welcome', (
+  testWidgets('revoked session is cleared on resume and returns to login', (
     tester,
   ) async {
     final user = _User();
@@ -144,7 +152,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(auth.currentUser == null, isTrue);
-    expect(find.text('Learn about FitNEP'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -158,7 +166,7 @@ void main() {
     await tester.pump(const Duration(seconds: 31));
     await tester.pumpAndSettle();
     expect(auth.currentUser == null, isTrue);
-    expect(find.text('Learn about FitNEP'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
     await _close(tester, auth);
   });
 

@@ -8,18 +8,20 @@ import '../../../../shared/widgets/app_page.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../data/password_recovery_service.dart';
 
-// Recovery uses the supplied auth screenshots. Login/registration remain US 1.
+// Shared authentication layout, based on the supplied recovery screenshots.
 class RecoveryPage extends StatelessWidget {
   const RecoveryPage({
     super.key,
     required this.title,
     required this.description,
     required this.child,
+    this.showBackButton = true,
   });
 
   final String title;
   final String description;
   final Widget child;
+  final bool showBackButton;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +46,7 @@ class RecoveryPage extends StatelessWidget {
           style: FilledButton.styleFrom(
             minimumSize: const Size(double.infinity, 52),
             shape: const StadiumBorder(),
-            textStyle: const TextStyle(
+            textStyle: base.textTheme.labelLarge?.copyWith(
               fontSize: 16,
               fontWeight: FontWeight.w600,
             ),
@@ -62,21 +64,23 @@ class RecoveryPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () {
-                    if (context.canPop()) {
-                      context.pop();
-                    } else {
-                      context.goNamed(AppRoutes.welcome);
-                    }
-                  },
-                  icon: const Icon(Icons.arrow_back, size: 20),
-                  label: const Text('Back'),
+              if (showBackButton) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.goNamed(AppRoutes.welcome);
+                      }
+                    },
+                    icon: const Icon(Icons.arrow_back, size: 20),
+                    label: const Text('Back'),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+              ],
               const Center(child: FitNepWordmark()),
               const SizedBox(height: 32),
               Text(
@@ -389,13 +393,13 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                 ? null
                 : _needsSignOut
                 ? _finishSignOut
-                : () => context.goNamed(AppRoutes.welcome),
+                : () => context.goNamed(AppRoutes.login),
             child: Text(
               _busy
                   ? 'Signing out…'
                   : _needsSignOut
                   ? 'Finish signing out'
-                  : 'Back to FitNEP',
+                  : 'Back to login',
             ),
           )
         else if (_invalidLink)

@@ -1,7 +1,9 @@
 # Password recovery integration (US 2)
 
-US 2 owns the forgot/reset screens and recovery service. Login and registration
-remain US 1. No login, signup, dashboard, shop or chat screen is implemented here.
+US 2 owns the forgot/reset screens and recovery service. Firebase email/password
+login and signup are integrated. [Signup setup](signup.md) covers Google sign-in
+and the optional Brevo email-code phase. Production dashboard, shop and chat
+screens remain separate feature work.
 
 ## Connect from login
 
@@ -21,10 +23,16 @@ confirmation to Firebase Auth. The reset form never stores the password or code
 in Firestore, secure storage or logs. Passwords are preserved exactly as typed.
 
 On completion it signs out the current Firebase client, clears the recovery form
-and returns to the welcome route. When US 1 supplies the agreed login route,
-change the recovery success destination to that route. Do not create a second
-login implementation for this integration. If local sign-out fails after the
-reset, the screen offers a sign-out retry without reusing the consumed code.
+and returns to the login route. If local sign-out fails after the reset, the screen
+offers a sign-out retry without reusing the consumed code.
+
+## Login session persistence
+
+Firebase Auth owns Android and iOS credentials and refresh tokens. The app never
+stores passwords or copies Firebase ID tokens into application storage. A secure,
+non-secret boolean records the Remember Me choice. Remembered and pre-policy
+sessions use Firebase's native restoration. Explicitly unremembered sessions are
+signed out during the next cold start before protected UI is displayed.
 
 Android and iOS register the `fitnep` URL scheme, for example:
 
@@ -164,9 +172,9 @@ existing account without the matching fixture. Private credentials and action
 codes, plus runtime results, stay in ignored `.dart_tool`; never commit them.
 Expiry cleanup removes only its matching temporary fixture.
 
-Day 2's recovery implementation and Firebase Auth checks are finished. US 2
-still needs the US 1 login entry/success-route integration. Live protected-data
-revocation has not been verified and must be addressed before those data features
+Day 2's recovery implementation and Firebase Auth checks are finished. The login
+entry, success route, restored-session policy, route guards and logout are now
+integrated. Live protected-data revocation has not been verified and must be addressed before those data features
 are exposed; this does not require a paid upgrade for the current Auth flow.
 iOS remains unverified for later platform validation. One-tap HTTPS email-to-app
 links are pending; the supported paste-link flow is documented above. Sprint

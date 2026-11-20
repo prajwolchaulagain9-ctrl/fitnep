@@ -1,11 +1,19 @@
 abstract final class AppRoutes {
   static const welcome = 'welcome';
   static const about = 'about';
+  static const login = 'login';
+  static const signup = 'signup';
+  static const verifyEmail = 'verifyEmail';
+  static const appUnderDevelopment = 'appUnderDevelopment';
   static const forgotPassword = 'forgotPassword';
   static const resetPassword = 'resetPassword';
 
   static const welcomePath = '/';
   static const aboutPath = '/about';
+  static const loginPath = '/login';
+  static const signupPath = '/signup';
+  static const verifyEmailPath = '/verify-email';
+  static const appUnderDevelopmentPath = '/app-under-development';
   static const forgotPasswordPath = '/forgot-password';
   static const resetPasswordPath = '/reset-password';
 
