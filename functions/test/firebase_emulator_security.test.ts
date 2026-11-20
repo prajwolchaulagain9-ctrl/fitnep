@@ -7,6 +7,7 @@ import { Firestore, getFirestore, Timestamp } from "firebase-admin/firestore";
 import request from "supertest";
 
 import { FirebaseAuthVerifier } from "../src/auth";
+import { FirebaseStaffAccountRepository } from "../src/firebase_staff_account_repository";
 import { UserRole } from "../src/domain";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
 import { FirestorePrivacyAcceptanceStore, PrivacyAcceptanceError, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
@@ -82,6 +83,66 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
 
   after(async () => {
     await deleteApp(firebaseApp);
+  });
+
+  it("lets only admins list paginated staff accounts and preserves inactive status", async () => {
+    await createAccount(auth, "staff-1", "staff@fitnep.test", "staff", "Demo Staff");
+    await auth.createUser({
+      uid: "unknown-role",
+      email: "unassigned@fitnep.test",
+      displayName: "Unassigned account",
+    });
+
+    const directory = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(),
+      notificationRepository: repository,
+      staffAccountRepository: new FirebaseStaffAccountRepository({
+        // Force mixed-role pagination with a small fixture.
+        listUsers: (_maxResults, cursor) => auth.listUsers(2, cursor),
+      }),
+    });
+    const path = "/admin/staff-accounts";
+    await request(directory).get(path).expect(401);
+    const [clientToken, dietitianToken, staffToken] = await Promise.all([
+      signIn("client-a@fitnep.test"),
+      signIn("dietitian@fitnep.test"),
+      signIn("staff@fitnep.test"),
+    ]);
+    for (const token of [clientToken, dietitianToken, staffToken]) {
+      await request(directory).get(path).query({ role: "admin" }).set(bearer(token)).expect(403);
+    }
+    await request(directory).get("/notifications").set(bearer(staffToken)).expect(403);
+    await request(directory).patch("/notifications/read-all").set(bearer(staffToken)).expect(403);
+    await request(directory).get("/packages").set(bearer(staffToken)).expect(403);
+
+    await auth.updateUser("staff-1", { disabled: true });
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    await request(directory).get(`${path}?cursor=a&cursor=b`).set(admin).expect(400);
+    const accounts: Array<{ uid: string }> = [];
+    const seenCursors = new Set<string>();
+    let cursor: string | null = null;
+    do {
+      const response = await request(directory)
+        .get(path).query(cursor === null ? {} : { cursor }).set(admin).expect(200);
+      accounts.push(...response.body.data.accounts);
+      cursor = response.body.data.next_cursor as string | null;
+      if (cursor !== null) {
+        assert(!seenCursors.has(cursor));
+        seenCursors.add(cursor);
+      }
+    } while (cursor !== null);
+
+    assert(seenCursors.size > 0);
+    assert.deepEqual(accounts.map((account) => account.uid).sort(), [
+      "admin-1", "dietitian-1", "staff-1",
+    ]);
+    assert.deepEqual(accounts.find((account) => account.uid === "staff-1"), {
+      uid: "staff-1",
+      name: "Demo Staff",
+      email: "staff@fitnep.test",
+      role: "staff",
+      is_active: false,
+    });
   });
 
   it("stores the server acceptance date once and requires confirmation for minors", async () => {

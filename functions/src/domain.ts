@@ -1,4 +1,7 @@
-export const userRoles = ["admin", "dietitian", "client"] as const;
+export const staffAccountRoles = ["admin", "dietitian", "staff"] as const;
+export type StaffAccountRole = (typeof staffAccountRoles)[number];
+
+export const userRoles = [...staffAccountRoles, "client"] as const;
 export type UserRole = (typeof userRoles)[number];
 
 /** Returns the canonical role for a value from a trusted identity source. */
@@ -13,6 +16,14 @@ export interface AuthenticatedUser {
   uid: string;
   role: UserRole;
   displayName?: string;
+}
+
+export interface StaffAccount {
+  uid: string;
+  name: string | null;
+  email: string | null;
+  role: StaffAccountRole;
+  isActive: boolean;
 }
 
 export const notificationTypes = [

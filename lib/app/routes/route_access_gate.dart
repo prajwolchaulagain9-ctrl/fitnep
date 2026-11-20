@@ -7,7 +7,17 @@ import '../../core/config/app_config.dart';
 import '../../core/services/firebase_providers.dart';
 import 'app_routes.dart';
 
-enum FitNepRole { admin, dietitian, client }
+enum FitNepRole {
+  admin,
+  dietitian,
+  client,
+  staff;
+
+  static final _byName = values.asNameMap();
+
+  static FitNepRole? fromClaim(Object? claim) =>
+      claim is String ? _byName[claim.trim().toLowerCase()] : null;
+}
 
 typedef RouteSession = ({String uid, FitNepRole? role});
 
@@ -26,13 +36,7 @@ final routeSessionProvider = FutureProvider.autoDispose<RouteSession?>((
   final user = await ref.watch(_routeUserProvider.future);
   if (user == null) return null;
   final token = await user.getIdTokenResult();
-  final claim = token.claims?['role'];
-  final role = switch (claim is String ? claim.trim().toLowerCase() : null) {
-    'admin' => FitNepRole.admin,
-    'dietitian' => FitNepRole.dietitian,
-    'client' => FitNepRole.client,
-    _ => null,
-  };
+  final role = FitNepRole.fromClaim(token.claims?['role']);
   return (uid: user.uid, role: role);
 }, retry: (retryCount, error) => null);
 

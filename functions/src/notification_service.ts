@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { AuthenticationError } from "./auth";
 import {
   AuthenticatedUser,
   CreateNotificationResult,
@@ -37,6 +38,7 @@ export class NotificationService {
   constructor(private readonly repository: NotificationRepository) {}
 
   async list(user: AuthenticatedUser): Promise<NotificationRecord[]> {
+    requireNotificationAccess(user, "readOwnNotifications");
     const notifications = await this.repository.listForRecipient(user.uid);
     return [...notifications].sort((left, right) =>
       right.createdAt.localeCompare(left.createdAt),
@@ -47,6 +49,7 @@ export class NotificationService {
     user: AuthenticatedUser,
     notificationId: string,
   ): Promise<NotificationRecord> {
+    requireNotificationAccess(user, "readOwnNotifications");
     const notification = await this.repository.getForRecipient(
       requireIdentifier(notificationId, "notificationId"),
       user.uid,
@@ -59,6 +62,7 @@ export class NotificationService {
     user: AuthenticatedUser,
     notificationId: string,
   ): Promise<NotificationRecord> {
+    requireNotificationAccess(user, "updateOwnNotifications");
     const notification = await this.repository.markReadForRecipient(
       requireIdentifier(notificationId, "notificationId"),
       user.uid,
@@ -68,7 +72,17 @@ export class NotificationService {
   }
 
   markAllRead(user: AuthenticatedUser): Promise<number> {
+    requireNotificationAccess(user, "updateOwnNotifications");
     return this.repository.markAllReadForRecipient(user.uid);
+  }
+}
+
+function requireNotificationAccess(
+  user: AuthenticatedUser,
+  action: "readOwnNotifications" | "updateOwnNotifications",
+): void {
+  if (!roleCanPerformAction(user.role, action)) {
+    throw new AuthenticationError("This account cannot access notifications.", 403);
   }
 }
 
