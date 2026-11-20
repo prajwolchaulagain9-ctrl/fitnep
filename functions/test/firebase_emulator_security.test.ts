@@ -3,7 +3,7 @@ import { after, before, beforeEach, describe, it } from "node:test";
 
 import { App, deleteApp, initializeApp } from "firebase-admin/app";
 import { Auth, getAuth } from "firebase-admin/auth";
-import { Firestore, getFirestore } from "firebase-admin/firestore";
+import { Firestore, getFirestore, Timestamp } from "firebase-admin/firestore";
 import request from "supertest";
 
 import { FirebaseAuthVerifier } from "../src/auth";
@@ -62,7 +62,13 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
         "dietitian@fitnep.test",
         "dietitian",
       ),
-      createAccount(auth, "admin-1", "admin@fitnep.test", "admin"),
+      createAccount(
+        auth,
+        "admin-1",
+        "admin@fitnep.test",
+        "admin",
+        "FitNep CEO",
+      ),
     ]);
   });
 
@@ -183,6 +189,140 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     );
   });
 
+  it("persists complete package change history with trusted actor and time", async () => {
+    const [adminToken, clientToken] = await Promise.all([
+      signIn("admin@fitnep.test"),
+      signIn("client-a@fitnep.test"),
+    ]);
+    await request(api)
+      .post("/packages")
+      .set(bearer(adminToken))
+      .send({
+        request_id: "audited-emulator-package",
+        name: "Premium",
+        duration_months: 3,
+        price: 5000,
+        feature_description: "Diet Plan, Workout Plan",
+        admin_id: "forged-admin",
+        admin_name: "Forged Name",
+        changed_at: "2000-01-01T00:00:00.000Z",
+      })
+      .expect(201);
+    await request(api)
+      .post("/packages")
+      .set(bearer(adminToken))
+      .send({
+        request_id: "audited-emulator-package",
+        name: "Premium",
+        duration_months: 3,
+        price: 5000,
+        feature_description: "Diet Plan, Workout Plan",
+      })
+      .expect(201);
+    await request(api)
+      .patch("/packages/audited-emulator-package")
+      .set(bearer(adminToken))
+      .send({
+        name: "Premium Plus",
+        duration_months: 6,
+        price: 6500,
+        feature_description:
+          "Diet Plan, Workout Plan, Personal Coaching",
+      })
+      .expect(200);
+    await request(api)
+      .patch("/packages/audited-emulator-package/active")
+      .set(bearer(adminToken))
+      .send({ is_active: false })
+      .expect(200);
+    await request(api)
+      .patch("/packages/audited-emulator-package/active")
+      .set(bearer(adminToken))
+      .send({ is_active: true })
+      .expect(200);
+
+    const storedHistory = await firestore
+      .collection("package_change_history")
+      .where("package_id", "==", "audited-emulator-package")
+      .get();
+    assert.equal(storedHistory.size, 4);
+    const byAction = new Map(
+      storedHistory.docs.map((document) => [document.get("action"), document]),
+    );
+    const created = byAction.get("created");
+    const updated = byAction.get("updated");
+    const deactivated = byAction.get("deactivated");
+    const activated = byAction.get("activated");
+    assert.ok(created !== undefined);
+    assert.ok(updated !== undefined);
+    assert.ok(deactivated !== undefined);
+    assert.ok(activated !== undefined);
+    assert.equal(created.get("admin_id"), "admin-1");
+    assert.equal(created.get("admin_name"), "FitNep CEO");
+    assert.ok(created.get("changed_at") instanceof Timestamp);
+    assert.deepEqual(updated.get("previous_values"), {
+      name: "Premium",
+      duration_months: 3,
+      price: 5000,
+      feature_description: "Diet Plan, Workout Plan",
+    });
+    assert.deepEqual(updated.get("new_values"), {
+      name: "Premium Plus",
+      duration_months: 6,
+      price: 6500,
+      feature_description:
+        "Diet Plan, Workout Plan, Personal Coaching",
+    });
+    assert.deepEqual(deactivated.get("previous_values"), { is_active: true });
+    assert.deepEqual(deactivated.get("new_values"), { is_active: false });
+    assert.deepEqual(activated.get("previous_values"), { is_active: false });
+    assert.deepEqual(activated.get("new_values"), { is_active: true });
+
+    const historyResponse = await request(api)
+      .get("/admin/package-history")
+      .set(bearer(adminToken))
+      .expect(200);
+    assert.equal(historyResponse.body.data.history.length, 4);
+    await request(api)
+      .get("/admin/package-history")
+      .set(bearer(clientToken))
+      .expect(403);
+
+    const directRead = await fetch(firestorePackageHistoryCollectionUrl(), {
+      headers: bearer(clientToken),
+    });
+    const directWrite = await fetch(
+      `${firestorePackageHistoryCollectionUrl()}/forged-history`,
+      {
+        method: "PATCH",
+        headers: {
+          ...bearer(clientToken),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fields: {
+            admin_id: { stringValue: "forged-admin" },
+            changed_at: { timestampValue: "2000-01-01T00:00:00.000Z" },
+          },
+        }),
+      },
+    );
+    assert.equal(directRead.status, 403);
+    assert.equal(directWrite.status, 403);
+
+    const restartedApi = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(),
+      notificationRepository: repository,
+      packageRepository: new FirestorePackageRepository(firestore),
+      purchaseRepository: new FirestorePurchaseRepository(firestore),
+    });
+    const afterRestart = await request(restartedApi)
+      .get("/admin/package-history")
+      .set(bearer(adminToken))
+      .expect(200);
+    assert.equal(afterRestart.body.data.history.length, 4);
+  });
+
   it("keeps customer A's purchased terms after package edits and snapshots new terms for customer B", async () => {
     const [adminToken, clientAToken, clientBToken] = await Promise.all([
       signIn("admin@fitnep.test"),
@@ -296,8 +436,14 @@ async function createAccount(
   uid: string,
   email: string,
   role: UserRole,
+  displayName?: string,
 ): Promise<void> {
-  await auth.createUser({ uid, email, password: "Password123!" });
+  await auth.createUser({
+    uid,
+    email,
+    password: "Password123!",
+    ...(displayName === undefined ? {} : { displayName }),
+  });
   await auth.setCustomUserClaims(uid, { role });
 }
 
@@ -347,4 +493,8 @@ function bearer(token: string): { Authorization: string } {
 
 function firestoreDocumentUrl(notificationId: string): string {
   return `http://${firestoreEmulatorHost}/v1/projects/${projectId}/databases/(default)/documents/notifications/${notificationId}`;
+}
+
+function firestorePackageHistoryCollectionUrl(): string {
+  return `http://${firestoreEmulatorHost}/v1/projects/${projectId}/databases/(default)/documents/package_change_history`;
 }

@@ -1,16 +1,22 @@
 import {
   CreatePackageResult,
   NewPackage,
+  PackageChangeHistoryRecord,
   PackageRecord,
+  SetPackageActiveStatusInput,
   UpdatePackageInput,
 } from "./domain";
 
 export interface PackageRepository {
   list(): Promise<PackageRecord[]>;
   listAll(): Promise<PackageRecord[]>;
+  listHistory(): Promise<PackageChangeHistoryRecord[]>;
   createIfAbsent(input: NewPackage): Promise<CreatePackageResult>;
   update(id: string, input: UpdatePackageInput): Promise<PackageRecord>;
-  setActiveStatus(id: string, isActive: boolean): Promise<PackageRecord>;
+  setActiveStatus(
+    id: string,
+    input: SetPackageActiveStatusInput,
+  ): Promise<PackageRecord>;
 }
 
 export class PackageStorageNotConfiguredError extends Error {
@@ -44,6 +50,10 @@ export class UnconfiguredPackageRepository implements PackageRepository {
   }
 
   async listAll(): Promise<PackageRecord[]> {
+    return this.unavailable();
+  }
+
+  async listHistory(): Promise<PackageChangeHistoryRecord[]> {
     return this.unavailable();
   }
 

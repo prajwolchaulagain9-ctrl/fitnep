@@ -29,6 +29,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Package change history is written atomically by the authenticated API.
+    // Mobile clients cannot forge actors, timestamps, or before/after values.
+    match /package_change_history/{historyId} {
+      allow read, write: if false;
+    }
+
     // Purchases contain immutable customer contract snapshots and are only
     // accessed through authenticated Cloud Functions.
     match /customer_purchases/{customerId}/purchases/{purchaseId} {

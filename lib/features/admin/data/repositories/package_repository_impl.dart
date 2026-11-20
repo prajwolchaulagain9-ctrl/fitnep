@@ -1,4 +1,5 @@
 import '../../domain/entities/package_entity.dart';
+import '../../domain/entities/package_history_entity.dart';
 import '../../domain/repositories/package_repository.dart';
 import '../datasources/package_remote_datasource.dart';
 
@@ -17,6 +18,12 @@ class PackageRepositoryImpl implements PackageRepository {
   Future<List<PackageEntity>> getActivePackages() async {
     final packages = await _remoteDatasource.getActivePackages();
     return List<PackageEntity>.unmodifiable(packages);
+  }
+
+  @override
+  Future<List<PackageHistoryEntity>> getPackageHistory() async {
+    final history = await _remoteDatasource.getPackageHistory();
+    return List<PackageHistoryEntity>.unmodifiable(history);
   }
 
   @override

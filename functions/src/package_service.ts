@@ -1,7 +1,9 @@
 import {
   AuthenticatedUser,
   NewPackage,
+  PackageChangeHistoryRecord,
   PackageRecord,
+  SetPackageActiveStatusInput,
   UpdatePackageInput,
 } from "./domain";
 import { PackageRepository } from "./package_repository";
@@ -48,11 +50,16 @@ export class PackageService {
     return this.repository.listAll();
   }
 
+  listHistory(user: AuthenticatedUser): Promise<PackageChangeHistoryRecord[]> {
+    this.requireAdmin(user);
+    return this.repository.listHistory();
+  }
+
   async create(
     user: AuthenticatedUser,
     input: CreatePackageInput,
   ): Promise<PackageRecord> {
-    if (user.role !== "admin") throw new PackageAuthorizationError();
+    this.requireAdmin(user);
 
     const packageInput: NewPackage = {
       name: requiredText(input.name, "Package name", 100),
@@ -64,6 +71,7 @@ export class PackageService {
         1000,
       ),
       createdBy: user.uid,
+      createdByName: actorName(user),
       requestId: requiredRequestId(input.requestId),
     };
     return (await this.repository.createIfAbsent(packageInput)).package;
@@ -74,7 +82,7 @@ export class PackageService {
     id: string,
     input: UpdatePackageServiceInput,
   ): Promise<PackageRecord> {
-    if (user.role !== "admin") throw new PackageAuthorizationError();
+    this.requireAdmin(user);
     if (typeof id !== "string" || id.trim().length === 0) {
       throw new InvalidPackageError("Package id is required.");
     }
@@ -89,6 +97,7 @@ export class PackageService {
         1000,
       ),
       updatedBy: user.uid,
+      updatedByName: actorName(user),
     };
     return this.repository.update(id.trim(), updateInput);
   }
@@ -98,12 +107,28 @@ export class PackageService {
     id: string,
     isActive: boolean,
   ): Promise<PackageRecord> {
-    if (user.role !== "admin") throw new PackageAuthorizationError();
+    this.requireAdmin(user);
     if (typeof id !== "string" || id.trim().length === 0) {
       throw new InvalidPackageError("Package id is required.");
     }
-    return this.repository.setActiveStatus(id.trim(), isActive);
+    const statusInput: SetPackageActiveStatusInput = {
+      isActive,
+      updatedBy: user.uid,
+      updatedByName: actorName(user),
+    };
+    return this.repository.setActiveStatus(id.trim(), statusInput);
   }
+
+  private requireAdmin(user: AuthenticatedUser): void {
+    if (user.role !== "admin") throw new PackageAuthorizationError();
+  }
+}
+
+function actorName(user: AuthenticatedUser): string {
+  const displayName = user.displayName?.trim();
+  return displayName === undefined || displayName.length === 0
+    ? user.uid
+    : displayName;
 }
 
 function requiredText(value: unknown, label: string, maxLength: number): string {

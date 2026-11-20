@@ -23,6 +23,12 @@ class PackageManagementPage extends ConsumerWidget {
         title: const Text('Package Management'),
         actions: [
           IconButton(
+            key: const Key('package_history_button'),
+            tooltip: 'Package history',
+            onPressed: () => context.push(AppRoutes.adminPackageHistory),
+            icon: const Icon(Icons.history_rounded),
+          ),
+          IconButton(
             tooltip: 'Refresh packages',
             onPressed: state.isLoading ? null : controller.refresh,
             icon: const Icon(Icons.refresh_rounded),

@@ -12,6 +12,7 @@ import '../../features/admin/presentation/pages/audit_log_page.dart';
 import '../../features/admin/presentation/pages/create_package_page.dart';
 import '../../features/admin/presentation/pages/edit_package_page.dart';
 import '../../features/admin/presentation/pages/package_management_page.dart';
+import '../../features/admin/presentation/pages/package_history_page.dart';
 import '../../features/admin/domain/entities/package_entity.dart';
 import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
@@ -135,6 +136,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'admin-packages',
         builder: (context, state) => const PackageManagementPage(),
         routes: [
+          GoRoute(
+            path: 'history',
+            name: 'admin-package-history',
+            builder: (context, state) => const PackageHistoryPage(),
+          ),
           GoRoute(
             path: 'create',
             name: 'admin-create-package',

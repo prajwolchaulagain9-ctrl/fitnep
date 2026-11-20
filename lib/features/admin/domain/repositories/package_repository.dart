@@ -1,4 +1,5 @@
 import '../entities/package_entity.dart';
+import '../entities/package_history_entity.dart';
 
 abstract class PackageRepository {
   /// Returns all packages (active + inactive) for admin management.
@@ -6,6 +7,8 @@ abstract class PackageRepository {
 
   /// Returns only active packages for customer-facing screens.
   Future<List<PackageEntity>> getActivePackages();
+
+  Future<List<PackageHistoryEntity>> getPackageHistory();
 
   Future<PackageEntity> createPackage({
     required String requestId,

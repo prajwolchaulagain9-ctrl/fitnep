@@ -8,8 +8,11 @@ import {
   AuthenticatedUser,
   CreatePackageResult,
   NewPackage,
+  PackageChangeHistoryRecord,
+  PackageHistoryValues,
   PackageRecord,
   PurchaseRecord,
+  SetPackageActiveStatusInput,
   UpdatePackageInput,
 } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
@@ -26,7 +29,11 @@ import {
 } from "../src/purchase_repository";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
 
-const admin: AuthenticatedUser = { uid: "admin-1", role: "admin" };
+const admin: AuthenticatedUser = {
+  uid: "admin-1",
+  role: "admin",
+  displayName: "FitNep CEO",
+};
 const client: AuthenticatedUser = { uid: "client-1", role: "client" };
 const clientB: AuthenticatedUser = { uid: "client-2", role: "client" };
 
@@ -139,6 +146,7 @@ describe("package API", () => {
     assert.equal(repeated.body.data.package.id, first.body.data.package.id);
     assert.equal(conflict.status, 409);
     assert.equal(repository.records.length, 1);
+    assert.equal(repository.history.length, 1);
   });
 
   it("admin can edit a package", async () => {
@@ -215,6 +223,109 @@ describe("package API", () => {
       .get("/packages")
       .set(bearer("client"));
     assert.equal(customerListAfter.body.data.packages.length, 1);
+  });
+
+  it("records admin identity, time, actions, and changed values", async () => {
+    await request(api)
+      .post("/packages")
+      .set(bearer("admin"))
+      .send({
+        ...validPackage(),
+        admin_id: "forged-admin",
+        admin_name: "Forged Name",
+        changed_at: "2000-01-01T00:00:00.000Z",
+      })
+      .expect(201);
+    await request(api)
+      .patch("/packages/package-request-1")
+      .set(bearer("admin"))
+      .send({
+        name: "Premium Plus",
+        duration_months: 6,
+        price: 6500,
+        feature_description:
+          "Diet Plan, Workout Plan, Personal Coaching",
+      })
+      .expect(200);
+    await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: false })
+      .expect(200);
+    await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: true })
+      .expect(200);
+
+    const response = await request(api)
+      .get("/admin/package-history")
+      .set(bearer("admin"));
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.history.length, 4);
+    const [activated, deactivated, updated, created] =
+      response.body.data.history;
+    assert.equal(created.action, "created");
+    assert.equal(created.admin_id, "admin-1");
+    assert.equal(created.admin_name, "FitNep CEO");
+    assert.notEqual(created.changed_at, "2000-01-01T00:00:00.000Z");
+    assert.deepEqual(updated.previous_values, {
+      name: "Premium Fitness",
+      duration_months: 3,
+      price: 2500,
+      feature_description:
+        "Personalized training and nutrition guidance.",
+    });
+    assert.deepEqual(updated.new_values, {
+      name: "Premium Plus",
+      duration_months: 6,
+      price: 6500,
+      feature_description: "Diet Plan, Workout Plan, Personal Coaching",
+    });
+    assert.equal(deactivated.action, "deactivated");
+    assert.deepEqual(deactivated.previous_values, { is_active: true });
+    assert.deepEqual(deactivated.new_values, { is_active: false });
+    assert.equal(activated.action, "activated");
+    assert.deepEqual(activated.previous_values, { is_active: false });
+    assert.deepEqual(activated.new_values, { is_active: true });
+
+    const restartedApi = createNotificationApp({
+      authVerifier: new FakeAuthVerifier({ admin, client, clientB }),
+      notificationRepository: new InMemoryNotificationRepository(),
+      packageRepository: repository,
+      purchaseRepository,
+    });
+    const afterRestart = await request(restartedApi)
+      .get("/admin/package-history")
+      .set(bearer("admin"));
+    assert.equal(afterRestart.body.data.history.length, 4);
+  });
+
+  it("rejects non-admin history access and skips no-op duplicates", async () => {
+    await request(api).post("/packages").set(bearer("admin")).send(validPackage());
+    await request(api)
+      .patch("/packages/package-request-1")
+      .set(bearer("admin"))
+      .send({
+        name: "Premium Fitness",
+        duration_months: 3,
+        price: 2500,
+        feature_description:
+          "Personalized training and nutrition guidance.",
+      })
+      .expect(200);
+    await request(api)
+      .patch("/packages/package-request-1/active")
+      .set(bearer("admin"))
+      .send({ is_active: true })
+      .expect(200);
+
+    assert.equal(repository.history.length, 1);
+    const forbidden = await request(api)
+      .get("/admin/package-history")
+      .set(bearer("client"));
+    assert.equal(forbidden.status, 403);
   });
 
   it("non-admin cannot deactivate a package", async () => {
@@ -318,6 +429,7 @@ describe("package API", () => {
 
 class InMemoryPackageRepository implements PackageRepository {
   readonly records: PackageRecord[] = [];
+  readonly history: PackageChangeHistoryRecord[] = [];
 
   async list(): Promise<PackageRecord[]> {
     return this.records.filter((r) => r.isActive);
@@ -325,6 +437,10 @@ class InMemoryPackageRepository implements PackageRepository {
 
   async listAll(): Promise<PackageRecord[]> {
     return [...this.records];
+  }
+
+  async listHistory(): Promise<PackageChangeHistoryRecord[]> {
+    return [...this.history].reverse();
   }
 
   async createIfAbsent(input: NewPackage): Promise<CreatePackageResult> {
@@ -350,6 +466,15 @@ class InMemoryPackageRepository implements PackageRepository {
       createdAt: "2026-11-19T12:00:00.000Z",
     };
     this.records.push(record);
+    this.addHistory({
+      packageId: record.id,
+      packageName: record.name,
+      adminId: input.createdBy,
+      adminName: input.createdByName,
+      action: "created",
+      previousValues: null,
+      newValues: packageValues(record),
+    });
     return { package: record, created: true };
   }
 
@@ -358,6 +483,25 @@ class InMemoryPackageRepository implements PackageRepository {
     if (index === -1) throw new PackageNotFoundError();
     const existing = this.records[index];
     if (existing === undefined) throw new PackageNotFoundError();
+    const previousValues: PackageHistoryValues = {};
+    const newValues: PackageHistoryValues = {};
+    captureChange(previousValues, newValues, "name", existing.name, input.name);
+    captureChange(
+      previousValues,
+      newValues,
+      "durationMonths",
+      existing.durationMonths,
+      input.durationMonths,
+    );
+    captureChange(previousValues, newValues, "price", existing.price, input.price);
+    captureChange(
+      previousValues,
+      newValues,
+      "featureDescription",
+      existing.featureDescription,
+      input.featureDescription,
+    );
+    if (Object.keys(newValues).length === 0) return existing;
     const updated: PackageRecord = {
       ...existing,
       name: input.name,
@@ -366,17 +510,75 @@ class InMemoryPackageRepository implements PackageRepository {
       featureDescription: input.featureDescription,
     };
     this.records[index] = updated;
+    this.addHistory({
+      packageId: updated.id,
+      packageName: updated.name,
+      adminId: input.updatedBy,
+      adminName: input.updatedByName,
+      action: "updated",
+      previousValues,
+      newValues,
+    });
     return updated;
   }
 
-  async setActiveStatus(id: string, isActive: boolean): Promise<PackageRecord> {
+  async setActiveStatus(
+    id: string,
+    input: SetPackageActiveStatusInput,
+  ): Promise<PackageRecord> {
     const index = this.records.findIndex((r) => r.id === id);
     if (index === -1) throw new PackageNotFoundError();
     const existing = this.records[index];
     if (existing === undefined) throw new PackageNotFoundError();
-    const updated: PackageRecord = { ...existing, isActive };
+    if (existing.isActive === input.isActive) return existing;
+    const updated: PackageRecord = { ...existing, isActive: input.isActive };
     this.records[index] = updated;
+    this.addHistory({
+      packageId: updated.id,
+      packageName: updated.name,
+      adminId: input.updatedBy,
+      adminName: input.updatedByName,
+      action: input.isActive ? "activated" : "deactivated",
+      previousValues: { isActive: existing.isActive },
+      newValues: { isActive: input.isActive },
+    });
     return updated;
+  }
+
+  private addHistory(
+    input: Omit<PackageChangeHistoryRecord, "id" | "changedAt">,
+  ): void {
+    const sequence = this.history.length + 1;
+    this.history.push({
+      id: `history-${sequence}`,
+      ...input,
+      changedAt: new Date(
+        Date.UTC(2026, 10, 19, 12, sequence),
+      ).toISOString(),
+    });
+  }
+}
+
+function packageValues(record: PackageRecord): PackageHistoryValues {
+  return {
+    name: record.name,
+    durationMonths: record.durationMonths,
+    price: record.price,
+    featureDescription: record.featureDescription,
+    isActive: record.isActive,
+  };
+}
+
+function captureChange<K extends keyof PackageHistoryValues>(
+  previousValues: PackageHistoryValues,
+  newValues: PackageHistoryValues,
+  key: K,
+  previous: PackageHistoryValues[K],
+  next: PackageHistoryValues[K],
+): void {
+  if (previous !== next) {
+    previousValues[key] = previous;
+    newValues[key] = next;
   }
 }
 

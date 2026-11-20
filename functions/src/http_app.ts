@@ -9,6 +9,8 @@ import { AuthVerifier, AuthenticationError } from "./auth";
 import {
   AuthenticatedUser,
   NotificationRecord,
+  PackageChangeHistoryRecord,
+  PackageHistoryValues,
   PurchaseRecord,
 } from "./domain";
 import {
@@ -128,6 +130,16 @@ export function createNotificationApp(
       const packages = await packageService.listAll();
       response.status(200).json({
         data: { packages: packages.map(toApiPackage) },
+      });
+    }),
+  );
+
+  app.get(
+    "/admin/package-history",
+    asyncRoute(async (_request, response) => {
+      const history = await packageService.listHistory(currentUser(response));
+      response.status(200).json({
+        data: { history: history.map(toApiPackageHistory) },
       });
     }),
   );
@@ -313,6 +325,38 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
     feature_description: packageRecord.featureDescription,
     is_active: packageRecord.isActive,
     created_at: packageRecord.createdAt,
+  };
+}
+
+function toApiPackageHistory(history: PackageChangeHistoryRecord) {
+  return {
+    id: history.id,
+    package_id: history.packageId,
+    package_name: history.packageName,
+    admin_id: history.adminId,
+    admin_name: history.adminName,
+    action: history.action,
+    previous_values: history.previousValues === null
+      ? null
+      : toApiHistoryValues(history.previousValues),
+    new_values: toApiHistoryValues(history.newValues),
+    changed_at: history.changedAt,
+  };
+}
+
+function toApiHistoryValues(values: PackageHistoryValues) {
+  return {
+    ...(values.name === undefined ? {} : { name: values.name }),
+    ...(values.durationMonths === undefined
+      ? {}
+      : { duration_months: values.durationMonths }),
+    ...(values.price === undefined ? {} : { price: values.price }),
+    ...(values.featureDescription === undefined
+      ? {}
+      : { feature_description: values.featureDescription }),
+    ...(values.isActive === undefined
+      ? {}
+      : { is_active: values.isActive }),
   };
 }
 

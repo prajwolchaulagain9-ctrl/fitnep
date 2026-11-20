@@ -37,6 +37,7 @@ abstract final class AppRoutes {
   static const auditLog = '/admin/audit-log';
   static const adminPackages = '/admin/packages';
   static const adminCreatePackage = '/admin/packages/create';
+  static const adminPackageHistory = '/admin/packages/history';
 
   /// Returns the path for editing a specific package.
   static String adminEditPackage(String packageId) =>

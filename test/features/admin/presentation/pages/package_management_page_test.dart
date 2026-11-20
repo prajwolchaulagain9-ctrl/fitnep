@@ -2,10 +2,12 @@ import 'dart:async';
 
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
+import 'package:fitnep/features/admin/domain/entities/package_history_entity.dart';
 import 'package:fitnep/features/admin/domain/repositories/package_repository.dart';
 import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart';
 import 'package:fitnep/features/admin/presentation/pages/create_package_page.dart';
 import 'package:fitnep/features/admin/presentation/pages/package_management_page.dart';
+import 'package:fitnep/features/admin/presentation/pages/package_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,6 +108,46 @@ void main() {
       expect(repository.getCalls, greaterThanOrEqualTo(2));
     },
   );
+
+  testWidgets('opens package history with actor, time, and changed values', (
+    tester,
+  ) async {
+    final repository = _FakePackageRepository();
+    final router = GoRouter(
+      initialLocation: AppRoutes.adminPackages,
+      routes: [
+        GoRoute(
+          path: AppRoutes.adminPackages,
+          builder: (_, _) => const PackageManagementPage(),
+          routes: [
+            GoRoute(
+              path: 'history',
+              builder: (_, _) => const PackageHistoryPage(),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [packageRepositoryProvider.overrideWithValue(repository)],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('package_history_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Package History'), findsOneWidget);
+    expect(find.text('Package updated'), findsOneWidget);
+    expect(find.text('Premium Fitness'), findsOneWidget);
+    expect(find.text('By FitNep CEO'), findsOneWidget);
+    expect(find.text('NPR 5,000'), findsOneWidget);
+    expect(find.text('NPR 6,500'), findsOneWidget);
+  });
 }
 
 class _FakePackageRepository implements PackageRepository {
@@ -126,6 +168,23 @@ class _FakePackageRepository implements PackageRepository {
 
   @override
   Future<List<PackageEntity>> getActivePackages() => getPackages();
+
+  @override
+  Future<List<PackageHistoryEntity>> getPackageHistory() async {
+    return [
+      PackageHistoryEntity(
+        id: 'history-1',
+        packageId: 'premium',
+        packageName: 'Premium Fitness',
+        adminId: 'admin-1',
+        adminName: 'FitNep CEO',
+        action: PackageHistoryAction.updated,
+        previousValues: const {'price': 5000},
+        newValues: const {'price': 6500},
+        changedAt: DateTime.utc(2026, 11, 20, 4, 15),
+      ),
+    ];
+  }
 
   @override
   Future<PackageEntity> createPackage({

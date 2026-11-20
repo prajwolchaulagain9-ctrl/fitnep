@@ -63,6 +63,7 @@ whether another user's notification exists.
 
 - `GET /packages` lists packages for any authenticated FitNep role.
 - `GET /admin/packages` lists active and inactive packages for administrators.
+- `GET /admin/package-history` lists durable package changes for administrators.
 - `POST /packages` creates a package for an `admin` role only.
 - `PATCH /packages/:packageId` edits the current offer for future purchases.
 - `PATCH /packages/:packageId/active` activates or deactivates an offer.
@@ -73,6 +74,14 @@ name and feature description are required, duration must be a positive whole
 number of months, and price must be positive. Records are stored in the
 Firestore `packages` collection. Direct mobile reads and writes remain denied
 by Firestore rules.
+
+Create, edit, activate, and deactivate operations also write a record to
+Firestore `package_change_history` in the same transaction as the package
+mutation. Each record contains the package reference and name, verified admin
+UID and token-derived display name/email, action, changed timestamp, and the
+previous/new values that changed. Repeated idempotent creates and no-op edits or
+status requests do not create duplicate history. Direct mobile history reads
+and writes are denied; administrators read history through the API.
 
 ## Customer purchase APIs
 

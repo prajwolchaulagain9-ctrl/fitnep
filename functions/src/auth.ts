@@ -27,12 +27,29 @@ export class FirebaseAuthVerifier implements AuthVerifier {
           403,
         );
       }
-      return { uid: decodedToken.uid, role };
+      const displayName = firstNonEmptyString(
+        decodedToken.name,
+        decodedToken.email,
+      );
+      return {
+        uid: decodedToken.uid,
+        role,
+        ...(displayName === null ? {} : { displayName }),
+      };
     } catch (error) {
       if (error instanceof AuthenticationError) throw error;
       throw new AuthenticationError("The authentication token is invalid.");
     }
   }
+}
+
+function firstNonEmptyString(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
 }
 
 function normalizeRole(value: unknown): UserRole | null {

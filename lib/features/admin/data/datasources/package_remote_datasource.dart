@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../../core/constants/app_constants.dart';
 import '../../../../core/network/api_client.dart';
+import '../models/package_history_model.dart';
 import '../models/package_model.dart';
 
 abstract class PackageRemoteDatasource {
@@ -10,6 +11,8 @@ abstract class PackageRemoteDatasource {
 
   /// Returns only active packages (customer view).
   Future<List<PackageModel>> getActivePackages();
+
+  Future<List<PackageHistoryModel>> getPackageHistory();
 
   Future<PackageModel> createPackage({
     required String requestId,
@@ -70,6 +73,24 @@ class PackageRemoteDatasourceImpl implements PackageRemoteDatasource {
     } on FormatException {
       throw const PackageDataException(
         'The package service returned invalid data.',
+      );
+    }
+  }
+
+  @override
+  Future<List<PackageHistoryModel>> getPackageHistory() async {
+    _ensureConfigured();
+    try {
+      final response = await _apiClient.dio.get<Object?>(
+        AppConstants.adminPackageHistoryEndpoint,
+      );
+      final items = _extractHistoryList(response.data);
+      return items.map(PackageHistoryModel.fromJson).toList(growable: false);
+    } on DioException catch (error) {
+      throw PackageDataException(_messageFor(error, saving: false));
+    } on FormatException {
+      throw const PackageDataException(
+        'The package history service returned invalid data.',
       );
     }
   }
@@ -200,6 +221,27 @@ class PackageRemoteDatasourceImpl implements PackageRemoteDatasource {
         .map((item) {
           if (item is! Map) {
             throw const FormatException('Invalid package item.');
+          }
+          return Map<String, dynamic>.from(item);
+        })
+        .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> _extractHistoryList(Object? responseData) {
+    Object? payload = responseData;
+    if (payload is Map) {
+      payload = payload['data'] ?? payload;
+    }
+    if (payload is Map) {
+      payload = payload['history'];
+    }
+    if (payload is! List) {
+      throw const FormatException('Expected a package history list.');
+    }
+    return payload
+        .map((item) {
+          if (item is! Map) {
+            throw const FormatException('Invalid package history item.');
           }
           return Map<String, dynamic>.from(item);
         })

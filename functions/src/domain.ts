@@ -4,6 +4,7 @@ export type UserRole = (typeof userRoles)[number];
 export interface AuthenticatedUser {
   uid: string;
   role: UserRole;
+  displayName?: string;
 }
 
 export const notificationTypes = [
@@ -60,6 +61,7 @@ export interface NewPackage {
   price: number;
   featureDescription: string;
   createdBy: string;
+  createdByName: string;
   requestId: string;
 }
 
@@ -69,6 +71,41 @@ export interface UpdatePackageInput {
   price: number;
   featureDescription: string;
   updatedBy: string;
+  updatedByName: string;
+}
+
+export interface SetPackageActiveStatusInput {
+  isActive: boolean;
+  updatedBy: string;
+  updatedByName: string;
+}
+
+export const packageHistoryActions = [
+  "created",
+  "updated",
+  "activated",
+  "deactivated",
+] as const;
+export type PackageHistoryAction = (typeof packageHistoryActions)[number];
+
+export interface PackageHistoryValues {
+  name?: string;
+  durationMonths?: number;
+  price?: number;
+  featureDescription?: string;
+  isActive?: boolean;
+}
+
+export interface PackageChangeHistoryRecord {
+  id: string;
+  packageId: string;
+  packageName: string;
+  adminId: string;
+  adminName: string;
+  action: PackageHistoryAction;
+  previousValues: PackageHistoryValues | null;
+  newValues: PackageHistoryValues;
+  changedAt: string;
 }
 
 export interface CreatePackageResult {

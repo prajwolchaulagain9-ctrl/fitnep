@@ -10,6 +10,9 @@ class AppConstants {
   /// Admin packages endpoint (all packages including inactive).
   static const adminPackagesEndpoint = 'admin/packages';
 
+  /// Admin-only durable package change history.
+  static const adminPackageHistoryEndpoint = 'admin/package-history';
+
   static const purchasesEndpoint = 'purchases';
   static const currentPurchaseEndpoint = 'purchases/current';
 
