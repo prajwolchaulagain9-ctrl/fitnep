@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
+import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 
 class ClientHomePage extends ConsumerWidget {
@@ -62,10 +63,16 @@ class ClientHomePage extends ConsumerWidget {
             16,
             24 + MediaQuery.paddingOf(context).bottom,
           ),
-          children: const [
-            _WelcomeCard(),
-            SizedBox(height: 20),
-            Text(
+          children: [
+            const _WelcomeCard(),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => context.push(AppRoutes.clientPackages),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Your packages'),
+            ),
+            const SizedBox(height: 20),
+            const Text(
               'Your FitNep updates',
               style: TextStyle(
                 color: AppColors.textPrimary,
@@ -73,8 +80,8 @@ class ClientHomePage extends ConsumerWidget {
                 fontWeight: FontWeight.w700,
               ),
             ),
-            SizedBox(height: 12),
-            _UpdateTypesCard(),
+            const SizedBox(height: 12),
+            const _UpdateTypesCard(),
           ],
         ),
       ),
@@ -90,13 +97,7 @@ class _ClientAppBarTitle extends StatelessWidget {
     return const Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.primary,
-            shape: BoxShape.circle,
-          ),
-          child: SizedBox.square(dimension: 10),
-        ),
+        FitNepWordmark(width: 32),
         SizedBox(width: 9),
         Flexible(
           child: Text('FitNEP', maxLines: 1, overflow: TextOverflow.ellipsis),

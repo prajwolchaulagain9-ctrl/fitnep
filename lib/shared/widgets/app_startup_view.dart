@@ -12,25 +12,35 @@ class AppStartupView extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppPage(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const FitNepWordmark(),
+          const Center(child: FitNepWordmark(width: 180)),
           const SizedBox(height: 32),
           if (onRetry == null) ...[
             Semantics(
               label: 'Opening FitNEP',
-              child: const LinearProgressIndicator(),
+              child: const Center(
+                child: SizedBox(width: 120, child: LinearProgressIndicator()),
+              ),
             ),
             const SizedBox(height: 16),
-            const Text('Getting things ready…'),
+            Text(
+              'Move better. Feel stronger. Live healthier.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ] else ...[
             Text(
               'We couldn’t connect.',
+              textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             const SizedBox(height: 16),
-            const Text('Please check your connection and try again.'),
+            const Text(
+              'Please check your connection and try again.',
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 24),
             FilledButton(onPressed: onRetry, child: const Text('Try again')),
           ],

@@ -155,3 +155,17 @@ commands work without deploying to the Spark project.
 The retained deployment script is outside the supported Spark workflow. No
 Functions deployment or billing upgrade is part of this integration. A live
 notification service needs a separately agreed hosting arrangement.
+
+## US 9 packages
+
+The shared API also implements authenticated `GET /packages`,
+`GET /memberships/me` and `POST /memberships`. Selection stores a Pending
+catalog snapshot. `onPackagePaymentVerified` activates only matching trusted,
+verified payment records and enforces date overlap in a Firestore transaction.
+See [package schema and integration](../docs/packages.md) for contracts, ownership,
+date boundaries, emulator checks and the outstanding live hosting/login handoff.
+
+The zero-budget project uses manual admin verification via
+`POST /admin/memberships/{id}/verify-payment`, with audited atomic activation.
+`npm run demo:serve` hosts the existing API locally against Auth/Firestore emulators.
+See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment is used.

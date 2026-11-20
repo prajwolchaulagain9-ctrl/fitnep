@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,10 +50,40 @@ void main() {
     );
     await tester.pump();
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(FitNepWordmark), findsOneWidget);
+    final logo = tester.widget<Image>(find.byType(Image));
+    expect((logo.image as AssetImage).assetName, FitNepWordmark.assetPath);
+    expect(logo.width! / logo.height!, closeTo(641 / 615, 0.001));
     expect(find.text('Learn about FitNEP'), findsNothing);
     ready.complete();
     await tester.pumpAndSettle();
     expect(find.text('Learn about FitNEP'), findsOneWidget);
+  });
+
+  testWidgets('branded startup fits a small screen with large text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final ready = Completer<void>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
+          firebaseInitializationProvider.overrideWith((ref) => ready.future),
+        ],
+        child: const FitNepApp(),
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(FitNepWordmark), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    ready.complete();
+    await tester.pumpAndSettle();
   });
 
   testWidgets('welcome navigation works on a small screen with larger text', (

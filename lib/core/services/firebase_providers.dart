@@ -8,6 +8,46 @@ import '../../firebase_options.dart';
 import '../config/app_config.dart';
 
 final firebaseInitializationProvider = FutureProvider<void>((ref) async {
+  if (AppConfig.useFirebaseEmulators) {
+    if (![
+      '127.0.0.1',
+      'localhost',
+      '10.0.2.2',
+    ].contains(AppConfig.emulatorHost)) {
+      throw StateError('The free demo must use a local emulator host.');
+    }
+    final options = DefaultFirebaseOptions.currentPlatform;
+    final app = Firebase.apps.any((app) => app.name == 'fitnep-demo')
+        ? Firebase.app('fitnep-demo')
+        : await Firebase.initializeApp(
+            name: 'fitnep-demo',
+            options: FirebaseOptions(
+              apiKey: options.apiKey,
+              appId: options.appId,
+              messagingSenderId: options.messagingSenderId,
+              projectId: 'demo-fitnep',
+            ),
+          );
+    await FirebaseAuth.instanceFor(app: app).useAuthEmulator(
+      AppConfig.emulatorHost,
+      9099,
+      automaticHostMapping: false,
+    );
+    FirebaseFirestore.instanceFor(app: app).useFirestoreEmulator(
+      AppConfig.emulatorHost,
+      18080,
+      automaticHostMapping: false,
+    );
+    FirebaseFunctions.instanceFor(
+      app: app,
+      region: AppConfig.functionsRegion,
+    ).useFunctionsEmulator(
+      AppConfig.emulatorHost,
+      5001,
+      automaticHostMapping: false,
+    );
+    return;
+  }
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -18,13 +58,19 @@ final firebaseInitializationProvider = FutureProvider<void>((ref) async {
 // Read these after firebaseInitializationProvider has completed successfully.
 // Teammates can override these providers for feature tests and emulators.
 final firebaseAuthProvider = Provider<FirebaseAuth>(
-  (ref) => FirebaseAuth.instance,
+  (ref) => FirebaseAuth.instanceFor(app: _activeApp()),
 );
 
+FirebaseApp _activeApp() =>
+    Firebase.app(AppConfig.useFirebaseEmulators ? 'fitnep-demo' : '[DEFAULT]');
+
 final firestoreProvider = Provider<FirebaseFirestore>(
-  (ref) => FirebaseFirestore.instance,
+  (ref) => FirebaseFirestore.instanceFor(app: _activeApp()),
 );
 
 final firebaseFunctionsProvider = Provider<FirebaseFunctions>((ref) {
-  return FirebaseFunctions.instanceFor(region: AppConfig.functionsRegion);
+  return FirebaseFunctions.instanceFor(
+    app: _activeApp(),
+    region: AppConfig.functionsRegion,
+  );
 });
