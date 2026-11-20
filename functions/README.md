@@ -217,19 +217,22 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
 
 ## US8 privacy and consent
 
-- In the registration feature, link to `AppRoutes.privacyPolicy` and pass
-  `age`, `privacy_policy_accepted`, `privacy_policy_version`, and
-  `guardian_consent_confirmed` to `validatePrivacyAcceptance` before creating
-  an account. The backend helper rejects missing policy acceptance and requires
-  guardian confirmation for an entered age under 18. Before activating the
-  account, call `FirestorePrivacyAcceptanceStore.recordForClient(uid, input)`
-  with the UID assigned by the registration backend. It stores the policy
-  version and a Firestore server timestamp in `privacy_acceptances/{uid}`.
-  Keep the policy version in sync with Flutter's `privacyPolicyVersion`.
+- After Firebase verifies their email, clients complete the privacy step before
+  continuing. The default app writes its own `privacy_acceptances/{uid}` record.
+  Firestore rules validate the entered age, server timestamp and guardian
+  confirmation for minors. The optional `registrationPrivacy` callable writes
+  the same age and consent fields. Returning clients with current acceptance
+  continue directly. Keep the Flutter, Firestore rules and backend policy
+  versions in sync.
+  The consent rules and optional callable require a verified email.
 - `GET /privacy/preferences` returns the client's current choices.
   `PATCH /privacy/preferences` accepts individual boolean fields
   `share_nutrition_records`, `share_meal_photos`, `share_progress_photos`,
   and `share_activity_data`. Missing values in older accounts default to false.
+  The Flutter screen also reads and updates this same document directly.
+  Firestore rules limit the screen to a verified user who has accepted the
+  current policy and owns the document. Newly registered clients can manage
+  their choices while they wait for their client role to be assigned.
 - The private record API is `/clients/:clientId/records/:category`. The
   categories are `nutrition-records`, `meal-photos`, `progress-photos`, and
   `activity-data`. GET lists up to 50 records and accepts the returned

@@ -57,7 +57,6 @@ class _SignupPageState extends ConsumerState<SignupPage> {
   Widget build(BuildContext context) {
     final action = ref.watch(authenticationControllerProvider);
     final busy = action.isLoading;
-    final otpEnabled = ref.watch(signupEmailOtpEnabledProvider);
     return RecoveryPage(
       title: 'Create your account',
       description: 'Start your journey to a healthier you with FitNEP.',
@@ -178,14 +177,18 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                       : 'Create account',
                 ),
               ),
-              if (otpEnabled) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'We\u2019ll verify your email with a 6-digit code.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
-                ),
-              ],
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () => context.pushNamed(AppRoutes.privacyPolicy),
+                child: const Text('Read the Privacy Policy'),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'We\u2019ll ask you to verify your email.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
+              ),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,

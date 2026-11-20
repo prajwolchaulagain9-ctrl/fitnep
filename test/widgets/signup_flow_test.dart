@@ -1,8 +1,11 @@
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
@@ -11,7 +14,10 @@ import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/data/authentication_service.dart';
 import 'package:fitnep/features/authentication/data/email_verification_service.dart';
 import 'package:fitnep/features/authentication/data/google_credential_provider.dart';
+import 'package:fitnep/features/authentication/domain/entities/privacy_preferences.dart';
+import 'package:fitnep/features/authentication/domain/repositories/privacy_preferences_repository.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/authentication/presentation/controllers/privacy_preferences_controller.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -37,6 +43,14 @@ class _User extends Fake implements User {
   List<UserInfo> get providerData => [_ProviderInfo()];
   @override
   Future<void> updateDisplayName(String? displayName) async {}
+  @override
+  Future<IdTokenResult> getIdTokenResult([bool forceRefresh = false]) async =>
+      _UnassignedToken();
+}
+
+class _UnassignedToken extends Fake implements IdTokenResult {
+  @override
+  Map<String, dynamic> get claims => {};
 }
 
 class _Credential extends Fake implements UserCredential {
@@ -57,6 +71,9 @@ class _Auth extends Fake implements FirebaseAuth {
     yield user;
     yield* changes.stream;
   }
+
+  @override
+  Stream<User?> idTokenChanges() => authStateChanges();
 
   @override
   Future<UserCredential> createUserWithEmailAndPassword({
@@ -91,15 +108,30 @@ class _Google extends Fake implements GoogleCredentialProvider {
       cancel ? null : GoogleAuthProvider.credential(idToken: 'test-token');
 }
 
+class _PrivacyPreferences extends Fake implements PrivacyPreferencesRepository {
+  @override
+  Future<PrivacyPreferences> loadPreferences() async =>
+      PrivacyPreferences.defaults;
+}
+
 class _Verification extends Fake implements EmailVerificationService {
-  _Verification(this.auth);
+  _Verification(this.auth, {this.usesLink = false});
   @override
   final _Auth auth;
+  final bool usesLink;
   int sends = 0;
   @override
   Future<EmailCodeDelivery> sendCode({bool resend = false}) async {
     sends++;
-    return const EmailCodeDelivery(resendAfterSeconds: 60);
+    return EmailCodeDelivery(
+      resendAfterSeconds: 60,
+      usesVerificationLink: usesLink,
+    );
+  }
+
+  @override
+  Future<bool> checkVerificationLink() async {
+    return auth.user!.emailVerified;
   }
 
   @override
@@ -157,8 +189,8 @@ Future<void> _loadCaptureFonts() async {
 Future<ProviderContainer> _open(
   WidgetTester tester,
   _Auth auth, {
-  bool? otp,
   _Google? google,
+  RegistrationPrivacyRequest? privacy,
   _Verification? verification,
 }) async {
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
@@ -171,12 +203,17 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        registrationPrivacyProvider.overrideWithValue(
+          privacy ?? (data) async => true,
+        ),
+        privacyPreferencesRepositoryProvider.overrideWithValue(
+          _PrivacyPreferences(),
+        ),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(
           MemorySessionPreferenceStore(),
         ),
-        if (otp != null) signupEmailOtpEnabledProvider.overrideWithValue(otp),
         googleCredentialProvider.overrideWithValue(google ?? _Google()),
         emailVerificationServiceProvider.overrideWithValue(
           verification ?? _Verification(auth),
@@ -241,11 +278,116 @@ Future<void> _snapshot(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets('unavailable privacy endpoint preserves signup for retry', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final verification = _Verification(auth);
+    var attempts = 0;
+    await _open(
+      tester,
+      auth,
+      verification: verification,
+      privacy: (data) async {
+        expect(data['uid'], 'signup-client');
+        expect(data['action'], 'status');
+        if (++attempts == 1) {
+          throw FirebaseFunctionsException(
+            code: 'not-found',
+            message: 'Endpoint unavailable',
+          );
+        }
+        return false;
+      },
+    );
+    await auth.createUserWithEmailAndPassword(
+      email: 'client@example.com',
+      password: 'Password!12',
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
+    await tester.pumpAndSettle();
+    expect(find.text('The privacy service is unavailable.'), findsOneWidget);
+    expect(auth.currentUser?.uid, 'signup-client');
+    expect(verification.sends, 1);
+
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.text('Complete registration'), findsOneWidget);
+    expect(auth.signUps, 1);
+    expect(verification.sends, 1);
+    await _close(tester, auth);
+  });
+
+  testWidgets(
+    'email verification precedes age and guardian consent and saving unlocks the app',
+    (tester) async {
+      final auth = _Auth();
+      final verification = _Verification(auth);
+      var accepted = false;
+      var privacyRequests = 0;
+      await _open(
+        tester,
+        auth,
+        verification: verification,
+        privacy: (data) async {
+          privacyRequests++;
+          expect(auth.currentUser?.emailVerified, isTrue);
+          expect(data['uid'], 'signup-client');
+          if (data['action'] == 'accept') {
+            expect(data['age'], 17);
+            expect(data['privacy_policy_accepted'], true);
+            expect(data['guardian_consent_confirmed'], true);
+            accepted = true;
+          }
+          return accepted;
+        },
+      );
+      await auth.createUserWithEmailAndPassword(
+        email: 'client@example.com',
+        password: 'Password!12',
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Verify your email'), findsOneWidget);
+      expect(find.text('Complete registration'), findsNothing);
+      expect(privacyRequests, 0);
+      await tester.enterText(find.byType(TextFormField), '123456');
+      await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
+      await tester.pumpAndSettle();
+      expect(find.text('Complete registration'), findsOneWidget);
+      expect(find.text('App Under Development'), findsNothing);
+      await tester.enterText(find.byType(TextField), '17');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+      await tester.pumpAndSettle();
+      final button = find.widgetWithText(FilledButton, 'Continue');
+      expect(tester.widget<FilledButton>(button).onPressed, isNull);
+      expect(verification.sends, 1);
+      await tester.tap(find.text('My parent or guardian has given permission'));
+      await tester.pumpAndSettle();
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(accepted, true);
+      expect(find.text('App Under Development'), findsOneWidget);
+      expect(verification.sends, 1);
+      final preferences = find.widgetWithText(
+        OutlinedButton,
+        'Privacy preferences',
+      );
+      await tester.ensureVisible(preferences);
+      await tester.tap(preferences);
+      await tester.pumpAndSettle();
+      expect(find.text('Share progress photos'), findsOneWidget);
+      await _close(tester, auth);
+    },
+  );
+
   testWidgets('privacy policy is readable before signup and OTP verification', (
     tester,
   ) async {
     final auth = _Auth();
-    final container = await _open(tester, auth, otp: true);
+    final container = await _open(tester, auth);
     final router = container.read(appRouterProvider);
     router.goNamed(AppRoutes.privacyPolicy);
     await tester.pumpAndSettle();
@@ -307,18 +449,19 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('signup enters development screen when OTP is disabled', (
+  testWidgets('signup asks for email verification before consent', (
     tester,
   ) async {
     final auth = _Auth();
-    final container = await _open(tester, auth, otp: false);
+    final container = await _open(tester, auth);
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
     await _fill(tester);
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
     expect(auth.signUps, 1);
-    expect(find.text('App Under Development'), findsOneWidget);
+    expect(find.text('Verify your email'), findsOneWidget);
+    expect(find.text('App Under Development'), findsNothing);
     await _close(tester, auth);
   });
 
@@ -355,11 +498,41 @@ void main() {
   });
 
   testWidgets(
+    'email link requires verified Firebase status before continuing',
+    (tester) async {
+      final auth = _Auth();
+      await _open(
+        tester,
+        auth,
+        verification: _Verification(auth, usesLink: true),
+      );
+      await auth.createUserWithEmailAndPassword(
+        email: 'client@example.com',
+        password: 'Password!12',
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(TextFormField), findsNothing);
+      final check = find.text('I verified my email');
+      await tester.tap(check);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Open the verification link in your email, then try again.'),
+        findsOneWidget,
+      );
+      auth.user!.emailVerified = true;
+      await tester.tap(check);
+      await tester.pumpAndSettle();
+      expect(find.text('App Under Development'), findsOneWidget);
+      await _close(tester, auth);
+    },
+  );
+
+  testWidgets(
     'Google cancellation keeps signup usable and success enters the app',
     (tester) async {
       final auth = _Auth();
       final google = _Google()..cancel = true;
-      final container = await _open(tester, auth, otp: true, google: google);
+      final container = await _open(tester, auth, google: google);
       container.read(appRouterProvider).go(AppRoutes.signupPath);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Continue with Google'));

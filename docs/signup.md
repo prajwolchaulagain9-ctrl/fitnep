@@ -38,21 +38,28 @@ URL scheme is configured. For other signing keys or configuration changes:
 The app's Firebase platform setup currently supports Android/iOS. Web has the
 Firebase popup branch, but needs its own Firebase configuration before use.
 
-## Email OTP after signup
+## Email verification and consent after signup
 
-`SIGNUP_EMAIL_OTP_ENABLED` defaults to `true`. Email/password signup creates its
-Firebase account and opens `/verify-email`, which requests a Brevo code. Protected
-routes remain unavailable until verification succeeds. Verified Google accounts
-open App Under Development directly.
+Email/password signup creates a Firebase account and asks the user to verify
+their email. After verification, clients enter their age and accept the current
+Privacy Policy. Clients under 18 confirm guardian permission. The app opens
+after Firestore confirms the record was saved. Google accounts whose email is
+already verified go straight to the privacy step.
 
 Unverified email/password users also return to verification on login and restored
 sessions. Password recovery remains accessible.
 
-The verification screen sends a code, accepts six digits, supports resend after
-60 seconds and offers sign-out to use another account. Verification reloads the
-Firebase user and requires the refreshed token's `email_verified` claim before
-protected navigation. Reopening verification reuses the existing unexpired code;
-only an explicit resend replaces it.
+The verification screen defaults to a Firebase email link when no code
+endpoints are configured or when `SIGNUP_EMAIL_OTP_ENABLED=false`. It also uses
+the link when the configured send
+endpoint returns 404. After opening the link, return to the app and tap
+**I verified my email**. Verification reloads the Firebase user and checks the
+refreshed token's `email_verified` claim before protected navigation.
+When code endpoints are configured and available, the screen accepts the
+six-digit code and reuses it until expiry or an explicit resend.
+
+Local email/password signup uses a test verification link from the Auth
+emulator. The built-in demo accounts are already verified.
 
 The Google button uses Google's official G asset from
 `https://developers.google.com/static/identity/images/g-logo.png`.
@@ -125,6 +132,13 @@ attaches the current Firebase ID token. The host must validate it, derive UID an
 email server-side, persist OTP records atomically and return the Firebase callable
 protocol (`result` or `error`). Keep Brevo and Firebase Admin credentials in the
 host's secret store. Provider and project details are needed before deployment.
+
+The default app saves the entered age, policy version and server timestamp in
+the signed-in user's Firestore consent record. Set up the default Firestore
+database and publish the project's Firestore rules before distributing the
+build. For an independently hosted privacy callable, set `SIGNUP_PRIVACY_URL`
+to its HTTPS URL. The app and any email-code backend must use the same Firebase
+Auth project and Firestore database.
 
 ## Local Samsung USB test
 

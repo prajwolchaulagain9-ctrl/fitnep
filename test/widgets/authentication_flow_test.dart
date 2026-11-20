@@ -1,3 +1,5 @@
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -22,9 +24,10 @@ class _User extends Fake implements User {
 class _Credential extends Fake implements UserCredential {}
 
 class _Auth extends Fake implements FirebaseAuth {
-  _Auth({this.user});
+  _Auth({this.user, this.emitSignOut = true});
 
   User? user;
+  final bool emitSignOut;
   FirebaseAuthException? signInError;
   String? email;
   String? password;
@@ -57,7 +60,7 @@ class _Auth extends Fake implements FirebaseAuth {
   Future<void> signOut() async {
     signOuts++;
     user = null;
-    changes.add(null);
+    if (emitSignOut) changes.add(null);
   }
 }
 
@@ -69,6 +72,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(preferences),
@@ -101,12 +105,15 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('real Firebase login reaches development screen and logs out', (
+  testWidgets('logout returns to welcome even without a sign-out event', (
     tester,
   ) async {
-    final auth = _Auth();
+    final auth = _Auth(emitSignOut: false);
     final preferences = MemorySessionPreferenceStore();
-    await _open(tester, auth, preferences);
+    final container = await _open(tester, auth, preferences);
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.welcome);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
     await tester.pumpAndSettle();
@@ -136,7 +143,11 @@ void main() {
 
     expect(auth.signOuts, 1);
     expect(preferences.rememberSession, isNull);
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      AppRoutes.welcomePath,
+    );
+    expect(find.text('Learn about FitNEP'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -167,6 +178,31 @@ void main() {
           ?.text,
       isEmpty,
     );
+    await _close(tester, auth);
+  });
+
+  testWidgets('logout replaces a signed-in page opened above a public route', (
+    tester,
+  ) async {
+    final auth = _Auth(user: _User());
+    final container = await _open(
+      tester,
+      auth,
+      MemorySessionPreferenceStore(rememberSession: true),
+    );
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.about);
+    await tester.pumpAndSettle();
+    unawaited(router.pushNamed(AppRoutes.appUnderDevelopment));
+    await tester.pumpAndSettle();
+    expect(router.canPop(), isTrue);
+
+    final logout = find.widgetWithText(FilledButton, 'Logout');
+    await tester.ensureVisible(logout);
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+    expect(find.text('Learn about FitNEP'), findsOneWidget);
+    expect(router.canPop(), isFalse);
     await _close(tester, auth);
   });
 

@@ -54,10 +54,63 @@ service cloud.firestore {
     // The authenticated API reads consent and the current assignment before
     // accessing records. No app can write or bypass those checks directly.
     match /privacy_preferences/{clientId} {
-      allow read, write: if false;
+      function canManageSharing() {
+        let acceptance = /databases/$(database)/documents/privacy_acceptances/$(clientId);
+        return request.auth != null &&
+          request.auth.uid == clientId &&
+          request.auth.token.email_verified == true &&
+          request.auth.token.get('role', 'client') == 'client' &&
+          exists(acceptance) &&
+          get(acceptance).data.policy_version == '1' &&
+          get(acceptance).data.accepted_at is timestamp;
+      }
+
+      function validSharingChoices() {
+        let choices = request.resource.data;
+        return choices.keys().hasOnly([
+          'share_nutrition_records', 'share_meal_photos',
+          'share_progress_photos', 'share_activity_data', 'updated_at'
+        ]) &&
+          choices.get('share_nutrition_records', false) is bool &&
+          choices.get('share_meal_photos', false) is bool &&
+          choices.get('share_progress_photos', false) is bool &&
+          choices.get('share_activity_data', false) is bool &&
+          choices.updated_at == request.time;
+      }
+
+      allow get: if canManageSharing();
+      allow create, update: if canManageSharing() && validSharingChoices();
     }
     match /privacy_acceptances/{clientId} {
-      allow read, write: if false;
+      function ownsAcceptance() {
+        return request.auth != null &&
+          request.auth.uid == clientId &&
+          request.auth.token.email_verified == true;
+      }
+
+      function validAcceptance() {
+        let consent = request.resource.data;
+        return consent.keys().hasOnly([
+          'policy_version', 'accepted_at', 'age_at_acceptance',
+          'guardian_consent_confirmed', 'guardian_consent_confirmed_at'
+        ]) &&
+          consent.policy_version == '1' &&
+          consent.accepted_at == request.time &&
+          consent.age_at_acceptance is int &&
+          consent.age_at_acceptance >= 1 && consent.age_at_acceptance <= 120 &&
+          ((consent.age_at_acceptance >= 18 &&
+            consent.guardian_consent_confirmed == false &&
+            !('guardian_consent_confirmed_at' in consent)) ||
+           (consent.age_at_acceptance < 18 &&
+            consent.guardian_consent_confirmed == true &&
+            consent.guardian_consent_confirmed_at == request.time));
+      }
+
+      allow get: if ownsAcceptance();
+      allow create: if ownsAcceptance() && validAcceptance();
+      allow update: if ownsAcceptance() && validAcceptance() &&
+        (resource.data.get('policy_version', '') != '1' ||
+         !(resource.data.get('accepted_at', null) is timestamp));
     }
     match /client_assignments/{clientId} {
       allow read, write: if false;

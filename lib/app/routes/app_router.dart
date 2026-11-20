@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
 import '../../features/authentication/presentation/pages/login_page.dart';
+import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
 import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
@@ -76,23 +77,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ? AppRoutes.demoEntry
             : AppRoutes.loginPath;
       }
-      if (isAuthenticated &&
-          !AppConfig.useFirebaseEmulators &&
-          ref.read(signupEmailOtpEnabledProvider)) {
-        final user = authentication.value!;
-        if (!user.emailVerified &&
-            user.providerData.any(
-              (provider) => provider.providerId == 'password',
-            )) {
-          // Recovery and the policy stay reachable before email verification.
-          if (path != AppRoutes.verifyEmailPath &&
-              path != AppRoutes.forgotPasswordPath &&
-              path != AppRoutes.resetPasswordPath &&
-              path != AppRoutes.privacyPolicyPath) {
-            return AppRoutes.verifyEmailPath;
-          }
-          return null;
+      if (isAuthenticated && !authentication.value!.emailVerified) {
+        // Recovery and the policy stay reachable before email verification.
+        if (path != AppRoutes.verifyEmailPath &&
+            path != AppRoutes.forgotPasswordPath &&
+            path != AppRoutes.resetPasswordPath &&
+            path != AppRoutes.privacyPolicyPath) {
+          return AppRoutes.verifyEmailPath;
         }
+        return null;
       }
       if (isAuthenticated &&
           (path == AppRoutes.welcomePath ||
@@ -145,7 +138,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         name: AppRoutes.appUnderDevelopment,
         path: AppRoutes.appUnderDevelopmentPath,
-        builder: (context, state) => const AppUnderDevelopmentPage(),
+        builder: (context, state) =>
+            const RegistrationPrivacyGate(child: AppUnderDevelopmentPage()),
       ),
       GoRoute(
         name: AppRoutes.privacyPolicy,
@@ -206,7 +200,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPrivacyPreferences,
         name: 'client-privacy-preferences',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          allowedRoles: const {FitNepRole.client, null},
+          requirePrivacyAcceptance: true,
           builder: (_) => const PrivacyPreferencesPage(),
         ),
       ),

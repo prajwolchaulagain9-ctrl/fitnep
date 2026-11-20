@@ -1,6 +1,7 @@
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/features/dashboards/presentation/pages/client_home_page.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
@@ -26,6 +27,7 @@ void main() {
       ]);
       final container = ProviderContainer(
         overrides: [
+          registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           routeSessionProvider.overrideWith(
             (ref) async =>
                 (uid: 'authenticated-client', role: FitNepRole.client),

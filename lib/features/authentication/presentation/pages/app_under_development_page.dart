@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/routes/app_routes.dart';
+import '../../../../app/routes/route_access_gate.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../controllers/authentication_controller.dart';
+import '../sign_out_to_welcome.dart';
 import 'password_recovery_pages.dart';
 
 class AppUnderDevelopmentPage extends ConsumerWidget {
@@ -11,6 +15,10 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final action = ref.watch(authenticationControllerProvider);
+    final session = ref.watch(routeSessionProvider).value;
+    final canManageSharing =
+        session != null &&
+        (session.role == null || session.role == FitNepRole.client);
 
     return RecoveryPage(
       showBackButton: false,
@@ -58,12 +66,19 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 32),
+          if (canManageSharing) ...[
+            OutlinedButton(
+              onPressed: action.isLoading
+                  ? null
+                  : () => context.push(AppRoutes.clientPrivacyPreferences),
+              child: const Text('Privacy preferences'),
+            ),
+            const SizedBox(height: 12),
+          ],
           FilledButton.icon(
             onPressed: action.isLoading
                 ? null
-                : () => ref
-                      .read(authenticationControllerProvider.notifier)
-                      .signOut(),
+                : () => signOutToWelcome(context, ref),
             icon: action.isLoading
                 ? const SizedBox.square(
                     dimension: 18,

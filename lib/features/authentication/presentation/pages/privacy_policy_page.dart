@@ -39,7 +39,7 @@ const _sections = [
     'Account and consent',
     'FitNEP uses your name and email to create your account. We ask for your '
         'age to determine whether you need permission from a parent or '
-        'guardian. We save the date and version of your policy acceptance, '
+        'guardian. We save the age you enter, the date and version of your policy acceptance, '
         'and record your guardian consent confirmation if you are under 18.',
   ),
   (

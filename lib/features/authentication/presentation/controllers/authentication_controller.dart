@@ -11,10 +11,6 @@ final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
 );
 
-final signupEmailOtpEnabledProvider = Provider<bool>(
-  (ref) => AppConfig.signupEmailOtpEnabled,
-);
-
 final googleCredentialProvider = Provider<GoogleCredentialProvider>(
   (ref) => NativeGoogleCredentialProvider(),
 );
@@ -90,6 +86,11 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     try {
       final service = await ref.read(authenticationBootstrapProvider.future);
       await service.signOut();
+      // Refresh from Firebase if the stream still has the old session.
+      if (ref.read(authenticationStateProvider).value != null) {
+        ref.invalidate(authenticationStateProvider);
+        await ref.read(authenticationStateProvider.future);
+      }
       state = const AuthenticationActionState();
       return true;
     } on AuthenticationFailure catch (error) {
