@@ -6,6 +6,10 @@ import {
   NewNotification,
   NotificationRecord,
 } from "./domain";
+import {
+  ProtectedAction,
+  roleCanPerformAction,
+} from "./authorization_policy";
 import { NotificationRepository } from "./notification_repository";
 
 export class NotificationNotFoundError extends Error {
@@ -122,7 +126,7 @@ export class NotificationWorkflowService {
     actor: AuthenticatedUser,
     event: DietPlanAssignedEvent,
   ): Promise<CreateNotificationResult> {
-    requireWorkflowRole(actor, ["admin", "dietitian"]);
+    requireWorkflowAction(actor, "createDietPlanAssignmentNotification");
     const planId = requireIdentifier(event.planId, "planId");
     const clientId = requireIdentifier(event.clientId, "clientId");
     return this.create({
@@ -159,7 +163,7 @@ export class NotificationWorkflowService {
     actor: AuthenticatedUser,
     event: TaskAssignedEvent,
   ): Promise<CreateNotificationResult> {
-    requireWorkflowRole(actor, ["admin", "dietitian"]);
+    requireWorkflowAction(actor, "createTaskAssignmentNotification");
     const taskId = requireIdentifier(event.taskId, "taskId");
     const assigneeId = requireIdentifier(event.assigneeId, "assigneeId");
     return this.create({
@@ -205,11 +209,11 @@ export class NotificationWorkflowService {
   }
 }
 
-function requireWorkflowRole(
+function requireWorkflowAction(
   actor: AuthenticatedUser,
-  allowedRoles: AuthenticatedUser["role"][],
+  action: ProtectedAction,
 ): void {
-  if (!allowedRoles.includes(actor.role)) {
+  if (!roleCanPerformAction(actor.role, action)) {
     throw new WorkflowAuthorizationError();
   }
 }

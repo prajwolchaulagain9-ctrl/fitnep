@@ -38,23 +38,6 @@ export class PrivacyPreferencesService {
   }
 }
 
-/**
- * Shared policy for nutrition-record read handlers. `assignedDietitianId`
- * must come from the trusted assignment store, never from request data.
- */
-export function canReadNutritionRecords(
-  user: AuthenticatedUser,
-  clientId: string,
-  assignedDietitianId: string | null,
-  shareNutritionRecords: boolean,
-): boolean {
-  if (user.role === "client" && user.uid === clientId) return true;
-
-  return user.role === "dietitian" &&
-    user.uid === assignedDietitianId &&
-    shareNutritionRecords;
-}
-
 function requireClient(user: AuthenticatedUser): void {
   if (user.role !== "client") {
     throw new PrivacyPreferencesAuthorizationError();

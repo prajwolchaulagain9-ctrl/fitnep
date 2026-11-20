@@ -55,9 +55,11 @@ Dietitian roles do not receive an implicit bypass to client notifications.
 Only the authenticated Client can read or update their own preference; the
 server derives the client ID from the verified token. Preferences are stored in
 `privacy_preferences/{clientUid}` and default to sharing disabled. Nutrition
-record read handlers must use `canReadNutritionRecords` with the current
-assigned dietitian loaded from trusted assignment data before returning records.
-Client access to their own records remains allowed when sharing is disabled.
+record read handlers must call `NutritionRecordAccessService.assertCanRead`
+before returning records. The gate permits the client to read their own records;
+a dietitian must be the current assignee and sharing must be enabled. Assignment
+storage is not implemented in this backend yet, so the gate fails closed until a
+trusted assignment reader is configured.
 
 ## Notification APIs
 

@@ -22,6 +22,10 @@ import {
   PrivacyPreferencesService,
 } from "./privacy_preferences_service";
 import {
+  AssignmentStorageNotConfiguredError,
+  NutritionRecordsAuthorizationError,
+} from "./nutrition_record_access_service";
+import {
   InvalidWorkflowEventError,
   NotificationNotFoundError,
   NotificationService,
@@ -164,6 +168,16 @@ export function createNotificationApp(
       if (error instanceof PrivacyPreferencesStorageNotConfiguredError) {
         response.status(503).json({
           error: "Privacy preferences storage has not been configured yet.",
+        });
+        return;
+      }
+      if (error instanceof NutritionRecordsAuthorizationError) {
+        response.status(403).json({ error: error.message });
+        return;
+      }
+      if (error instanceof AssignmentStorageNotConfiguredError) {
+        response.status(503).json({
+          error: "Client assignment storage has not been configured yet.",
         });
         return;
       }
