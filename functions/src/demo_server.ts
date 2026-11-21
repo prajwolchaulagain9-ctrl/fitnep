@@ -21,14 +21,13 @@ const db = getFirestore(firebase);
 
 async function main() {
   for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"]] as const) {
-    try {
-      const demoUser = await auth.getUser(uid);
-      if (!demoUser.emailVerified) await auth.updateUser(uid, { emailVerified: true });
-    } catch (error) {
+    const demoUser = await auth.getUser(uid).catch((error: unknown) => {
       if ((error as { code?: string }).code !== "auth/user-not-found") throw error;
-      await auth.createUser({ uid, email: `${uid}@fitnep.test`, emailVerified: true, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
+      return auth.createUser({ uid, email: `${uid}@fitnep.test`, emailVerified: true, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
+    });
+    if (demoUser.customClaims?.role == null) {
+      await auth.setCustomUserClaims(uid, { ...demoUser.customClaims, role });
     }
-    await auth.setCustomUserClaims(uid, { role });
   }
   for (const [id, name, days, price, features] of [
     ["basic", "Basic", 30, 2500, ["Personalized nutrition plan", "Weekly check-ins"]],

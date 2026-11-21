@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../shared/widgets/password_form_field.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/storage/token_storage.dart';
@@ -110,14 +111,11 @@ class _ChangeStaffPasswordPageState
             if (_error ?? action.errorMessage case final String error)
               RecoveryMessage(error),
             if (!_changed) ...[
-              TextFormField(
+              PasswordFormField(
                 controller: _password,
-                readOnly: _saving,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
+                enabled: !_saving,
                 autofillHints: const [AutofillHints.newPassword],
-                decoration: const InputDecoration(labelText: 'New password'),
+                label: 'New password',
                 validator: (value) {
                   final password = value ?? '';
                   return password.trim().length < 8 ||
@@ -127,18 +125,13 @@ class _ChangeStaffPasswordPageState
                 },
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              PasswordFormField(
                 controller: _confirmation,
-                readOnly: _saving,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: const InputDecoration(
-                  labelText: 'Confirm new password',
-                ),
+                enabled: !_saving,
+                label: 'Confirm new password',
                 validator: (value) =>
                     value == _password.text ? null : 'Passwords must match.',
-                onFieldSubmitted: (_) => _submit(),
+                onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 16),
               FilledButton(

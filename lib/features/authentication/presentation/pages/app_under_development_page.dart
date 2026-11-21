@@ -66,6 +66,15 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 32),
+          if (session?.role == FitNepRole.admin) ...[
+            OutlinedButton(
+              onPressed: action.isLoading
+                  ? null
+                  : () => context.push(AppRoutes.adminStaffAccounts),
+              child: const Text('Manage staff accounts'),
+            ),
+            const SizedBox(height: 12),
+          ],
           if (canManageSharing) ...[
             OutlinedButton(
               onPressed: action.isLoading

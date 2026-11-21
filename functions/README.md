@@ -274,7 +274,17 @@ Admins can change a staff account's `name`, `email`, or `role` with
 require the affected account to sign in again. A different admin must make
 changes to an admin's own role or email.
 
-Creation and edits record the actor, target and before/after values in
+Admins can deactivate or reactivate a team account with
+`PATCH /admin/staff-accounts/{uid}/active`. Supply a boolean `is_active` and
+a `request_id`. Deactivation blocks sign-in and invalidates existing sessions.
+Reactivation preserves the UID, profile, role and audit history. An admin
+must use a different admin account to deactivate their own account.
+
+In the app, open **Manage staff accounts** from the admin landing page.
+The history button opens the newest changes first. The screen loads history
+from the admin-only `GET /admin/staff-accounts/history` endpoint.
+
+Creation, edits and status changes record the actor, target and before/after values in
 `staff_account_history`. Temporary passwords are omitted from API responses
 and audit records. Password setup and audit records are private to the backend.
 

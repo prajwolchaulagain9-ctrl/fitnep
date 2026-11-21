@@ -47,6 +47,8 @@ abstract final class AppRoutes {
 
   // Admin
   static const adminClients = '/admin/clients';
+  static const adminStaffAccounts = '/admin/staff-accounts';
+  static const adminStaffHistory = '/admin/staff-accounts/history';
   static const clientProfile = '/admin/clients/:id';
   static const auditLog = '/admin/audit-log';
   static const adminPackageApprovals = '/admin/package-approvals';

@@ -252,6 +252,110 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.equal((await auth.getUser("team-member")).customClaims?.role, "staff");
   });
 
+  it("deactivates and reactivates the same staff account, revokes sessions, and keeps its history", async () => {
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    const directory = "/admin/staff-accounts";
+    const historyPath = `${directory}/history`;
+    const email = "managed-dietitian@fitnep.test";
+    const temporaryPassword = "TemporaryExample!12";
+    const created = await request(api).post(directory).set(admin).send({
+      request_id: "create-managed-account",
+      name: "Managed Account",
+      role: "dietitian",
+      email,
+      temporary_password: temporaryPassword,
+    }).expect(201);
+    const { uid } = created.body.data.account;
+    const pending = bearer(await signIn(email, temporaryPassword));
+    const password = "PermanentExample!34";
+    await request(api).post("/auth/staff/change-temporary-password").set(pending)
+      .send({ new_password: password }).expect(204);
+    const oldSession = bearer(await signIn(email, password));
+    await request(api).get("/packages").set(oldSession).expect(200);
+    await request(api).patch(`${directory}/${uid}`).set(admin)
+      .send({ request_id: "rename-managed-account", name: "Managed Dietitian" }).expect(200);
+
+    const statusPath = `${directory}/${uid}/active`;
+    const deactivate = { request_id: "disable-managed-account", is_active: false };
+    const reactivate = { request_id: "enable-managed-account", is_active: true };
+    const noChange = { request_id: "already-active", is_active: true };
+    for (const email of ["client-a@fitnep.test", "dietitian@fitnep.test"]) {
+      const nonAdmin = bearer(await signIn(email));
+      await request(api).patch(statusPath).set(nonAdmin).send(deactivate).expect(403);
+      await request(api).get(historyPath).set(nonAdmin).expect(403);
+    }
+    await request(api).get(historyPath).expect(401);
+    await request(api).patch(`${directory}/admin-1/active`).set(admin).send(deactivate).expect(403);
+    await request(api).patch(`${directory}/client-a/active`).set(admin).send(deactivate).expect(404);
+    await request(api).patch(statusPath).set(admin).send({ ...deactivate, is_active: "false" }).expect(400);
+
+    await request(api).patch(statusPath).set(admin).send(noChange).expect(200);
+    const disabled = await request(api).patch(statusPath).set(admin).send(deactivate).expect(200);
+    assert.equal(disabled.body.data.account.is_active, false);
+    await request(api).get("/packages").set(oldSession).expect(401);
+    await assert.rejects(signIn(email, password));
+    await request(api).patch(statusPath).set(admin).send(noChange).expect(200);
+    assert.equal((await auth.getUser(uid)).disabled, true);
+    const restored = await request(api).patch(statusPath).set(admin).send(reactivate).expect(200);
+    assert.deepEqual(restored.body.data.account, {
+      uid, name: "Managed Dietitian", email, role: "dietitian", is_active: true,
+    });
+    await request(api).patch(statusPath).set(admin).send(deactivate).expect(200);
+    await request(api).get("/packages").set(oldSession).expect(401);
+    await request(api).get("/packages").set(bearer(await signIn(email, password))).expect(200);
+
+    const pagedApi = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(),
+      notificationRepository: repository,
+      staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore, 2),
+    });
+    const first = (await request(pagedApi).get(historyPath).set(admin).expect(200)).body.data;
+    assert.deepEqual(first.entries.map((entry: { action: string }) => entry.action), [
+      "reactivated", "deactivated",
+    ]);
+    assert.equal(first.entries[1].before.is_active, true);
+    assert.equal(first.entries[1].after.is_active, false);
+    assert.equal(first.entries[1].actor_uid, "admin-1");
+    assert.equal(first.entries[1].actor_name, "FitNep CEO");
+    assert.equal(first.entries[1].after.uid, uid);
+    assert(!Number.isNaN(Date.parse(first.entries[1].completed_at)));
+    const second = (await request(pagedApi).get(historyPath)
+      .query({ cursor: first.next_cursor }).set(admin).expect(200)).body.data;
+    assert.deepEqual(second.entries.map((entry: { action: string }) => entry.action), [
+      "updated", "created",
+    ]);
+    assert.equal(second.next_cursor, null);
+    assert(!JSON.stringify([first, second]).includes(temporaryPassword));
+    await request(api).get(historyPath).query({ cursor: "." }).set(admin).expect(400);
+  });
+
+  it("finishes an interrupted deactivation before accepting a later reactivation", async (t) => {
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    const email = "dietitian@fitnep.test";
+    const oldSession = bearer(await signIn(email));
+    const path = "/admin/staff-accounts/dietitian-1/active";
+    const historyPath = "/admin/staff-accounts/history";
+    const claimsWrite = t.mock.method(auth, "setCustomUserClaims", async () => {
+      throw new Error("Injected failure writing custom claims after disabling the account");
+    });
+    await request(api).patch(path).set(admin)
+      .send({ request_id: "interrupted-disable", is_active: false }).expect(503);
+    claimsWrite.mock.restore();
+    await assert.rejects(signIn(email));
+    await request(api).get("/packages").set(oldSession).expect(401);
+    const pending = await request(api).get(historyPath).set(admin).expect(200);
+    assert.deepEqual(pending.body.data.entries, []);
+
+    await request(api).patch(path).set(admin)
+      .send({ request_id: "later-enable", is_active: true }).expect(200);
+    const history = await request(api).get(historyPath).set(admin).expect(200);
+    assert.deepEqual(history.body.data.entries.map((entry: { action: string }) => entry.action), [
+      "reactivated", "deactivated",
+    ]);
+    await request(api).get("/packages").set(oldSession).expect(401);
+    await request(api).get("/packages").set(bearer(await signIn(email))).expect(200);
+  });
+
   it("binds signup consent and its status to the signed-in Firebase account", async () => {
     let token = await signIn("client-a@fitnep.test");
     const requestFor = (data: Record<string, unknown>) => ({

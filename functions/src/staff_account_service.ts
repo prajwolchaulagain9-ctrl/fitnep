@@ -22,6 +22,15 @@ export class StaffAccountService {
     return this.storage().list(cursor);
   }
 
+  async listHistory(actor: AuthenticatedUser, cursor: unknown) {
+    this.requireAdmin(actor, "readStaffAccountHistory");
+    if (cursor !== undefined &&
+        (typeof cursor !== "string" || !/^(create|edit|status)-[a-f0-9]{40}$/.test(cursor))) {
+      throw new InvalidStaffAccountCursorError();
+    }
+    return this.storage().listHistory(cursor);
+  }
+
   async create(actor: AuthenticatedUser, input: Record<string, unknown>) {
     this.requireAdmin(actor, "createStaffAccount");
     return this.storage().create(actor, {
@@ -57,9 +66,24 @@ export class StaffAccountService {
     return this.storage().update(actor, uid, changes, identifier(input.request_id, "Request ID"));
   }
 
+  async setActive(actor: AuthenticatedUser, uid: string, input: Record<string, unknown>) {
+    this.requireAdmin(actor, "setStaffAccountActive");
+    if (!uid || uid.length > 128) throw new StaffAccountError(400, "Account ID is invalid.");
+    if (typeof input.is_active !== "boolean") {
+      throw new StaffAccountError(400, "Supply a boolean active status.");
+    }
+    if (uid === actor.uid && !input.is_active) {
+      throw new StaffAccountError(403, "Another administrator must deactivate your account.");
+    }
+    return this.storage().setActive(
+      actor, uid, input.is_active, identifier(input.request_id, "Request ID"),
+    );
+  }
+
   private requireAdmin(
     actor: AuthenticatedUser,
-    action: "listStaffAccounts" | "createStaffAccount" | "updateStaffAccount",
+    action: "listStaffAccounts" | "createStaffAccount" | "updateStaffAccount" |
+      "setStaffAccountActive" | "readStaffAccountHistory",
   ): void {
     if (!roleCanPerformAction(actor.role, action) || actor.mustChangePassword) {
       throw new AuthenticationError("Administrator access is required.", 403);

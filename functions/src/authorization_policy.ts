@@ -8,6 +8,8 @@ export const protectedActionRoles = {
   listStaffAccounts: ["admin"],
   createStaffAccount: ["admin"],
   updateStaffAccount: ["admin"],
+  setStaffAccountActive: ["admin"],
+  readStaffAccountHistory: ["admin"],
   createDietPlanAssignmentNotification: ["admin", "dietitian"],
   createTaskAssignmentNotification: ["admin", "dietitian"],
 } as const satisfies Record<string, readonly UserRole[]>;

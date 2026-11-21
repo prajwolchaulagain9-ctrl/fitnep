@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../controllers/audit_log_controller.dart';
 import '../widgets/audit_log_tile.dart';
 import '../widgets/empty_state_widget.dart';
@@ -32,6 +34,11 @@ class AuditLogPage extends ConsumerWidget {
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.manage_accounts_rounded),
+            tooltip: 'Staff account history',
+            onPressed: () => context.push(AppRoutes.adminStaffHistory),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded),
             onPressed: controller.refresh,

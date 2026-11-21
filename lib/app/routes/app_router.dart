@@ -26,6 +26,8 @@ import '../../features/admin/presentation/pages/create_package_page.dart';
 import '../../features/admin/presentation/pages/edit_package_page.dart';
 import '../../features/admin/presentation/pages/package_management_page.dart';
 import '../../features/admin/presentation/pages/package_history_page.dart';
+import '../../features/admin/presentation/pages/staff_accounts_page.dart';
+import '../../features/admin/presentation/pages/staff_account_history_page.dart';
 import '../../features/admin/domain/entities/package_entity.dart';
 import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
@@ -273,6 +275,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             type: NotificationType.payment,
             referenceId: state.pathParameters['id']!,
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffAccounts,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const StaffAccountsPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffHistory,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const StaffAccountHistoryPage(),
         ),
       ),
       GoRoute(

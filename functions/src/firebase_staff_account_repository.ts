@@ -1,15 +1,17 @@
 import { createHash, randomBytes, randomUUID, scrypt, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
 import { Auth, UserRecord } from "firebase-admin/auth";
-import { FieldValue, Firestore } from "firebase-admin/firestore";
+import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
 
 import { staffSessionMatches } from "./auth";
 import { AuthenticatedUser, StaffAccount, normalizeUserRole } from "./domain";
 import {
   InvalidStaffAccountCursorError,
   NewStaffAccount,
+  StaffAccountAction,
   StaffAccountChanges,
   StaffAccountError,
+  StaffAccountHistoryPage,
   StaffAccountPage,
   StaffAccountRepository,
 } from "./staff_account_repository";
@@ -30,6 +32,13 @@ interface StaffAccountEvent {
   roleVersion: string;
   previousRoleVersion?: string | null;
   requiresNewSession: boolean;
+}
+
+interface StaffAccountStatusEvent {
+  status: "pending" | "completed";
+  before: StaffAccount;
+  after: StaffAccount;
+  roleVersion: string;
 }
 
 export class FirebaseStaffAccountRepository implements StaffAccountRepository {
@@ -54,6 +63,32 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
         return account ? [account] : [];
       }),
       nextCursor: page.pageToken ?? null,
+    };
+  }
+
+  async listHistory(cursor?: string): Promise<StaffAccountHistoryPage> {
+    let query = this.database.collection("staff_account_history").orderBy("completed_at", "desc");
+    if (cursor) {
+      const entry = await this.history(cursor).get();
+      if (entry.get("status") !== "completed" || !(entry.get("completed_at") instanceof Timestamp)) {
+        throw new InvalidStaffAccountCursorError();
+      }
+      query = query.startAfter(entry);
+    }
+
+    const page = await query.limit(this.accountsPerPage + 1).get();
+    const docs = page.docs.slice(0, this.accountsPerPage);
+    return {
+      entries: docs.map((doc) => ({
+        id: doc.id,
+        action: doc.get("action") as StaffAccountAction,
+        actorUid: doc.get("actor_uid") as string,
+        actorName: doc.get("actor_name") as string | null,
+        before: doc.get("before") as StaffAccount | null,
+        after: doc.get("after") as StaffAccount,
+        completedAt: (doc.get("completed_at") as Timestamp).toDate().toISOString(),
+      })),
+      nextCursor: page.size > docs.length ? docs[docs.length - 1]!.id : null,
     };
   }
 
@@ -130,6 +165,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
   async changeTemporaryPassword(actor: AuthenticatedUser, newPassword: string): Promise<void> {
     await this.withWriteLock(async () => {
       const { uid } = actor;
+      await this.finishPendingStatusChange(uid);
       const user = await this.findUser(uid);
       if (!user || actor.role === "client" || actor.mustChangePassword !== true ||
           !staffSessionMatches(user, actor)) {
@@ -162,6 +198,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
   ): Promise<StaffAccount> {
     return this.withWriteLock(async () => {
       await this.requireCurrentAdmin(actor);
+      await this.finishPendingStatusChange(uid);
       const user = await this.findUser(uid);
       const current = user && staffAccount(user);
       if (!user || !current) throw new StaffAccountError(404, "Staff account not found.");
@@ -225,6 +262,87 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       await eventRef.update({ status: "completed", completed_at: FieldValue.serverTimestamp() });
       return this.getStaffAccount(uid);
     });
+  }
+
+  async setActive(
+    actor: AuthenticatedUser, uid: string, active: boolean, requestId: string,
+  ): Promise<StaffAccount> {
+    return this.withWriteLock(async () => {
+      await this.requireCurrentAdmin(actor);
+      if (uid === actor.uid && !active) {
+        throw new StaffAccountError(403, "Another administrator must deactivate your account.");
+      }
+
+      const eventRef = this.history(`status-${key(actor.uid, uid, requestId)}`);
+      const existing = (await eventRef.get()).data() as StaffAccountStatusEvent | undefined;
+      if (existing && existing.after.isActive !== active) {
+        throw new StaffAccountError(409, "This request ID was used for a different account status.");
+      }
+      if (existing?.status === "completed") return this.getStaffAccount(uid);
+
+      await this.finishPendingStatusChange(uid);
+      const current = await this.getStaffAccount(uid);
+      if (existing) return current;
+
+      if (current.isActive === active) {
+        // Reserve the request ID even when no status change was needed.
+        // Without a completion timestamp this receipt stays out of the audit feed.
+        await eventRef.create({ status: "completed", before: current, after: current });
+        return current;
+      }
+
+      const creation = await this.history(`create-${key(uid)}`).get();
+      if (creation.get("status") === "pending") {
+        throw new StaffAccountError(409, "Finish creating this account before changing its status.");
+      }
+      const event: StaffAccountStatusEvent = {
+        status: "pending",
+        before: current,
+        after: { ...current, isActive: active },
+        roleVersion: randomUUID(),
+      };
+      // Keep the audit entry and its retry pointer together before changing Auth.
+      await this.database.batch()
+        .create(eventRef, { ...event, ...auditFields(actor, uid, active ? "reactivated" : "deactivated") })
+        .create(this.statusChange(uid), { event_id: eventRef.id })
+        .commit();
+      await this.applyStatusChange(uid, eventRef, event);
+      return event.after;
+    });
+  }
+
+  private statusChange(uid: string) {
+    return this.database.collection("staff_account_locks").doc(`status-${key(uid)}`);
+  }
+
+  private async finishPendingStatusChange(uid: string): Promise<void> {
+    const eventId = (await this.statusChange(uid).get()).get("event_id") as string | undefined;
+    if (!eventId) return;
+    const eventRef = this.history(eventId);
+    const event = (await eventRef.get()).data() as StaffAccountStatusEvent;
+    await this.applyStatusChange(uid, eventRef, event);
+  }
+
+  private async applyStatusChange(
+    uid: string, eventRef: FirebaseFirestore.DocumentReference, event: StaffAccountStatusEvent,
+  ): Promise<void> {
+    const user = await this.findUser(uid);
+    if (!user || !staffAccount(user)) throw new StaffAccountError(404, "Staff account not found.");
+    const active = event.after.isActive;
+    if (!active && !user.disabled) await this.auth.updateUser(uid, { disabled: true });
+    if (user.customClaims?.staffRoleVersion !== event.roleVersion) {
+      await this.auth.revokeRefreshTokens(uid);
+      await this.auth.setCustomUserClaims(uid, {
+        ...user.customClaims,
+        staffRoleVersion: event.roleVersion,
+      });
+    }
+    // Only re-enable sign-in once the previous sessions have been invalidated.
+    if (active && user.disabled) await this.auth.updateUser(uid, { disabled: false });
+    await this.database.batch()
+      .update(eventRef, { status: "completed", completed_at: FieldValue.serverTimestamp() })
+      .delete(this.statusChange(uid))
+      .commit();
   }
 
   private async requireCurrentAdmin(actor: AuthenticatedUser) {
@@ -328,7 +446,7 @@ function canResumeEdit(current: StaffAccount, before: StaffAccount, after: Staff
   );
 }
 
-function auditFields(actor: AuthenticatedUser, uid: string, action: string) {
+function auditFields(actor: AuthenticatedUser, uid: string, action: StaffAccountAction) {
   return {
     action,
     actor_uid: actor.uid,

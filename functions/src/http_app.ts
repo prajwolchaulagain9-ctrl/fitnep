@@ -139,6 +139,31 @@ export function createNotificationApp(
     response.status(201).json({ data: { account: toApiStaffAccount(account) } });
   }));
 
+  app.get("/admin/staff-accounts/history", asyncRoute(async (request, response) => {
+    const page = await staffAccounts.listHistory(currentUser(response), request.query.cursor);
+    response.json({ data: {
+      entries: page.entries.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        actor_uid: entry.actorUid,
+        actor_name: entry.actorName,
+        before: entry.before && toApiStaffAccount(entry.before),
+        after: toApiStaffAccount(entry.after),
+        completed_at: entry.completedAt,
+      })),
+      next_cursor: page.nextCursor,
+    } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid/active", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.setActive(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
   app.patch("/admin/staff-accounts/:uid", asyncRoute(async (request, response) => {
     const account = await staffAccounts.update(
       currentUser(response),
