@@ -39,7 +39,8 @@ final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
   final user = await ref.watch(authenticationStateProvider.future);
   if (user == null) return false;
   final token = await user.getIdTokenResult();
-  return token.claims?['mustChangePassword'] == true;
+  return token.claims?['mustChangePassword'] == true ||
+      token.claims?['must_change_password'] == true;
 }, retry: (retryCount, error) => null);
 
 class AuthenticationActionState {

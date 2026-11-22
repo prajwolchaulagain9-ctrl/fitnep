@@ -13,7 +13,8 @@ function staffSessionMatches(user, session) {
     user.uid === session.uid &&
     normalizedRole(claims?.role) === normalizedRole(session.role) &&
     claims?.staffRoleVersion === session.staffRoleVersion &&
-    (claims?.mustChangePassword === true) === (session.mustChangePassword === true) &&
+    (claims?.mustChangePassword === true || claims?.must_change_password === true) ===
+      (session.mustChangePassword === true || session.must_change_password === true) &&
     user.email === session.email;
 }
 
@@ -30,7 +31,7 @@ async function requireValidSession(request, auth = getAuth()) {
     if (token.uid !== request.auth.uid) {
       throw new HttpsError('unauthenticated', 'Sign in to continue.');
     }
-    if (token.mustChangePassword === true) {
+    if (token.mustChangePassword === true || token.must_change_password === true) {
       throw new HttpsError('failed-precondition', 'Change your temporary password before continuing.');
     }
     if (staffRoles.has(normalizedRole(token.role)) &&

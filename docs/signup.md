@@ -15,6 +15,19 @@ creates its Firebase account. Existing accounts retain their existing sign-in
 method; accounts are never linked automatically. The Google option follows
 Login's Remember Me choice and remembers the session from Signup.
 
+Verified accounts without a `role` claim enter as clients. Existing signed
+admin and dietitian claims retain their access. Unsupported assigned roles are
+rejected; no setup callable or client-written role is needed. The API verifies
+the Firebase token with revocation checks and applies the same client default.
+
+Clients enter `/client/packages` after sign-in. Confirming a successfully saved
+selection opens `/client/home`, which shows its Pending payment-verification
+status. Home links to membership, packages, notifications and privacy using
+normal back navigation. A previously saved selection also exposes a home
+shortcut on the package list. Failed saves keep the client on package selection
+and reuse the request ID on retry. The access error screen offers a working
+sign-out exit.
+
 ## Google configuration
 
 Google is enabled in Firebase Authentication. The Android and iOS client files
@@ -41,10 +54,11 @@ Firebase popup branch, but needs its own Firebase configuration before use.
 ## Email verification and consent after signup
 
 Email/password signup creates a Firebase account and asks the user to verify
-their email. After verification, clients enter their age and accept the current
+their email by code or verification link. After verification, clients enter their age and accept the current
 Privacy Policy. Clients under 18 confirm guardian permission. The app opens
 after Firestore confirms the record was saved. Google accounts whose email is
-already verified go straight to the privacy step.
+already verified go straight to the privacy step. Once consent is saved,
+clients enter package selection.
 
 Unverified email/password users also return to verification on login and restored
 sessions. Password recovery remains accessible.
@@ -120,9 +134,9 @@ and records run locally for USB testing until the existing serverless host is
 configured. No billing plan is changed.
 Before public rollout, configure App Check or equivalent anti-abuse protection
 in addition to per-account throttling. New Firebase accounts do not receive
-trusted admin/dietitian/client role claims from this flow. Protected data APIs
-must enforce the Firebase `email_verified` claim server-side when the OTP phase
-is enabled; a Flutter route guard alone is not data authorization.
+trusted role claims from this flow. The API treats verified accounts with no
+assigned role as clients and requires signed claims for privileged access.
+A Flutter route guard alone is not data authorization.
 
 ## Existing serverless host
 

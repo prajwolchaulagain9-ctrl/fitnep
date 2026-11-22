@@ -35,6 +35,7 @@ class _PasswordResetSessionObserverState
     _recovery = PasswordRecoveryService(ref.read(firebaseAuthProvider));
     WidgetsBinding.instance.addObserver(this);
     _subscription = _recovery.auth.authStateChanges().listen((_) {
+      ref.invalidate(tokenStorageProvider);
       ref.invalidate(notificationControllerProvider);
       ref.invalidate(notificationDestinationProvider);
       _startChecking();

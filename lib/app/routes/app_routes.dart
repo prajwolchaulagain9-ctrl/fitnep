@@ -20,7 +20,6 @@ abstract final class AppRoutes {
   static const forgotPasswordPath = '/forgot-password';
   static const resetPasswordPath = '/reset-password';
   static const privacyPolicyPath = '/privacy-policy';
-  static const demoEntry = '/demo';
 
   // Shared
   static const notifications = '/notifications';

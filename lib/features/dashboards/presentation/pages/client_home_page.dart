@@ -5,7 +5,9 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
+import '../../../authentication/presentation/sign_out_to_welcome.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
+import '../../../purchases/presentation/controllers/membership_controller.dart';
 
 class ClientHomePage extends ConsumerWidget {
   static const notificationButtonKey = Key('client_notification_button');
@@ -16,6 +18,7 @@ class ClientHomePage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
+    final purchase = ref.watch(membershipControllerProvider).purchase;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -27,6 +30,11 @@ class ClientHomePage extends ConsumerWidget {
             tooltip: 'Privacy preferences',
             onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
             icon: const Icon(Icons.privacy_tip_outlined),
+          ),
+          IconButton(
+            tooltip: 'Sign out',
+            onPressed: () => signOutToWelcome(context, ref),
+            icon: const Icon(Icons.logout_rounded),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -66,6 +74,22 @@ class ClientHomePage extends ConsumerWidget {
           children: [
             const _WelcomeCard(),
             const SizedBox(height: 16),
+            if (purchase != null) ...[
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.card_membership_rounded),
+                  title: Text(purchase.packageName),
+                  subtitle: Text(
+                    purchase.isPending
+                        ? 'Pending payment verification'
+                        : purchase.statusLabel,
+                  ),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.push(AppRoutes.clientMembership),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             const _MembershipActions(),
             const SizedBox(height: 20),
             const Text(

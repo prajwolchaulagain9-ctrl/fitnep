@@ -23,6 +23,11 @@ class PackageManagementPage extends ConsumerWidget {
         title: const Text('Package Management'),
         actions: [
           IconButton(
+            tooltip: 'Package approvals',
+            onPressed: () => context.push(AppRoutes.adminPackageApprovals),
+            icon: const Icon(Icons.verified_outlined),
+          ),
+          IconButton(
             key: const Key('package_history_button'),
             tooltip: 'Package history',
             onPressed: () => context.push(AppRoutes.adminPackageHistory),

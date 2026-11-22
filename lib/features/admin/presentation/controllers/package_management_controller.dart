@@ -53,24 +53,30 @@ class PackageManagementState {
 
 class PackageManagementController extends Notifier<PackageManagementState> {
   late PackageRepository _repository;
+  int _generation = 0;
 
   @override
   PackageManagementState build() {
+    _generation++;
     _repository = ref.watch(packageRepositoryProvider);
     Future<void>.microtask(refresh);
     return const PackageManagementState(isLoading: true);
   }
 
   Future<void> refresh() async {
+    if (!ref.mounted) return;
+    final generation = _generation;
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final packages = await _repository.getPackages();
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(
         packages: packages,
         isLoading: false,
         clearError: true,
       );
     } catch (error) {
+      if (!ref.mounted || generation != _generation) return;
       state = state.copyWith(isLoading: false, errorMessage: error.toString());
     }
   }
@@ -82,6 +88,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
     required double price,
     required String featureDescription,
   }) async {
+    final generation = _generation;
     if (state.isCreating) {
       throw const PackageSubmissionInProgressException();
     }
@@ -94,15 +101,18 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         price: price,
         featureDescription: featureDescription,
       );
+      if (!ref.mounted || generation != _generation) return created;
       List<PackageEntity> refreshed;
       try {
         refreshed = await _repository.getPackages();
       } catch (_) {
+        if (!ref.mounted || generation != _generation) return created;
         refreshed = [
           created,
           ...state.packages.where((item) => item.id != created.id),
         ];
       }
+      if (!ref.mounted || generation != _generation) return created;
       state = state.copyWith(
         packages: refreshed,
         isCreating: false,
@@ -111,7 +121,9 @@ class PackageManagementController extends Notifier<PackageManagementState> {
       );
       return created;
     } catch (error) {
-      state = state.copyWith(isCreating: false);
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(isCreating: false);
+      }
       rethrow;
     }
   }
@@ -123,6 +135,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
     required double price,
     required String featureDescription,
   }) async {
+    final generation = _generation;
     if (state.isSaving) throw const PackageSubmissionInProgressException();
     state = state.copyWith(isSaving: true, clearError: true);
     try {
@@ -133,6 +146,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         price: price,
         featureDescription: featureDescription,
       );
+      if (!ref.mounted || generation != _generation) return updated;
       // Replace the updated package in the list optimistically.
       final updatedList = state.packages
           .map((p) {
@@ -146,7 +160,9 @@ class PackageManagementController extends Notifier<PackageManagementState> {
       );
       return updated;
     } catch (error) {
-      state = state.copyWith(isSaving: false, errorMessage: error.toString());
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(isSaving: false, errorMessage: error.toString());
+      }
       rethrow;
     }
   }
@@ -155,6 +171,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
     required String id,
     required bool isActive,
   }) async {
+    final generation = _generation;
     if (state.isSaving) throw const PackageSubmissionInProgressException();
     state = state.copyWith(isSaving: true, clearError: true);
     try {
@@ -162,6 +179,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         id: id,
         isActive: isActive,
       );
+      if (!ref.mounted || generation != _generation) return updated;
       final updatedList = state.packages
           .map((p) {
             return p.id == updated.id ? updated : p;
@@ -174,7 +192,9 @@ class PackageManagementController extends Notifier<PackageManagementState> {
       );
       return updated;
     } catch (error) {
-      state = state.copyWith(isSaving: false, errorMessage: error.toString());
+      if (ref.mounted && generation == _generation) {
+        state = state.copyWith(isSaving: false, errorMessage: error.toString());
+      }
       rethrow;
     }
   }

@@ -152,6 +152,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
           ...user.customClaims,
           role: input.role,
           staffRoleVersion: event.roleVersion,
+          role_version: 1,
           mustChangePassword: true,
         });
         // Audit and password setup are durable before anyone can sign in.
@@ -185,9 +186,12 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       // revocation or the custom claims update failed.
       await this.auth.revokeRefreshTokens(uid);
       const claims: Record<string, unknown> = {
-        ...user.customClaims, staffRoleVersion: randomUUID(),
+        ...user.customClaims,
+        staffRoleVersion: randomUUID(),
+        role_version: nextRoleVersion(user),
       };
       delete claims.mustChangePassword;
+      delete claims.must_change_password;
       await this.auth.setCustomUserClaims(uid, claims);
       await setupRef.delete().catch(() => undefined);
     });
@@ -257,6 +261,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
           ...user.customClaims,
           role: after.role,
           staffRoleVersion: event.roleVersion,
+          role_version: nextRoleVersion(user),
         });
       }
       await eventRef.update({ status: "completed", completed_at: FieldValue.serverTimestamp() });
@@ -335,6 +340,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       await this.auth.setCustomUserClaims(uid, {
         ...user.customClaims,
         staffRoleVersion: event.roleVersion,
+        role_version: nextRoleVersion(user),
       });
     }
     // Only re-enable sign-in once the previous sessions have been invalidated.
@@ -348,7 +354,8 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
   private async requireCurrentAdmin(actor: AuthenticatedUser) {
     const user = await this.findUser(actor.uid);
     if (!user || actor.role !== "admin" || actor.mustChangePassword ||
-        !staffSessionMatches(user, actor)) {
+        !staffSessionMatches(user, actor) ||
+        (user.customClaims?.role_version ?? 0) !== (actor.roleVersion ?? 0)) {
       throw new StaffAccountError(403, "Administrator access is required.");
     }
   }
@@ -411,6 +418,14 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       }).catch(() => undefined);
     }
   }
+}
+
+function nextRoleVersion(user: UserRecord): number {
+  const version = user.customClaims?.role_version ?? 0;
+  if (!Number.isSafeInteger(version) || version < 0 || version >= Number.MAX_SAFE_INTEGER) {
+    throw new StaffAccountError(409, "This account needs a valid role version.");
+  }
+  return version + 1;
 }
 
 function staffAccount(user: UserRecord): StaffAccount | null {

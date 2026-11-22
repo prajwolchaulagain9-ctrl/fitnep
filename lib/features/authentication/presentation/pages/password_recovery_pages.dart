@@ -26,11 +26,7 @@ class RecoveryPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFFFF6B00),
-      brightness: Brightness.light,
-    ).copyWith(primary: const Color(0xFFFF6B00), onPrimary: Colors.white);
-    final base = ThemeData(useMaterial3: true, colorScheme: scheme);
+    final base = Theme.of(context);
     return Theme(
       data: base.copyWith(
         scaffoldBackgroundColor: Colors.white,
@@ -96,7 +92,7 @@ class RecoveryPage extends StatelessWidget {
               Text(
                 description,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 16,
                   height: 1.5,
                   color: Color(0xFF657A8C),
                 ),
@@ -107,7 +103,7 @@ class RecoveryPage extends StatelessWidget {
               const Text(
                 'Move better. Feel stronger. Live healthier.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: Color(0xFF657A8C)),
+                style: TextStyle(fontSize: 14, color: Color(0xFF657A8C)),
               ),
             ],
           ),

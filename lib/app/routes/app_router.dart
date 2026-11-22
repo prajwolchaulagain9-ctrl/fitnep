@@ -4,21 +4,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
 import '../../features/authentication/presentation/pages/login_page.dart';
-import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
+import '../../features/authentication/presentation/pages/app_under_development_page.dart';
 import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
 import '../../features/authentication/presentation/pages/change_staff_password_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
-import '../../features/authentication/presentation/pages/app_under_development_page.dart';
 import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
-import '../../features/packages/presentation/pages/packages_page.dart';
-import '../../features/packages/presentation/pages/package_approvals_page.dart';
-import '../../features/onboarding/presentation/pages/demo_entry_page.dart';
-import '../../core/config/app_config.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
@@ -34,6 +29,7 @@ import '../../features/notifications/presentation/pages/notifications_page.dart'
 import '../../features/notifications/domain/entities/notification_entity.dart';
 import '../../features/notifications/presentation/pages/notification_destination_page.dart';
 import '../../features/packages/presentation/pages/package_selection_page.dart';
+import '../../features/packages/presentation/pages/package_approvals_page.dart';
 import '../../features/purchases/presentation/pages/membership_page.dart';
 import 'app_routes.dart';
 import 'route_access_gate.dart';
@@ -46,7 +42,13 @@ const _sharedRoles = {
 
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
-  ref.listen(authenticationStateProvider, (_, _) => notifier.refresh());
+  ref.listen(authenticationStateProvider, (previous, next) {
+    if (previous?.value?.uid != next.value?.uid) {
+      ref.invalidate(routeSessionProvider);
+    }
+    notifier.refresh();
+  });
+  ref.listen(routeSessionProvider, (_, _) => notifier.refresh());
   ref.listen(staffPasswordChangeRequiredProvider, (_, _) => notifier.refresh());
   ref.onDispose(notifier.dispose);
   return notifier;
@@ -55,9 +57,7 @@ final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = ref.watch(_routerRefreshProvider);
   final router = GoRouter(
-    initialLocation: AppConfig.useFirebaseEmulators
-        ? AppRoutes.demoEntry
-        : AppRoutes.welcomePath,
+    initialLocation: AppRoutes.welcomePath,
     refreshListenable: refreshNotifier,
     redirect: (context, state) {
       final authentication = ref.read(authenticationStateProvider);
@@ -74,13 +74,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         AppRoutes.signupPath,
         AppRoutes.forgotPasswordPath,
         AppRoutes.resetPasswordPath,
-        if (AppConfig.useFirebaseEmulators) AppRoutes.demoEntry,
       }.contains(path);
 
       if (!isAuthenticated && !isPublicRoute) {
-        return AppConfig.useFirebaseEmulators
-            ? AppRoutes.demoEntry
-            : AppRoutes.loginPath;
+        return AppRoutes.loginPath;
       }
       if (user != null) {
         final passwordChange = ref.read(staffPasswordChangeRequiredProvider);
@@ -107,16 +104,23 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               path == AppRoutes.signupPath ||
               path == AppRoutes.changeStaffPasswordPath ||
               path == AppRoutes.verifyEmailPath)) {
-        return AppRoutes.appUnderDevelopmentPath;
+        final session = ref.read(routeSessionProvider);
+        if (session.isLoading) return null;
+        return switch (session.asData?.value?.role) {
+          FitNepRole.admin => AppRoutes.adminClients,
+          FitNepRole.dietitian => AppRoutes.notifications,
+          FitNepRole.staff => AppRoutes.appUnderDevelopmentPath,
+          _ => AppRoutes.clientPackages,
+        };
+      }
+      if (isAuthenticated && path == AppRoutes.clientHome) {
+        final role = ref.read(routeSessionProvider).value?.role;
+        if (role == FitNepRole.admin) return AppRoutes.adminClients;
+        if (role == FitNepRole.dietitian) return AppRoutes.notifications;
       }
       return null;
     },
     routes: [
-      if (AppConfig.useFirebaseEmulators)
-        GoRoute(
-          path: AppRoutes.demoEntry,
-          builder: (context, state) => const DemoEntryPage(),
-        ),
       GoRoute(
         path: AppRoutes.adminPackageApprovals,
         name: 'admin-package-approvals',
@@ -158,8 +162,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         name: AppRoutes.appUnderDevelopment,
         path: AppRoutes.appUnderDevelopmentPath,
-        builder: (context, state) =>
-            const RegistrationPrivacyGate(child: AppUnderDevelopmentPage()),
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.staff},
+          builder: (_) => const AppUnderDevelopmentPage(),
+        ),
       ),
       GoRoute(
         name: AppRoutes.privacyPolicy,
@@ -203,9 +209,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.clientPackagesName,
         builder: (context, state) => RouteAccessGate(
           allowedRoles: const {FitNepRole.client},
-          builder: (_) => AppConfig.useFirebaseEmulators
-              ? const PackagesPage()
-              : const PackageSelectionPage(),
+          builder: (_) => const PackageSelectionPage(),
         ),
       ),
       GoRoute(

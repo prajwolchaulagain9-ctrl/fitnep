@@ -7,6 +7,7 @@ import { Firestore, getFirestore, Timestamp } from "firebase-admin/firestore";
 import request from "supertest";
 
 import type { CallableRequest } from "firebase-functions/v2/https";
+import { FirestoreAuditWriter } from "../src/audit";
 import { registrationPrivacy } from "../src/registration_privacy";
 import { FirebaseAuthVerifier } from "../src/auth";
 import { FirebaseStaffAccountRepository } from "../src/firebase_staff_account_repository";
@@ -17,6 +18,7 @@ import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_
 import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
 import { FirestorePackageRepository } from "../src/firestore_package_repository";
 import { FirestorePackageService } from "../src/package_membership_service";
+import { FirestorePlatformSessionService } from "../src/platform_sessions";
 import {
   addCalendarMonths,
   FirestorePurchaseRepository,
@@ -186,11 +188,22 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     const staff = new FirebaseStaffAccountRepository(auth, firestore);
     await assert.rejects(staff.changeTemporaryPassword(pendingActor, newPassword), { status: 403 });
     const refreshedTemporarySession = bearer(await signIn(input.email, input.temporary_password));
-    await request(api).post(passwordPath).set(refreshedTemporarySession)
+    const hosted = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(auth),
+      notificationRepository: repository,
+      staffAccountRepository: staff,
+      platformSessions: new FirestorePlatformSessionService(firestore, new FirestoreAuditWriter(firestore)),
+    });
+    await request(hosted).post("/sessions/start").set(refreshedTemporarySession).send({}).expect(403);
+    await request(hosted).get(directory).set(refreshedTemporarySession).expect(403);
+    await request(hosted).post(passwordPath).set(refreshedTemporarySession)
       .send({ new_password: newPassword }).expect(204);
     await assert.rejects(signIn(input.email, input.temporary_password));
     await request(api).get(directory).set(refreshedTemporarySession).expect(401);
     const newSession = bearer(await signIn(input.email, newPassword));
+    const started = await request(hosted).post("/sessions/start").set(newSession).send({}).expect(200);
+    await request(hosted).get(directory).set(newSession)
+      .set("X-FitNEP-Session", started.body.data.session_id).expect(200);
     await request(api).get(directory).set(newSession).expect(200);
     await request(api).post(passwordPath).set(newSession)
       .send({ new_password: "DifferentPassword!45" }).expect(403);
