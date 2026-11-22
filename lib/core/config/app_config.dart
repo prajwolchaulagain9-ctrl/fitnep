@@ -1,7 +1,7 @@
 class AppConfig {
   AppConfig._();
 
-  // Email/password sessions require verification before protected navigation.
+  // Use a Firebase verification link if custom email codes are disabled.
   static const signupEmailOtpEnabled = bool.fromEnvironment(
     'SIGNUP_EMAIL_OTP_ENABLED',
     defaultValue: true,
@@ -16,6 +16,7 @@ class AppConfig {
   static const signupOtpVerifyUrl = String.fromEnvironment(
     'SIGNUP_OTP_VERIFY_URL',
   );
+  static const signupPrivacyUrl = String.fromEnvironment('SIGNUP_PRIVACY_URL');
 
   static const useFirebaseEmulators = bool.fromEnvironment(
     'USE_FIREBASE_EMULATORS',
@@ -52,4 +53,5 @@ class AppConfig {
   }
 
   static bool get hasApiBaseUrl => apiBaseUrl.isNotEmpty;
+  static bool get hostedSessionsEnabled => hasApiBaseUrl && !useFirebaseEmulators;
 }

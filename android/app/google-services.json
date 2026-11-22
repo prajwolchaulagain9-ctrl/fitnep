@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "1005066655980-7bbafjm0hvlg5mjmfmk6ql2mdh6kgejo.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.fitnep",
+            "certificate_hash": "e5de4e71575155fdafdcc85157e86887b0d3023f"
+          }
+        },
+        {
           "client_id": "1005066655980-dfo11q0p42nqq2rah21q7103eae2ed55.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

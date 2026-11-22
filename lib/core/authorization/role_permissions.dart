@@ -85,6 +85,7 @@ String? permissionForRoute(String path) {
   if (path == '/admin/home') return 'view_admin_dashboard';
   if (path == '/account/profile') return 'view_own_profile';
   if (path == '/admin/users') return 'manage_user_roles';
+  if (path.startsWith('/admin/staff-accounts')) return 'manage_staff_accounts';
   if (path == '/admin/audit-log') return 'view_audit_logs';
   if (path.startsWith('/admin/clients')) return 'manage_client_accounts';
   if (path.startsWith('/admin/')) return 'manage_business_settings';

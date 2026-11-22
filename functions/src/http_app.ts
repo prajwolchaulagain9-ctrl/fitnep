@@ -5,6 +5,13 @@ import express, {
   RequestHandler,
 } from "express";
 
+import { randomUUID } from "node:crypto";
+import { AuditUnavailableError, AuditWriter } from "./audit";
+import { PlatformSessionService, platformSessionHeader } from "./platform_sessions";
+import { createSessionRouter } from "./session_routes";
+import { StaffAccountService } from "./staff_account_service";
+import { StaffAccountError, StaffAccountRepository } from "./staff_account_repository";
+import { StaffAccount } from "./domain";
 import { AuthVerifier, AuthenticationError } from "./auth";
 import { AccountInputError, FirestoreAccountService, FirestoreAuditStore } from "./account_service";
 import { PermissionDeniedError, requirePermission } from "./authorization_policy";
@@ -74,6 +81,11 @@ import {
 } from "./purchase_service";
 
 export interface NotificationAppDependencies {
+  staffAccountRepository?: StaffAccountRepository;
+  platformSessions?: PlatformSessionService;
+  auditWriter?: AuditWriter;
+  manualVerificationEnabled?: boolean;
+  health?: { buildSha: string; checkReady(): Promise<void> };
   accounts?: FirestoreAccountService;
   audit?: FirestoreAuditStore;
   authVerifier: AuthVerifier;
@@ -103,6 +115,7 @@ export function createNotificationApp(
     dependencies.purchaseRepository ?? new UnconfiguredPurchaseRepository(),
   );
 
+  const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
   app.disable("x-powered-by");
   app.use(express.json({ limit: "32kb" }));
   app.use((_request, response, next) => {
@@ -110,7 +123,35 @@ export function createNotificationApp(
     next();
   });
 
+  app.use((_request, response, next) => {
+    response.locals.correlationId = randomUUID();
+    response.setHeader("X-Request-Id", response.locals.correlationId);
+    next();
+  });
+  if (dependencies.health) {
+    const health = dependencies.health;
+    app.get("/healthz", asyncRoute(async (_request, response) => {
+      try {
+        if (!/^[a-f0-9]{40}$/i.test(health.buildSha)) throw new Error();
+        await health.checkReady();
+        response.json({ data: { ready: true, build_sha: health.buildSha, node_version: process.version } });
+      } catch {
+        response.status(503).json({ data: { ready: false, build_sha: health.buildSha, node_version: process.version } });
+      }
+    }));
+  }
+  if (dependencies.platformSessions) app.use("/sessions", createSessionRouter(dependencies.authVerifier, dependencies.platformSessions));
   app.use(authenticate(dependencies.authVerifier));
+  app.use(asyncRoute(async (request, response, next) => {
+    const prerequisites = ["/session", "/auth/staff/change-temporary-password"];
+    if (response.locals.user.mustChangePassword === true && !prerequisites.includes(request.path)) {
+      throw new AuthenticationError("Change your temporary password before continuing.", 403);
+    }
+    if (dependencies.platformSessions && !prerequisites.includes(request.path)) {
+      await dependencies.platformSessions.verify(currentUser(response), request.header(platformSessionHeader));
+    }
+    next();
+  }));
   app.use(asyncRoute(async (request, response, next) => {
     const access = endpointAccess(request.method, request.path) ??
       (/^\/admin(?:\/|$)/i.test(request.path) ? { permission: "manage_user_roles" as const, resource: "admin_features" } : null);
@@ -127,6 +168,69 @@ export function createNotificationApp(
   }));
   app.use(createRbacRouter(dependencies.accounts, dependencies.audit));
   app.use(rejectRecipientOverrides);
+
+  app.get(
+    "/admin/staff-accounts",
+    asyncRoute(async (request, response) => {
+      const page = await staffAccounts.list(currentUser(response), request.query.cursor);
+      response.json({
+        data: {
+          accounts: page.accounts.map(toApiStaffAccount),
+          next_cursor: page.nextCursor,
+        },
+      });
+    }),
+  );
+
+  app.post("/admin/staff-accounts", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.create(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(201).json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.get("/admin/staff-accounts/history", asyncRoute(async (request, response) => {
+    const page = await staffAccounts.listHistory(currentUser(response), request.query.cursor);
+    response.json({ data: {
+      entries: page.entries.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        actor_uid: entry.actorUid,
+        actor_name: entry.actorName,
+        before: entry.before && toApiStaffAccount(entry.before),
+        after: toApiStaffAccount(entry.after),
+        completed_at: entry.completedAt,
+      })),
+      next_cursor: page.nextCursor,
+    } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid/active", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.setActive(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.update(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.post("/auth/staff/change-temporary-password", asyncRoute(async (request, response) => {
+    await staffAccounts.changeTemporaryPassword(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(204).end();
+  }));
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -146,7 +250,7 @@ export function createNotificationApp(
     admin(response);
     response.json({ data: { memberships: await packages().pendingMemberships() } });
   }));
-  app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
+  if (dependencies.manualVerificationEnabled !== false) app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
     const actor = admin(response);
     const body = isObject(request.body) ? request.body : {};
     if (Object.keys(body).some(key => key !== "reference") || typeof body.reference !== "string") {
@@ -406,12 +510,20 @@ export function createNotificationApp(
       response: Response,
       _next: NextFunction,
     ) => {
+      if (error instanceof AuthenticationError && error.statusCode === 401 && response.locals.user && dependencies.auditWriter) {
+        void dependencies.auditWriter.append({ actor: response.locals.user, action: "access.denied", targetType: "api",
+          targetId: "protected_endpoint", outcome: "denied", correlationId: response.locals.correlationId }).then(() => {
+            response.status(401).json({ code: error.code, error: "Your session has ended. Sign in again." });
+          }, () => { response.status(503).json({ code: "unavailable", error: "Audit services are unavailable." }); });
+        return;
+      }
       const denied = error instanceof PermissionDeniedError ||
         error instanceof AuthenticationError && error.statusCode === 403 ||
         error instanceof PackageError && error.statusCode === 403 ||
         error instanceof PrivacyPreferencesAuthorizationError ||
         error instanceof PrivateRecordAuthorizationError ||
-        error instanceof PackageAuthorizationError || error instanceof PurchaseAuthorizationError;
+        error instanceof PackageAuthorizationError || error instanceof PurchaseAuthorizationError ||
+        error instanceof StaffAccountError && error.status === 403;
       if (denied) {
         const user = response.locals.user as AuthenticatedUser | undefined;
         const identity = error instanceof AuthenticationError ? error.identity : undefined;
@@ -420,12 +532,24 @@ export function createNotificationApp(
           action: access?.permission ?? "access_protected_feature", resource: access?.resource ?? "protected_endpoint",
           recordId: access?.recordId ?? null,
           reason: error instanceof PermissionDeniedError ? error.reason : "Authorization denied." };
-        void (dependencies.audit?.denied(attempt) ?? Promise.resolve()).then(() => {
+        void Promise.all([
+          dependencies.audit?.denied(attempt),
+          user && dependencies.auditWriter?.append({ actor: user,
+            action: "access.denied", targetType: "api", targetId: access?.resource ?? "protected_endpoint",
+            outcome: "denied", correlationId: response.locals.correlationId }),
+        ]).then(() => {
           response.status(403).json({ code: "permission-denied", error: "You do not have permission to access this feature." });
         }).catch(() => {
           response.status(503).json({ code: "unavailable", error: "Authorization is temporarily unavailable. Try again." });
         });
         return;
+      }
+      if (error instanceof AuditUnavailableError) {
+        response.status(503).json({ code: "unavailable", error: "Audit services are temporarily unavailable." });
+        return;
+      }
+      if (error instanceof StaffAccountError) {
+        response.status(error.status).json({ error: error.message }); return;
       }
       if (error instanceof AccountInputError) {
         response.status(400).json({ code: "invalid-argument", error: error.message });
@@ -436,7 +560,7 @@ export function createNotificationApp(
         return;
       }
       if (error instanceof AuthenticationError) {
-        response.status(error.statusCode).json({ error: error.message });
+        response.status(error.statusCode).json({ code: error.code, error: error.message });
         return;
       }
       if (error instanceof PackageError) {
@@ -672,4 +796,14 @@ function asyncRoute(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toApiStaffAccount(account: StaffAccount) {
+  return {
+    uid: account.uid,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    is_active: account.isActive,
+  };
 }

@@ -42,6 +42,9 @@ export function canReadWorkflowRecord(actor: AuthenticatedUser,
 
 /** Role requirements for protected actions implemented by the backend. */
 export const protectedActionRoles = {
+  listStaffAccounts: ["admin"], createStaffAccount: ["admin"], updateStaffAccount: ["admin"],
+  setStaffAccountActive: ["admin"], readStaffAccountHistory: ["admin"],
+  readAuditMetadata: ["admin"], verifyPayments: ["admin"],
   readOwnNotifications: userRoles,
   updateOwnNotifications: userRoles,
   createDietPlanAssignmentNotification: ["admin", "dietitian"],

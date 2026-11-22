@@ -72,6 +72,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(preferences),

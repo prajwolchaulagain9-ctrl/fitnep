@@ -28,6 +28,7 @@ class PackagePurchaseEntity {
   });
 
   bool get isPending => status == MembershipStatus.pending;
+  bool get isCurrent => status != MembershipStatus.expired && !isExpired;
   bool get isExpired =>
       expiresAt != null && !expiresAt!.isAfter(DateTime.now());
   String get statusLabel => isPending

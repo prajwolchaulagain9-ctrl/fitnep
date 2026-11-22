@@ -15,6 +15,19 @@ creates its Firebase account. Existing accounts retain their existing sign-in
 method; accounts are never linked automatically. The Google option follows
 Login's Remember Me choice and remembers the session from Signup.
 
+Verified accounts without a `role` claim enter as clients. Existing signed
+admin and dietitian claims retain their access. Unsupported assigned roles are
+rejected; no setup callable or client-written role is needed. The API verifies
+the Firebase token with revocation checks and applies the same client default.
+
+Clients enter `/client/packages` after sign-in. Confirming a successfully saved
+selection opens `/client/home`, which shows its Pending payment-verification
+status. Home links to membership, packages, notifications and privacy using
+normal back navigation. A previously saved selection also exposes a home
+shortcut on the package list. Failed saves keep the client on package selection
+and reuse the request ID on retry. The access error screen offers a working
+sign-out exit.
+
 ## Google configuration
 
 Google is enabled in Firebase Authentication. The Android and iOS client files
@@ -38,21 +51,31 @@ URL scheme is configured. For other signing keys or configuration changes:
 The app's Firebase platform setup currently supports Android/iOS. Web has the
 Firebase popup branch, but needs its own Firebase configuration before use.
 
-## Email OTP after signup
+## Consent and email verification
 
-`SIGNUP_EMAIL_OTP_ENABLED` defaults to `true`. Email/password signup creates its
-Firebase account and opens `/verify-email`, which requests a Brevo code. Protected
-routes remain unavailable until verification succeeds. Verified Google accounts
-open App Under Development directly.
+Email signup collects age with the other registration fields. Completing the
+form opens the Privacy Policy. The acceptance checkbox unlocks at the end,
+and clients under 18 also confirm guardian permission. Accepting creates the
+account and opens email verification by code or link. The app keeps the
+pending consent in secure device storage under the new account's UID.
+After verification, it saves the consent to Firebase before opening package
+selection. New Google sign-ins and clients resuming without a pending consent
+record complete the age and policy review after Firebase verifies their email.
 
 Unverified email/password users also return to verification on login and restored
 sessions. Password recovery remains accessible.
 
-The verification screen sends a code, accepts six digits, supports resend after
-60 seconds and offers sign-out to use another account. Verification reloads the
-Firebase user and requires the refreshed token's `email_verified` claim before
-protected navigation. Reopening verification reuses the existing unexpired code;
-only an explicit resend replaces it.
+The verification screen defaults to a Firebase email link when no code
+endpoints are configured or when `SIGNUP_EMAIL_OTP_ENABLED=false`. It also uses
+the link when the configured send
+endpoint returns 404. After opening the link, return to the app and tap
+**I verified my email**. Verification reloads the Firebase user and checks the
+refreshed token's `email_verified` claim before protected navigation.
+When code endpoints are configured and available, the screen accepts the
+six-digit code and reuses it until expiry or an explicit resend.
+
+Local email/password signup uses a test verification link from the Auth
+emulator. The built-in demo accounts are already verified.
 
 The Google button uses Google's official G asset from
 `https://developers.google.com/static/identity/images/g-logo.png`.
@@ -115,9 +138,9 @@ and records run locally for USB testing until the existing serverless host is
 configured. No billing plan is changed.
 Before public rollout, configure App Check or equivalent anti-abuse protection
 in addition to per-account throttling. New Firebase accounts do not receive
-trusted admin/dietitian/client role claims from this flow. Protected data APIs
-must enforce the Firebase `email_verified` claim server-side when the OTP phase
-is enabled; a Flutter route guard alone is not data authorization.
+trusted role claims from this flow. The API treats verified accounts with no
+assigned role as clients and requires signed claims for privileged access.
+A Flutter route guard alone is not data authorization.
 
 ## Existing serverless host
 
@@ -127,6 +150,13 @@ attaches the current Firebase ID token. The host must validate it, derive UID an
 email server-side, persist OTP records atomically and return the Firebase callable
 protocol (`result` or `error`). Keep Brevo and Firebase Admin credentials in the
 host's secret store. Provider and project details are needed before deployment.
+
+The default app saves the entered age, policy version and server timestamp in
+the signed-in user's Firestore consent record. Set up the default Firestore
+database and publish the project's Firestore rules before distributing the
+build. For an independently hosted privacy callable, set `SIGNUP_PRIVACY_URL`
+to its HTTPS URL. The app and any email-code backend must use the same Firebase
+Auth project and Firestore database.
 
 ## Local Samsung USB test
 

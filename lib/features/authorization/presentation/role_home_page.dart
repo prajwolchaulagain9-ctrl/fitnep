@@ -15,6 +15,18 @@ typedef RoleMenuItem = ({
 });
 const roleMenuItems = <RoleMenuItem>[
   (
+    label: 'Staff accounts',
+    permission: 'manage_staff_accounts',
+    path: AppRoutes.adminStaffAccounts,
+    icon: Icons.badge_outlined,
+  ),
+  (
+    label: 'Staff account history',
+    permission: 'manage_staff_accounts',
+    path: AppRoutes.adminStaffHistory,
+    icon: Icons.history,
+  ),
+  (
     label: 'My profile',
     permission: 'view_own_profile',
     path: AppRoutes.ownProfile,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme/app_theme.dart';
 import '../controllers/authentication_controller.dart';
+import '../sign_out_to_welcome.dart';
 import 'password_recovery_pages.dart';
 
 class AppUnderDevelopmentPage extends ConsumerWidget {
@@ -11,7 +12,6 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final action = ref.watch(authenticationControllerProvider);
-
     return RecoveryPage(
       showBackButton: false,
       title: 'App Under Development',
@@ -61,9 +61,7 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
           FilledButton.icon(
             onPressed: action.isLoading
                 ? null
-                : () => ref
-                      .read(authenticationControllerProvider.notifier)
-                      .signOut(),
+                : () => signOutToWelcome(context, ref),
             icon: action.isLoading
                 ? const SizedBox.square(
                     dimension: 18,

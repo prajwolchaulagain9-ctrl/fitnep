@@ -15,6 +15,9 @@ recovery screens follow the supplied auth screenshots. Email/password login now
 uses Firebase Auth with Riverpod state, protected GoRouter routes, remembered-session
 policy and logout. Signup now uses the same authentication UI and shared wordmark,
 with Firebase account creation and Continue with Google on Signup and Login.
+Verified accounts without an assigned role enter as clients, choose a package,
+and reach the temporary client home after saving a Pending selection. Existing
+admin and dietitian roles retain their protected routes.
 Email signup requires Brevo OTP verification before protected navigation. A local
 USB runtime supports device testing while the existing serverless host is
 configured. Package selection, membership and privacy preferences are integrated.

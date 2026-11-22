@@ -17,7 +17,8 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
   const cursor = (request: Request) => request.query.after === undefined ? undefined : identifier(request.query.after);
   const page = (items: { id: string }[]) => items.length === 50 ? items.at(-1)!.id : null;
   router.get("/session", wrap(async (_request, response) => {
-    response.json({ data: sessionPayload(await store().get(actor(response).uid)) });
+    response.json({ data: { ...sessionPayload(await store().get(actor(response).uid)),
+      must_change_password: actor(response).mustChangePassword === true } });
   }));
   router.post("/authorization/check", wrap(async (request, response) => {
     const submitted = body(request);

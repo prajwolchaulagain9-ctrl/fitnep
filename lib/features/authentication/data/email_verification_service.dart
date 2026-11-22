@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/firebase_providers.dart';
 import '../../../core/config/app_config.dart';
 import 'authentication_service.dart';
+import 'hosted_auth_client.dart';
 
 final emailVerificationServiceProvider = Provider<EmailVerificationService>(
   (ref) => EmailVerificationService(
@@ -12,6 +13,9 @@ final emailVerificationServiceProvider = Provider<EmailVerificationService>(
     functions: ref.read(firebaseFunctionsProvider),
     sendUrl: AppConfig.signupOtpSendUrl,
     verifyUrl: AppConfig.signupOtpVerifyUrl,
+    hostedRequest: AppConfig.hostedSessionsEnabled
+        ? ref.read(hostedAuthRequestProvider)
+        : null,
   ),
 );
 
@@ -39,11 +43,13 @@ class EmailVerificationService {
     required this.functions,
     this.sendUrl = '',
     this.verifyUrl = '',
+    this.hostedRequest,
   });
   final FirebaseAuth auth;
   final FirebaseFunctions functions;
   final String sendUrl;
   final String verifyUrl;
+  final HostedAuthRequest? hostedRequest;
 
   HttpsCallable _callable(String name, String configuredUrl) {
     if (sendUrl.isEmpty != verifyUrl.isEmpty) {
@@ -77,11 +83,12 @@ class EmailVerificationService {
     }
     try {
       // The server derives UID and email from the authenticated session.
-      final result = await _callable(
-        'sendSignupEmailCode',
-        sendUrl,
-      ).call({'resend': resend});
-      final data = result.data;
+      final Object? data = hostedRequest != null
+          ? await hostedRequest!('auth/signup/otp/send', {'resend': resend})
+          : (await _callable(
+              'sendSignupEmailCode',
+              sendUrl,
+            ).call({'resend': resend})).data;
       final seconds = data is Map ? data['resendAfterSeconds'] : null;
       if (seconds is! num || seconds < 0 || seconds > 3600) {
         throw const AuthenticationFailure(
@@ -118,11 +125,15 @@ class EmailVerificationService {
       );
     }
     try {
-      final result = await _callable(
-        'verifySignupEmailCode',
-        verifyUrl,
-      ).call({'code': code.trim()});
-      if (result.data is! Map || result.data['verified'] != true) {
+      final Object? data = hostedRequest != null
+          ? await hostedRequest!('auth/signup/otp/verify', {
+              'code': code.trim(),
+            })
+          : (await _callable(
+              'verifySignupEmailCode',
+              verifyUrl,
+            ).call({'code': code.trim()})).data;
+      if (data is! Map || data['verified'] != true) {
         throw const AuthenticationFailure(
           'We couldn\u2019t confirm email verification. Please try again.',
         );

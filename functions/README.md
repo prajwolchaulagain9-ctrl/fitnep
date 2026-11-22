@@ -1,4 +1,4 @@
-# FitNep Firebase notification backend
+# FitNep API and Firebase notification backend
 
 This folder contains the mobile application's Firebase Cloud Functions backend.
 It exposes authenticated HTTPS APIs for the Flutter app; it does not contain a
@@ -8,6 +8,14 @@ The shared project stays on **Spark**. These Functions are local emulator
 implementations; they are not deployed. Cloud Functions deployment requires a
 billing-enabled project and is outside the agreed scope. The Flutter API URL
 defaults to empty until a supported backend is supplied.
+
+Sprint 2 adds a standalone Node 22 runner in src/server.ts. After building,
+npm start runs the same Express API against cloud Firebase Auth/Firestore
+with opaque platform sessions and backend-created audit storage. The
+[Render setup](../docs/hosted-api.md) and [Day 1 handoff](../docs/sprint2-day1.md)
+describe configuration and remaining integrations. The Node API is live at
+https://fitnep-api.onrender.com. Eight hosted health/session/audit checks passed
+on 22 November 2026; see the [verification evidence](../docs/sprint2-day1-live-verification.json).
 
 ## Firebase project and runtime
 
@@ -35,7 +43,7 @@ Every API request must include a Firebase ID token:
 Authorization: Bearer <firebase-id-token>
 ```
 
-The token must have one of these trusted custom claims:
+Assigned roles use one of these trusted custom claims:
 
 ```json
 { "role": "admin" }
@@ -45,6 +53,10 @@ The token must have one of these trusted custom claims:
 
 Role claims must be assigned by a trusted administrative process using the
 Firebase Admin SDK. Never allow the mobile app to assign or edit its own role.
+An account with a signed `email_verified: true` claim and no assigned `role`
+receives standard client access. Unsupported assigned roles and unverified
+accounts without a role are rejected. Firebase token verification always checks
+revocation before resolving the role.
 
 All roles are scoped to their own `uid` for notification access. Admin and
 Dietitian roles do not receive an implicit bypass to client notifications.
@@ -197,6 +209,21 @@ npx --yes firebase-tools@latest emulators:exec --config firebase.json --project 
 Firestore uses port 18080 in the shared configuration. The emulator-only
 commands work without deploying to the Spark project.
 
+## Seeded demo admin
+
+From the repository root, use the existing Firebase CLI login to seed an admin
+in the same Firebase project as the Android app:
+
+```powershell
+npm --prefix functions run seed:admin
+```
+
+The account uses `demo-admin@fitnep.test`, has a verified email and the trusted
+`admin` role, and opens client management after login. Its generated password
+is saved in the ignored `.dart_tool/demo-admin.credentials.json` file. Rerunning
+the seed preserves the password and verifies that login returns an admin token.
+The seed only modifies its own saved demo account.
+
 The retained deployment script is outside the supported Spark workflow. No
 Functions deployment or billing upgrade is part of this integration. A live
 notification service needs a separately agreed hosting arrangement.
@@ -217,19 +244,22 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
 
 ## US8 privacy and consent
 
-- In the registration feature, link to `AppRoutes.privacyPolicy` and pass
-  `age`, `privacy_policy_accepted`, `privacy_policy_version`, and
-  `guardian_consent_confirmed` to `validatePrivacyAcceptance` before creating
-  an account. The backend helper rejects missing policy acceptance and requires
-  guardian confirmation for an entered age under 18. Before activating the
-  account, call `FirestorePrivacyAcceptanceStore.recordForClient(uid, input)`
-  with the UID assigned by the registration backend. It stores the policy
-  version and a Firestore server timestamp in `privacy_acceptances/{uid}`.
-  Keep the policy version in sync with Flutter's `privacyPolicyVersion`.
+- After Firebase verifies their email, clients complete the privacy step before
+  continuing. The default app writes its own `privacy_acceptances/{uid}` record.
+  Firestore rules validate the entered age, server timestamp and guardian
+  confirmation for minors. The optional `registrationPrivacy` callable writes
+  the same age and consent fields. Returning clients with current acceptance
+  continue directly. Keep the Flutter, Firestore rules and backend policy
+  versions in sync.
+  The consent rules and optional callable require a verified email.
 - `GET /privacy/preferences` returns the client's current choices.
   `PATCH /privacy/preferences` accepts individual boolean fields
   `share_nutrition_records`, `share_meal_photos`, `share_progress_photos`,
   and `share_activity_data`. Missing values in older accounts default to false.
+  The Flutter screen also reads and updates this same document directly.
+  Firestore rules limit the screen to a verified user who has accepted the
+  current policy and owns the document. Newly registered clients can manage
+  their choices while they wait for their client role to be assigned.
 - The private record API is `/clients/:clientId/records/:category`. The
   categories are `nutrition-records`, `meal-photos`, `progress-photos`, and
   `activity-data`. GET lists up to 50 records and accepts the returned
@@ -242,6 +272,48 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
   `active: true` and `dietitian_id`. Clients keep owner access after
   withdrawal. The tracker and assignment features can use this contract when
   their screens are implemented.
+
+## US7 staff accounts
+
+`GET /admin/staff-accounts` requires a verified Firebase token with the admin
+role. It reads team accounts from Firebase Auth and returns only their UID,
+name, email, role and active status. The result includes inactive staff,
+dietitians and admins. Client accounts and accounts with no recognized role are
+excluded.
+
+Pass the returned `next_cursor` as the next request's `cursor`. A page can be
+empty if Firebase returned only client accounts, so continue until
+`next_cursor` is null.
+
+Admins can create a staff, dietitian or admin account with
+`POST /admin/staff-accounts`. Supply `request_id`, `name`, `email`, `role`,
+and `temporary_password`. The account becomes active once its setup and audit
+entry are saved. Reuse the same request ID and fields when retrying.
+
+At first sign-in, the app opens the password change screen. The pending
+session can use `POST /auth/staff/change-temporary-password` with
+`new_password` after a recent password sign-in. The server requires a
+different password, revokes existing sessions and clears the setup requirement.
+The user signs in again with the new password.
+
+Admins can change a staff account's `name`, `email`, or `role` with
+`PATCH /admin/staff-accounts/{uid}` and a `request_id`. Role or email changes
+require the affected account to sign in again. A different admin must make
+changes to an admin's own role or email.
+
+Admins can deactivate or reactivate a team account with
+`PATCH /admin/staff-accounts/{uid}/active`. Supply a boolean `is_active` and
+a `request_id`. Deactivation blocks sign-in and invalidates existing sessions.
+Reactivation preserves the UID, profile, role and audit history. An admin
+must use a different admin account to deactivate their own account.
+
+In the app, open **Manage staff accounts** from the admin landing page.
+The history button opens the newest changes first. The screen loads history
+from the admin-only `GET /admin/staff-accounts/history` endpoint.
+
+Creation, edits and status changes record the actor, target and before/after values in
+`staff_account_history`. Temporary passwords are omitted from API responses
+and audit records. Password setup and audit records are private to the backend.
 
 The development merge combines package management/history with the guarded
 membership workflow. `/purchases` creates a Pending selection, and

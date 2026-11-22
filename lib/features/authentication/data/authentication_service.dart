@@ -19,11 +19,13 @@ class AuthenticationService {
     required this.auth,
     required this.sessionPreferences,
     this.googleCredentials,
+    this.beforeSignOut,
   });
 
   final FirebaseAuth auth;
   final SessionPreferenceStore sessionPreferences;
   final GoogleCredentialProvider? googleCredentials;
+  final Future<void> Function()? beforeSignOut;
 
   Stream<User?> authStateChanges() => auth.authStateChanges();
 
@@ -34,6 +36,7 @@ class AuthenticationService {
     // A missing preference belongs to a session created before this policy was
     // introduced. Preserve it; every new login writes an explicit preference.
     if (rememberSession == false) {
+      await beforeSignOut?.call();
       await auth.signOut();
     }
   }
@@ -70,6 +73,7 @@ class AuthenticationService {
 
   Future<void> signOut() async {
     try {
+      await beforeSignOut?.call();
       await auth.signOut();
     } on FirebaseAuthException catch (error) {
       throw AuthenticationFailure(

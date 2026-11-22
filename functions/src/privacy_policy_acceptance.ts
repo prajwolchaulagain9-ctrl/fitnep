@@ -1,6 +1,12 @@
 import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
+import { normalizeUserRole } from "./domain";
 
 export const privacyPolicyVersion = "1";
+
+export function requiresClientPrivacyAcceptance(roleClaim: unknown): boolean {
+  const role = normalizeUserRole(roleClaim);
+  return role === null || role === "client";
+}
 
 export interface RegistrationPrivacyInput {
   age?: unknown;
@@ -16,7 +22,7 @@ export class PrivacyAcceptanceError extends Error {
   }
 }
 
-/** Registration can call this before it creates an account. */
+/** Validate the client's consent before completing registration. */
 export function validatePrivacyAcceptance(input: RegistrationPrivacyInput) {
   const { age } = input;
   if (typeof age !== "number" || !Number.isInteger(age) || age < 1 || age > 120) {
@@ -33,15 +39,20 @@ export function validatePrivacyAcceptance(input: RegistrationPrivacyInput) {
       "Confirm permission from a parent or guardian before registering.",
     );
   }
-  return { guardianConsentConfirmed: age < 18 };
+  return { age, guardianConsentConfirmed: age < 18 };
 }
 
 export class FirestorePrivacyAcceptanceStore {
   constructor(private readonly firestore: Firestore) {}
 
+  async hasCurrentAcceptance(uid: string): Promise<boolean> {
+    const record = await this.firestore.collection("privacy_acceptances").doc(uid).get();
+    return record.get("policy_version") === privacyPolicyVersion && record.get("accepted_at") instanceof Timestamp;
+  }
+
   /** Use the UID from the registration backend before activating the account. */
   async recordForClient(uid: string, input: RegistrationPrivacyInput): Promise<void> {
-    const { guardianConsentConfirmed } = validatePrivacyAcceptance(input);
+    const { age, guardianConsentConfirmed } = validatePrivacyAcceptance(input);
     const consent = this.firestore.collection("privacy_acceptances").doc(uid);
     await this.firestore.runTransaction(async (transaction) => {
       const current = await transaction.get(consent);
@@ -52,6 +63,7 @@ export class FirestorePrivacyAcceptanceStore {
       transaction.set(consent, {
         policy_version: privacyPolicyVersion,
         accepted_at: FieldValue.serverTimestamp(),
+        age_at_acceptance: age,
         guardian_consent_confirmed: guardianConsentConfirmed,
         ...(guardianConsentConfirmed ? {
           guardian_consent_confirmed_at: FieldValue.serverTimestamp(),

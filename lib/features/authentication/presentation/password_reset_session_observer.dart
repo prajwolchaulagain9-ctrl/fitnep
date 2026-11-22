@@ -6,8 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/routes/app_router.dart';
 import '../../../app/routes/app_routes.dart';
-import '../../../core/services/firebase_providers.dart';
 import '../../../core/authorization/authorization_refresh.dart';
+import '../../../core/services/firebase_providers.dart';
+import '../data/hosted_session_service.dart';
 import '../../notifications/presentation/controllers/notification_controller.dart';
 import '../../notifications/presentation/controllers/notification_destination_controller.dart';
 import '../data/password_recovery_service.dart';
@@ -33,9 +34,13 @@ class _PasswordResetSessionObserverState
   @override
   void initState() {
     super.initState();
-    _recovery = PasswordRecoveryService(ref.read(firebaseAuthProvider));
+    _recovery = PasswordRecoveryService(
+      ref.read(firebaseAuthProvider),
+      beforeSignOut: ref.read(hostedSessionServiceProvider).end,
+    );
     WidgetsBinding.instance.addObserver(this);
     _subscription = _recovery.auth.authStateChanges().listen((_) {
+      ref.invalidate(tokenStorageProvider);
       ref.invalidate(notificationControllerProvider);
       ref.invalidate(notificationDestinationProvider);
       _startChecking();

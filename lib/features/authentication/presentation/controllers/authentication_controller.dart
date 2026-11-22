@@ -6,6 +6,10 @@ import '../../../../core/config/app_config.dart';
 import '../../data/authentication_service.dart';
 import '../../data/google_credential_provider.dart';
 import '../../data/session_preference_store.dart';
+import '../../data/hosted_session_service.dart';
+import '../../data/registration_privacy.dart';
+import '../../domain/entities/privacy_policy.dart';
+import '../../../../core/network/api_client_provider.dart';
 
 final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
@@ -27,12 +31,34 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
     auth: ref.read(firebaseAuthProvider),
     sessionPreferences: ref.read(sessionPreferenceStoreProvider),
     googleCredentials: ref.read(googleCredentialProvider),
+    beforeSignOut: ref.read(hostedSessionServiceProvider).end,
   );
   // The named emulator app has its own session; live Remember Me preferences
   // must not sign out a seeded local-demo account during startup.
   if (!AppConfig.useFirebaseEmulators) await service.restoreSession();
+  if (AppConfig.hostedSessionsEnabled) {
+    // Network failure keeps pending logout encrypted for a later retry.
+    try {
+      await ref.read(hostedSessionServiceProvider).reconcileLogout();
+    } catch (_) {}
+  }
   return service;
 }, retry: (retryCount, error) => null);
+
+final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
+  final user = await ref.watch(authenticationStateProvider.future);
+  if (user == null) return false;
+  if (AppConfig.hostedSessionsEnabled) {
+    final response = await ref
+        .watch(apiClientProvider)
+        .dio
+        .get<Map<String, dynamic>>('session');
+    return (response.data?['data'] as Map?)?['must_change_password'] == true;
+  }
+  final token = await user.getIdTokenResult();
+  return token.claims?['mustChangePassword'] == true ||
+      token.claims?['must_change_password'] == true;
+}, retry: (count, error) => null);
 
 final authenticationStateProvider = StreamProvider<User?>((ref) async* {
   final service = await ref.watch(authenticationBootstrapProvider.future);
@@ -107,10 +133,19 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     required String name,
     required String email,
     required String password,
+    RegistrationConsent? consent,
   }) async {
     return _run(() async {
       final service = await ref.read(authenticationBootstrapProvider.future);
       await service.signUp(name: name, email: email, password: password);
+      final uid = service.auth.currentUser?.uid;
+      if (uid != null && consent != null) {
+        try {
+          await ref
+              .read(pendingRegistrationConsentStoreProvider)
+              .write(uid, consent);
+        } catch (_) {}
+      }
       return true;
     });
   }

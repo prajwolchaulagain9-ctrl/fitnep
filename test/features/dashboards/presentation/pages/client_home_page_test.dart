@@ -1,11 +1,15 @@
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/features/dashboards/presentation/pages/client_home_page.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
 import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:fitnep/features/notifications/presentation/pages/notifications_page.dart';
+import 'package:fitnep/features/purchases/domain/entities/package_purchase_entity.dart';
+import 'package:fitnep/features/purchases/domain/repositories/package_purchase_repository.dart';
+import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -26,11 +30,15 @@ void main() {
       ]);
       final container = ProviderContainer(
         overrides: [
+          registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           routeSessionProvider.overrideWith(
             (ref) async =>
                 (uid: 'authenticated-client', role: FitNepRole.client),
           ),
           notificationRepositoryProvider.overrideWithValue(repository),
+          packagePurchaseRepositoryProvider.overrideWithValue(
+            _EmptyPurchases(),
+          ),
         ],
       );
       addTearDown(container.dispose);
@@ -72,6 +80,11 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+}
+
+class _EmptyPurchases extends Fake implements PackagePurchaseRepository {
+  @override
+  Future<PackagePurchaseEntity?> getCurrentPurchase() async => null;
 }
 
 class _FakeNotificationRepository implements NotificationRepository {

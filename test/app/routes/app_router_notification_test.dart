@@ -115,6 +115,8 @@ void main() {
 
     for (final path in [
       AppRoutes.adminClients,
+      AppRoutes.adminStaffAccounts,
+      AppRoutes.adminStaffHistory,
       AppRoutes.adminPackages,
       AppRoutes.adminPackageHistory,
       AppRoutes.adminCreatePackage,
@@ -136,9 +138,18 @@ void main() {
 
 class _RouteAuth extends Fake implements FirebaseAuth {
   final users = StreamController<User?>();
+  User? _currentUser;
 
   @override
-  Stream<User?> idTokenChanges() => users.stream;
+  User? get currentUser => _currentUser;
+
+  @override
+  Stream<User?> idTokenChanges() async* {
+    await for (final user in users.stream) {
+      _currentUser = user;
+      yield user;
+    }
+  }
 }
 
 class _RouteUser extends Fake implements User {

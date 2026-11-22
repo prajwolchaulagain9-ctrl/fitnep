@@ -19,6 +19,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/empty_notifications.dart';
 
+import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
+
+class _EmptyMembership extends MembershipController {
+  @override
+  MembershipState build() => const MembershipState();
+}
+
 class _Firestore extends Fake implements FirebaseFirestore {}
 
 class _Identity extends Fake implements User {
@@ -129,6 +136,7 @@ Future<ProviderContainer> _open(
       ),
       authorizationRepositoryProvider.overrideWithValue(repository),
       notificationControllerProvider.overrideWith(EmptyNotifications.new),
+      membershipControllerProvider.overrideWith(_EmptyMembership.new),
     ],
   );
   addTearDown(() async {
@@ -223,7 +231,9 @@ void main() {
         );
         expect(repository.denied, contains('manage_client_accounts'));
         expect(
-          repository.requestedPaths.where((path) => path.startsWith('admin/clients')),
+          repository.requestedPaths.where(
+            (path) => path.startsWith('admin/clients'),
+          ),
           isEmpty,
         );
         expect(tester.takeException(), isNull);

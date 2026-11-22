@@ -14,6 +14,10 @@ const resources: Partial<Record<Permission, string>> = {
 const endpoints: [string, RegExp, Permission][] = [
   ["GET", /^\/session$/, "view_dashboard"],
   ["POST", /^\/authorization\/check$/, "view_dashboard"],
+  ["POST", /^\/auth\/staff\/change-temporary-password$/, "edit_own_profile"],
+  ["GET", /^\/admin\/staff-accounts(?:\/history)?$/, "manage_staff_accounts"],
+  ["POST", /^\/admin\/staff-accounts$/, "manage_staff_accounts"],
+  ["PATCH", /^\/admin\/staff-accounts\/([^/]+)(?:\/active)?$/, "manage_staff_accounts"],
   ["GET", /^\/profile\/me$/, "view_own_profile"],
   ["PATCH", /^\/profile\/me$/, "edit_own_profile"],
   ["GET", /^\/admin\/users$/, "manage_user_roles"],

@@ -1,0 +1,33 @@
+{
+  "host": "https://fitnep-api.onrender.com",
+  "project": "fitnep-88908",
+  "startedAt": "2026-11-22T06:27:06.448Z",
+  "checks": {
+    "health": 200,
+    "anonymousDenied": 401,
+    "sessionStart": 200,
+    "protectedSession": 200,
+    "directAuditReadDenied": 403,
+    "logout": 204,
+    "closedSessionReplayDenied": 401,
+    "closedAuthenticationContextDenied": 401
+  },
+  "buildSha": "c76d663a797e1e3075682423207f320e28227880",
+  "nodeVersion": "v22.23.5",
+  "loginAudit": {
+    "id": "IbQiBjJjyXSnPGusgkUN",
+    "action": "session.started",
+    "actorId": "fitnep-demo-admin",
+    "actorRole": "admin",
+    "occurredAt": "2026-11-22T06:27:11.234Z"
+  },
+  "logoutAudit": {
+    "id": "Jews3qpJK5VwkCQawe5K",
+    "action": "session.ended",
+    "actorId": "fitnep-demo-admin",
+    "actorRole": "admin",
+    "occurredAt": "2026-11-22T06:27:13.754Z"
+  },
+  "result": "passed",
+  "finishedAt": "2026-11-22T06:27:14.478Z"
+}

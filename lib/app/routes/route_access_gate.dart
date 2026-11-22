@@ -9,6 +9,8 @@ import '../../features/authorization/data/authorization_repository.dart';
 import '../../features/authorization/domain/account.dart';
 import '../../features/authorization/presentation/account_session.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
+import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
+import '../../features/authentication/presentation/hosted_session_gate.dart';
 export '../../core/authorization/role_permissions.dart';
 import 'app_routes.dart';
 
@@ -70,7 +72,7 @@ class RouteAccessGate extends ConsumerWidget {
                 .hasPermission(requiredPermission)) {
               return AccessDeniedPage(permission: requiredPermission);
             }
-            return KeyedSubtree(
+            Widget child = KeyedSubtree(
               key: ValueKey((
                 session.uid,
                 session.role,
@@ -78,6 +80,13 @@ class RouteAccessGate extends ConsumerWidget {
               )),
               child: builder(context),
             );
+            if (AppConfig.hostedSessionsEnabled) {
+              child = HostedSessionGate(uid: session.uid, child: child);
+              if (session.role == FitNepRole.client) {
+                child = RegistrationPrivacyGate(uid: session.uid, child: child);
+              }
+            }
+            return child;
           },
         );
   }

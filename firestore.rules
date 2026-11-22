@@ -85,6 +85,34 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /platform_sessions/{document=**} {
+      allow read, write: if false;
+    }
+    match /platform_auth_contexts/{document=**} {
+      allow read, write: if false;
+    }
+    match /platform_login_state/{document=**} {
+      allow read, write: if false;
+    }
+    match /audit_events/{document=**} {
+      allow read, write: if false;
+    }
+    match /workflow_outbox/{document=**} {
+      allow read, write: if false;
+    }
+    match /outbox_deliveries/{document=**} {
+      allow read, write: if false;
+    }
+    match /staff_account_history/{document=**} {
+      allow read, write: if false;
+    }
+    match /staff_password_setup/{document=**} {
+      allow read, write: if false;
+    }
+    match /staff_account_locks/{document=**} {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

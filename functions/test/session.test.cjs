@@ -30,6 +30,32 @@ test('both old sessions, disabled accounts and expired tokens are denied', async
   }
 });
 
+test('a temporary-password session cannot use protected callables', async () => {
+  await assert.rejects(requireValidSession(request, {
+    verifyIdToken: async () => ({ uid: 'client', mustChangePassword: true }),
+  }), { code: 'failed-precondition' });
+});
+
+test('staff callable sessions must match the current account version and email', async () => {
+  const token = { uid: 'staff', role: 'admin', email: 'staff@example.test', staffRoleVersion: 'original' };
+  const staffRequest = { ...request, auth: { uid: 'staff' } };
+  const account = {
+    uid: 'staff',
+    email: token.email,
+    customClaims: { role: token.role, staffRoleVersion: token.staffRoleVersion },
+  };
+  const auth = {
+    verifyIdToken: async () => token,
+    getUser: async () => account,
+  };
+  assert.equal(await requireValidSession(staffRequest, auth), token);
+  account.email = 'updated@example.test';
+  await assert.rejects(requireValidSession(staffRequest, auth), { code: 'unauthenticated' });
+  account.email = token.email;
+  account.customClaims.staffRoleVersion = 'updated';
+  await assert.rejects(requireValidSession(staffRequest, auth), { code: 'unauthenticated' });
+});
+
 test('missing identity and malformed headers are denied before verification', async () => {
   const auth = { verifyIdToken: () => assert.fail('must not verify malformed input') };
   for (const input of [

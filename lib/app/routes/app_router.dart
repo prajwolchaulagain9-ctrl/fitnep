@@ -6,6 +6,9 @@ import '../../features/authentication/presentation/pages/password_recovery_pages
 import '../../features/authentication/presentation/pages/login_page.dart';
 import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
+import '../../features/authentication/presentation/pages/change_staff_password_page.dart';
+import '../../features/admin/presentation/pages/staff_accounts_page.dart';
+import '../../features/admin/presentation/pages/staff_account_history_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../../features/authorization/presentation/role_home_page.dart';
 import '../../features/authorization/presentation/profile_page.dart';
@@ -48,6 +51,7 @@ import '../../features/admin/presentation/controllers/audit_log_controller.dart'
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
   ref.listen(authenticationStateProvider, (_, _) => notifier.refresh());
+  ref.listen(staffPasswordChangeRequiredProvider, (_, _) => notifier.refresh());
   ref.listen(routeSessionProvider, (previous, next) {
     if (next.hasValue && !next.isLoading) {
       final session = next.value;
@@ -111,6 +115,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ? AppRoutes.demoEntry
             : AppRoutes.loginPath;
       }
+      if (isAuthenticated) {
+        final change = ref.read(staffPasswordChangeRequiredProvider);
+        if (change.isLoading) return null;
+        if (change.value == true) {
+          return path == AppRoutes.changeStaffPasswordPath
+              ? null
+              : AppRoutes.changeStaffPasswordPath;
+        }
+      }
       if (isAuthenticated &&
           !AppConfig.useFirebaseEmulators &&
           ref.read(signupEmailOtpEnabledProvider)) {
@@ -133,6 +146,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           (path == AppRoutes.welcomePath ||
               path == AppRoutes.loginPath ||
               path == AppRoutes.signupPath ||
+              path == AppRoutes.changeStaffPasswordPath ||
               path == AppRoutes.verifyEmailPath)) {
         return AppRoutes.dashboard;
       }
@@ -159,6 +173,25 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: AppRoutes.changeStaffPasswordPath,
+        name: AppRoutes.changeStaffPassword,
+        builder: (_, _) => const ChangeStaffPasswordPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffAccounts,
+        builder: (_, _) => RouteAccessGate(
+          requiredPermission: 'manage_staff_accounts',
+          builder: (_) => const StaffAccountsPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffHistory,
+        builder: (_, _) => RouteAccessGate(
+          requiredPermission: 'manage_staff_accounts',
+          builder: (_) => const StaffAccountHistoryPage(),
+        ),
+      ),
       GoRoute(
         path: AppRoutes.accessDenied,
         builder: (context, state) => AccessDeniedPage(

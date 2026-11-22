@@ -3,6 +3,8 @@ abstract final class AppRoutes {
   static const about = 'about';
   static const login = 'login';
   static const signup = 'signup';
+  static const changeStaffPassword = 'change-staff-password';
+  static const changeStaffPasswordPath = '/change-staff-password';
   static const verifyEmail = 'verifyEmail';
   static const appUnderDevelopment = 'appUnderDevelopment';
   static const forgotPassword = 'forgotPassword';
@@ -25,6 +27,8 @@ abstract final class AppRoutes {
   static const adminHome = '/admin/home';
   static const ownProfile = '/account/profile';
   static const adminUsers = '/admin/users';
+  static const adminStaffAccounts = '/admin/staff-accounts';
+  static const adminStaffHistory = '/admin/staff-accounts/history';
   static const assignedClients = '/care/clients';
   static const clientRecords = '/client/records';
   static const assignedClientRecords = '/care/clients/:id/records';

@@ -20,6 +20,9 @@ export function accountFrom(id: string, data: Record<string, unknown> | undefine
       !(data.created_at instanceof Timestamp) || !(data.updated_at instanceof Timestamp)) {
     throw new PermissionDeniedError("The account has no valid role or status.");
   }
+  if (data.role_revision !== undefined && (!Number.isSafeInteger(data.role_revision) || (data.role_revision as number) < 0)) {
+    throw new PermissionDeniedError("The account has no valid role revision.");
+  }
   return { id, full_name: typeof data.full_name === "string" ? data.full_name : "",
     email: typeof data.email === "string" ? data.email : "", role: data.role,
     role_revision: typeof data.role_revision === "number" ? data.role_revision : 0,
