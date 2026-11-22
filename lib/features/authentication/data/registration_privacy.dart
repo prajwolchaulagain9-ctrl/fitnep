@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/services/firebase_providers.dart';
@@ -96,30 +97,83 @@ HttpsCallable _privacyCallable(FirebaseFunctions functions, String url) {
 }
 
 final registrationAcceptedProvider = FutureProvider.autoDispose
-    .family<bool, String>(
-      (ref, uid) => ref.watch(registrationPrivacyProvider)({
-        'uid': uid,
-        'action': 'status',
-      }),
-      retry: (retryCount, error) => null,
-    );
+    .family<bool, String>((ref, uid) async {
+      final request = ref.watch(registrationPrivacyProvider);
+      final store = ref.watch(pendingRegistrationConsentStoreProvider);
+      final accepted = await request({'uid': uid, 'action': 'status'});
+      final pending = await store.read(uid);
+      if (pending == null) return accepted;
+      if (!accepted) {
+        if (!ref.mounted) return false;
+        await acceptRegistrationPrivacy(request, uid, pending);
+      }
+      await store.clear(uid);
+      return true;
+    }, retry: (retryCount, error) => null);
 
 Future<void> acceptRegistrationPrivacy(
-  WidgetRef ref,
+  RegistrationPrivacyRequest request,
   String uid,
-  int age,
-  bool accepted,
-  bool guardian,
+  RegistrationConsent consent,
 ) async {
-  final result = await ref.read(registrationPrivacyProvider).call({
+  final result = await request({
     'action': 'accept',
     'uid': uid,
-    'age': age,
+    'age': consent.age,
     'privacy_policy_version': privacyPolicyVersion,
-    'privacy_policy_accepted': accepted,
-    'guardian_consent_confirmed': guardian,
+    'privacy_policy_accepted': true,
+    'guardian_consent_confirmed': consent.guardianConfirmed,
   });
   if (!result) {
     throw StateError('Consent was not saved.');
+  }
+}
+
+final pendingRegistrationConsentStoreProvider =
+    Provider<PendingRegistrationConsentStore>(
+      (ref) => const PendingRegistrationConsentStore(),
+    );
+
+class PendingRegistrationConsentStore {
+  const PendingRegistrationConsentStore([
+    this._storage = const FlutterSecureStorage(),
+  ]);
+
+  final FlutterSecureStorage _storage;
+
+  String _key(String uid) => 'pending_registration_consent_$uid';
+
+  Future<void> write(String uid, RegistrationConsent consent) => _storage.write(
+    key: _key(uid),
+    value: '$privacyPolicyVersion:${consent.age}:${consent.guardianConfirmed}',
+  );
+
+  Future<RegistrationConsent?> read(String uid) async {
+    final String? value;
+    try {
+      value = await _storage.read(key: _key(uid));
+    } on Exception {
+      // A device without secure storage can finish via the age and policy form.
+      return null;
+    }
+    if (value?.split(':') case [
+      privacyPolicyVersion,
+      final years,
+      final guardian,
+    ]) {
+      final age = parseRegistrationAge(years);
+      if (age != null && (age >= 18 || guardian == 'true')) {
+        return (age: age, guardianConfirmed: age < 18);
+      }
+    }
+    return null;
+  }
+
+  Future<void> clear(String uid) async {
+    try {
+      await _storage.delete(key: _key(uid));
+    } on Exception {
+      // Firebase is authoritative once acceptance has been saved.
+    }
   }
 }

@@ -51,14 +51,16 @@ URL scheme is configured. For other signing keys or configuration changes:
 The app's Firebase platform setup currently supports Android/iOS. Web has the
 Firebase popup branch, but needs its own Firebase configuration before use.
 
-## Email verification and consent after signup
+## Consent and email verification
 
-Email/password signup creates a Firebase account and asks the user to verify
-their email by code or verification link. After verification, clients enter their age and accept the current
-Privacy Policy. Clients under 18 confirm guardian permission. The app opens
-after Firestore confirms the record was saved. Google accounts whose email is
-already verified go straight to the privacy step. Once consent is saved,
-clients enter package selection.
+Email signup collects age with the other registration fields. Completing the
+form opens the Privacy Policy. The acceptance checkbox unlocks at the end,
+and clients under 18 also confirm guardian permission. Accepting creates the
+account and opens email verification by code or link. The app keeps the
+pending consent in secure device storage under the new account's UID.
+After verification, it saves the consent to Firebase before opening package
+selection. New Google sign-ins and clients resuming without a pending consent
+record complete the age and policy review after Firebase verifies their email.
 
 Unverified email/password users also return to verification on login and restored
 sessions. Password recovery remains accessible.

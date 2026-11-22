@@ -5,7 +5,9 @@ import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/config/app_config.dart';
 import '../../data/authentication_service.dart';
 import '../../data/google_credential_provider.dart';
+import '../../data/registration_privacy.dart';
 import '../../data/session_preference_store.dart';
+import '../../domain/entities/privacy_policy.dart';
 
 final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
@@ -116,10 +118,23 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     required String name,
     required String email,
     required String password,
+    required RegistrationConsent consent,
   }) async {
     return _run(() async {
+      final store = ref.read(pendingRegistrationConsentStoreProvider);
       final service = await ref.read(authenticationBootstrapProvider.future);
-      await service.signUp(name: name, email: email, password: password);
+      final uid = await service.signUp(
+        name: name,
+        email: email,
+        password: password,
+      );
+      if (uid != null) {
+        try {
+          await store.write(uid, consent);
+        } on Exception {
+          // The account exists. The privacy gate can recover after verification.
+        }
+      }
       return true;
     });
   }

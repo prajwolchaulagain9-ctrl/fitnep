@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/memory_session_preference_store.dart';
@@ -247,7 +248,9 @@ Future<ProviderContainer> _open(
   RegistrationPrivacyRequest? privacy,
   _Verification? verification,
   _Purchases? purchases,
+  bool resetConsentStorage = true,
 }) async {
+  if (resetConsentStorage) FlutterSecureStorage.setMockInitialValues({});
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
     await tester.runAsync(_loadCaptureFonts);
   }
@@ -312,26 +315,44 @@ Future<void> _close(WidgetTester tester, _Auth auth) async {
 Future<void> _fill(
   WidgetTester tester, {
   String confirmation = 'Password!12',
-  bool acceptPrivacy = true,
+  String age = '24',
 }) async {
-  if (acceptPrivacy) await _acceptPrivacy(tester);
   await tester.enterText(find.byType(TextFormField).at(0), 'Test Client');
   await tester.enterText(
     find.byType(TextFormField).at(1),
     'client@example.com',
   );
-  await tester.enterText(find.byType(TextFormField).at(2), 'Password!12');
-  await tester.enterText(find.byType(TextFormField).at(3), confirmation);
-  await tester.ensureVisible(
-    find.widgetWithText(FilledButton, 'Create account'),
+  await tester.enterText(find.byType(TextFormField).at(2), age);
+  await tester.enterText(find.byType(TextFormField).at(3), 'Password!12');
+  await tester.enterText(find.byType(TextFormField).at(4), confirmation);
+  await tester.pump();
+}
+
+Future<void> _openAutomaticPolicy(WidgetTester tester) async {
+  await tester.pump(const Duration(milliseconds: 450));
+  await tester.pumpAndSettle();
+  expect(find.byKey(const Key('registration_policy_scroll')), findsOneWidget);
+}
+
+Future<void> _scrollToPolicyEnd(WidgetTester tester) async {
+  await tester.drag(
+    find.byKey(const Key('registration_policy_scroll')),
+    const Offset(0, -1800),
   );
   await tester.pumpAndSettle();
 }
 
-Future<void> _acceptPrivacy(WidgetTester tester) async {
-  final agreement = find.byKey(const Key('signup_privacy_agreement'));
-  await tester.ensureVisible(agreement);
-  await tester.tap(agreement);
+Future<void> _acceptPrivacy(
+  WidgetTester tester, {
+  bool guardian = false,
+}) async {
+  await _scrollToPolicyEnd(tester);
+  if (guardian) {
+    await tester.tap(find.text('My parent or guardian has given permission'));
+  }
+  await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Accept and continue'));
   await tester.pumpAndSettle();
 }
 
@@ -394,7 +415,7 @@ void main() {
   });
 
   testWidgets(
-    'email verification precedes age and guardian consent and saving unlocks the app',
+    'an existing unverified signup still completes guardian consent after verification',
     (tester) async {
       final auth = _Auth();
       final verification = _Verification(auth);
@@ -432,15 +453,9 @@ void main() {
       expect(find.text('Choose a Package'), findsNothing);
       await tester.enterText(find.byType(TextField), '17');
       await tester.pumpAndSettle();
-      await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+      await tester.tap(find.text('Review Privacy Policy'));
       await tester.pumpAndSettle();
-      final button = find.widgetWithText(FilledButton, 'Continue');
-      expect(tester.widget<FilledButton>(button).onPressed, isNull);
-      expect(verification.sends, 1);
-      await tester.tap(find.text('My parent or guardian has given permission'));
-      await tester.pumpAndSettle();
-      await tester.tap(button);
-      await tester.pumpAndSettle();
+      await _acceptPrivacy(tester, guardian: true);
       expect(accepted, true);
       expect(find.text('Choose a Package'), findsOneWidget);
       expect(verification.sends, 1);
@@ -452,7 +467,7 @@ void main() {
   );
 
   testWidgets(
-    'policy buttons return to login and signup without losing the form',
+    'leaving the policy preserves both forms and does not create an account',
     (tester) async {
       final auth = _Auth();
       final container = await _open(tester, auth);
@@ -482,12 +497,7 @@ void main() {
       router.go(AppRoutes.signupPath);
       await tester.pumpAndSettle();
       await _fill(tester);
-      final signupPolicy = find.byKey(
-        const Key('signup_privacy_policy_button'),
-      );
-      await tester.ensureVisible(signupPolicy);
-      await tester.tap(signupPolicy);
-      await tester.pumpAndSettle();
+      await _openAutomaticPolicy(tester);
       expect(find.text('How FitNEP handles your data'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
@@ -501,11 +511,10 @@ void main() {
       );
       expect(
         tester
-            .widget<CheckboxListTile>(
-              find.byKey(const Key('signup_privacy_agreement')),
-            )
-            .value,
-        isTrue,
+            .widget<TextFormField>(find.byType(TextFormField).at(2))
+            .controller!
+            .text,
+        '24',
       );
       expect(auth.signUps, 0);
       expect(tester.takeException(), isNull);
@@ -513,28 +522,66 @@ void main() {
     },
   );
 
-  testWidgets('signup requires privacy agreement for email and Google', (
+  testWidgets('a minor accepts at the end of the policy, then verifies email', (
     tester,
   ) async {
     final auth = _Auth();
-    final container = await _open(tester, auth);
+    final verification = _Verification(auth);
+    Map<String, Object>? savedConsent;
+    Future<bool> privacy(Map<String, Object> data) async {
+      expect(auth.currentUser?.emailVerified, isTrue);
+      if (data['action'] == 'accept') savedConsent = data;
+      return savedConsent != null;
+    }
+
+    final container = await _open(
+      tester,
+      auth,
+      verification: verification,
+      privacy: privacy,
+    );
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
-    await _fill(tester, acceptPrivacy: false);
-    final create = find.widgetWithText(FilledButton, 'Create account');
-    final google = find.byWidgetPredicate((widget) => widget is OutlinedButton);
-    expect(tester.widget<FilledButton>(create).onPressed, isNull);
-    expect(tester.widget<OutlinedButton>(google).onPressed, isNull);
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pumpAndSettle();
+    await _fill(tester, age: '17');
+    await _openAutomaticPolicy(tester);
+
+    final button = find.widgetWithText(FilledButton, 'Accept and continue');
+    expect(
+      find.text('Scroll to the end to accept the policy.'),
+      findsOneWidget,
+    );
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
     expect(auth.signUps, 0);
-    expect(auth.googleSignIns, 0);
-    await _acceptPrivacy(tester);
-    expect(tester.widget<FilledButton>(create).onPressed, isNotNull);
-    expect(tester.widget<OutlinedButton>(google).onPressed, isNotNull);
-    await _acceptPrivacy(tester);
-    expect(tester.widget<FilledButton>(create).onPressed, isNull);
-    expect(tester.widget<OutlinedButton>(google).onPressed, isNull);
+    await _scrollToPolicyEnd(tester);
+    await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.tap(find.text('My parent or guardian has given permission'));
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(auth.signUps, 1);
+    expect(find.text('Verify your email'), findsOneWidget);
+    expect(savedConsent, isNull);
+
+    // Recreate the app while keeping the verified user's pending device storage.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    await _open(
+      tester,
+      auth,
+      verification: verification,
+      privacy: privacy,
+      resetConsentStorage: false,
+    );
+    await tester.enterText(find.byType(TextFormField), '123456');
+    await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
+    await tester.pumpAndSettle();
+    expect(savedConsent, containsPair('uid', 'signup-client'));
+    expect(savedConsent, containsPair('age', 17));
+    expect(savedConsent, containsPair('guardian_consent_confirmed', true));
+    expect(find.text('Choose a Package'), findsOneWidget);
+    expect(find.text('Complete registration'), findsNothing);
     await _close(tester, auth);
   });
 
@@ -579,11 +626,15 @@ void main() {
     expect(find.text('Create your account'), findsOneWidget);
     expect(find.byType(FitNepWordmark), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
-    expect(find.byType(TextFormField), findsNWidgets(4));
-    await _snapshot(tester, 'signup-top');
-    await tester.ensureVisible(
-      find.widgetWithText(FilledButton, 'Create account'),
+    expect(find.byType(TextFormField), findsNWidgets(5));
+    expect(
+      tester.getTopLeft(find.text('Continue with Google')).dy,
+      greaterThan(
+        tester.getTopLeft(find.widgetWithText(FilledButton, 'Continue')).dy,
+      ),
     );
+    await _snapshot(tester, 'signup-top');
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Continue'));
     await tester.pumpAndSettle();
     await _snapshot(tester, 'signup-bottom');
     expect(tester.takeException(), isNull);
@@ -598,26 +649,11 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
     await _fill(tester, confirmation: 'Different!12');
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Continue'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
     await tester.pumpAndSettle();
     expect(find.text('Passwords do not match.'), findsOneWidget);
     expect(auth.signUps, 0);
-    await _close(tester, auth);
-  });
-
-  testWidgets('signup asks for email verification before consent', (
-    tester,
-  ) async {
-    final auth = _Auth();
-    final container = await _open(tester, auth);
-    container.read(appRouterProvider).go(AppRoutes.signupPath);
-    await tester.pumpAndSettle();
-    await _fill(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
-    await tester.pumpAndSettle();
-    expect(auth.signUps, 1);
-    expect(find.text('Verify your email'), findsOneWidget);
-    expect(find.text('Choose a Package'), findsNothing);
     await _close(tester, auth);
   });
 
@@ -630,8 +666,8 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
     await _fill(tester);
-    await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
-    await tester.pumpAndSettle();
+    await _openAutomaticPolicy(tester);
+    await _acceptPrivacy(tester);
     expect(find.text('Verify your email'), findsOneWidget);
     expect(verification.sends, 1);
     expect(find.text('Resend code in 60s'), findsOneWidget);
@@ -684,14 +720,25 @@ void main() {
   );
 
   testWidgets(
-    'Google cancellation keeps signup usable and success enters the app',
+    'Google signup keeps cancellation recoverable and completes new-account consent',
     (tester) async {
       final auth = _Auth();
       final google = _Google()..cancel = true;
-      final container = await _open(tester, auth, google: google);
+      var accepted = false;
+      final container = await _open(
+        tester,
+        auth,
+        google: google,
+        privacy: (data) async {
+          if (data['action'] == 'accept') {
+            expect(data['age'], 24);
+            accepted = true;
+          }
+          return accepted;
+        },
+      );
       container.read(appRouterProvider).go(AppRoutes.signupPath);
       await tester.pumpAndSettle();
-      await _acceptPrivacy(tester);
       await tester.ensureVisible(find.text('Continue with Google'));
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
@@ -701,8 +748,15 @@ void main() {
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
       expect(auth.googleSignIns, 1);
-      expect(find.text('Choose a Package'), findsOneWidget);
       expect(find.text('Verify your email'), findsNothing);
+      expect(find.text('Complete registration'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '24');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Review Privacy Policy'));
+      await tester.pumpAndSettle();
+      await _acceptPrivacy(tester);
+      expect(accepted, isTrue);
+      expect(find.text('Choose a Package'), findsOneWidget);
       await _close(tester, auth);
     },
   );

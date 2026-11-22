@@ -91,7 +91,7 @@ class AuthenticationService {
     }
   }
 
-  Future<void> signUp({
+  Future<String?> signUp({
     required String name,
     required String email,
     required String password,
@@ -115,6 +115,7 @@ class AuthenticationService {
       } catch (_) {
         // Name can be completed in the profile phase; authentication succeeded.
       }
+      return result.user?.uid;
     } on FirebaseAuthException catch (error) {
       throw failureFor(error);
     } catch (_) {

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -5,9 +7,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../data/password_recovery_service.dart';
+import '../../domain/entities/privacy_policy.dart';
 import '../controllers/authentication_controller.dart';
 import '../widgets/google_sign_in_button.dart';
 import 'password_recovery_pages.dart';
+import 'privacy_policy_page.dart';
 
 class SignupPage extends ConsumerStatefulWidget {
   const SignupPage({super.key});
@@ -20,16 +24,20 @@ class _SignupPageState extends ConsumerState<SignupPage> {
   final _form = GlobalKey<FormState>();
   final _name = TextEditingController();
   final _email = TextEditingController();
+  final _age = TextEditingController();
   final _password = TextEditingController();
   final _confirmation = TextEditingController();
   bool _hidePassword = true;
   bool _hideConfirmation = true;
-  bool _privacyAccepted = false;
+  Timer? _reviewTimer;
+  bool _reviewing = false;
 
   @override
   void dispose() {
+    _reviewTimer?.cancel();
     _name.dispose();
     _email.dispose();
+    _age.dispose();
     _password.dispose();
     _confirmation.dispose();
     super.dispose();
@@ -38,16 +46,73 @@ class _SignupPageState extends ConsumerState<SignupPage> {
   void _clearError() =>
       ref.read(authenticationControllerProvider.notifier).clearError();
 
-  Future<void> _submit() async {
-    if (!_privacyAccepted ||
-        ref.read(authenticationControllerProvider).isLoading) {
+  static String? _nameError(String? value) {
+    final name = value?.trim() ?? '';
+    if (name.isEmpty) return 'Enter your name.';
+    if (name.length > 100) return 'Use 100 characters or fewer.';
+    return null;
+  }
+
+  static String? _emailError(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Enter your email address.';
+    }
+    return PasswordRecoveryService.emailError(value);
+  }
+
+  static String? _passwordError(String? value) {
+    if (value == null || value.isEmpty) return 'Create a password.';
+    if (value.length < 8) return 'Use at least 8 characters.';
+    return null;
+  }
+
+  String? _confirmationError(String? value) {
+    if (value == null || value.isEmpty) return 'Confirm your password.';
+    return value != _password.text ? 'Passwords do not match.' : null;
+  }
+
+  void _schedulePolicyReview() {
+    _reviewTimer?.cancel();
+    if (_reviewing ||
+        _nameError(_name.text) != null ||
+        _emailError(_email.text) != null ||
+        parseRegistrationAge(_age.text) == null ||
+        _passwordError(_password.text) != null ||
+        _confirmationError(_confirmation.text) != null) {
+      return;
+    }
+    _reviewTimer = Timer(const Duration(milliseconds: 400), () {
+      if (mounted && ModalRoute.isCurrentOf(context) == true) {
+        _reviewPolicy();
+      }
+    });
+  }
+
+  Future<void> _reviewPolicy() async {
+    _reviewTimer?.cancel();
+    if (_reviewing || ref.read(authenticationControllerProvider).isLoading) {
       return;
     }
     FocusScope.of(context).unfocus();
     if (!_form.currentState!.validate()) return;
+    final age = parseRegistrationAge(_age.text)!;
+    final name = _name.text;
+    final email = _email.text;
+    final password = _password.text;
+    _reviewing = true;
+    final accepted = await PrivacyPolicyPage.review(context, age: age);
+    if (!mounted) return;
+    _reviewing = false;
+    if (accepted != true) return;
+
     final created = await ref
         .read(authenticationControllerProvider.notifier)
-        .signUp(name: _name.text, email: _email.text, password: _password.text);
+        .signUp(
+          name: name,
+          email: email,
+          password: password,
+          consent: (age: age, guardianConfirmed: age < 18),
+        );
     if (!mounted) return;
     if (created) {
       TextInput.finishAutofillContext();
@@ -57,54 +122,29 @@ class _SignupPageState extends ConsumerState<SignupPage> {
     }
   }
 
+  void _signInWithGoogle() {
+    _reviewTimer?.cancel();
+    ref
+        .read(authenticationControllerProvider.notifier)
+        .signInWithGoogle(rememberSession: true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final action = ref.watch(authenticationControllerProvider);
     final busy = action.isLoading;
-    final canAuthenticate = !busy && _privacyAccepted;
     return RecoveryPage(
       title: 'Create your account',
       description: 'Start your journey to a healthier you with FitNEP.',
       child: AutofillGroup(
         child: Form(
           key: _form,
+          onChanged: _schedulePolicyReview,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (action.errorMessage != null)
                 RecoveryMessage(action.errorMessage!),
-              CheckboxListTile(
-                key: const Key('signup_privacy_agreement'),
-                value: _privacyAccepted,
-                onChanged: busy
-                    ? null
-                    : (value) =>
-                          setState(() => _privacyAccepted = value ?? false),
-                controlAffinity: ListTileControlAffinity.leading,
-                contentPadding: EdgeInsets.zero,
-                title: const Text('I agree to the Privacy Policy'),
-              ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  key: const Key('signup_privacy_policy_button'),
-                  onPressed: busy
-                      ? null
-                      : () => context.pushNamed(AppRoutes.privacyPolicy),
-                  icon: const Icon(Icons.privacy_tip_outlined, size: 20),
-                  label: const Text('Read Privacy Policy'),
-                ),
-              ),
-              const SizedBox(height: 12),
-              GoogleSignInButton(
-                isLoading: busy && action.isGoogleSignIn,
-                onPressed: canAuthenticate
-                    ? () => ref
-                          .read(authenticationControllerProvider.notifier)
-                          .signInWithGoogle(rememberSession: true)
-                    : null,
-              ),
-              const AuthenticationDivider(),
               TextFormField(
                 controller: _name,
                 readOnly: busy,
@@ -116,12 +156,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                   hintText: 'Your name',
                   prefixIcon: Icon(Icons.person_outline),
                 ),
-                validator: (value) {
-                  final name = value?.trim() ?? '';
-                  if (name.isEmpty) return 'Enter your name.';
-                  if (name.length > 100) return 'Use 100 characters or fewer.';
-                  return null;
-                },
+                validator: _nameError,
                 onChanged: (_) => _clearError(),
               ),
               const SizedBox(height: 16),
@@ -140,9 +175,20 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                   hintText: 'you@example.com',
                   prefixIcon: Icon(Icons.mail_outline),
                 ),
-                validator: (value) => value == null || value.trim().isEmpty
-                    ? 'Enter your email address.'
-                    : PasswordRecoveryService.emailError(value),
+                validator: _emailError,
+                onChanged: (_) => _clearError(),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _age,
+                readOnly: busy,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration: const InputDecoration(labelText: 'Age in years'),
+                validator: (value) => parseRegistrationAge(value) == null
+                    ? 'Enter an age from 1 to 120.'
+                    : null,
                 onChanged: (_) => _clearError(),
               ),
               const SizedBox(height: 16),
@@ -161,13 +207,7 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                       ? null
                       : () => setState(() => _hidePassword = !_hidePassword),
                 ).copyWith(helperText: 'Use at least 8 characters.'),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Create a password.';
-                  }
-                  if (value.length < 8) return 'Use at least 8 characters.';
-                  return null;
-                },
+                validator: _passwordError,
                 onChanged: (_) => _clearError(),
               ),
               const SizedBox(height: 16),
@@ -188,21 +228,17 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                           () => _hideConfirmation = !_hideConfirmation,
                         ),
                 ),
-                validator: (value) => value == null || value.isEmpty
-                    ? 'Confirm your password.'
-                    : value != _password.text
-                    ? 'Passwords do not match.'
-                    : null,
+                validator: _confirmationError,
                 onChanged: (_) => _clearError(),
-                onFieldSubmitted: (_) => _submit(),
+                onFieldSubmitted: (_) => _reviewPolicy(),
               ),
               const SizedBox(height: 24),
               FilledButton(
-                onPressed: canAuthenticate ? _submit : null,
+                onPressed: busy ? null : _reviewPolicy,
                 child: Text(
                   busy && !action.isGoogleSignIn
                       ? 'Creating account\u2026'
-                      : 'Create account',
+                      : 'Continue',
                 ),
               ),
               const SizedBox(height: 12),
@@ -226,6 +262,11 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                     child: const Text('Log in'),
                   ),
                 ],
+              ),
+              const AuthenticationDivider(),
+              GoogleSignInButton(
+                isLoading: busy && action.isGoogleSignIn,
+                onPressed: busy ? null : _signInWithGoogle,
               ),
             ],
           ),
