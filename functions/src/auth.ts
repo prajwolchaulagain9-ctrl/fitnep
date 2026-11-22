@@ -1,6 +1,9 @@
 import { getAuth } from "firebase-admin/auth";
 
-import { AuthenticatedUser, normalizeUserRole } from "./domain";
+import { getFirestore } from "firebase-admin/firestore";
+import { AuthenticatedUser, UserRole } from "./domain";
+import { FirestoreAccountService } from "./account_service";
+import { PermissionDeniedError } from "./authorization_policy";
 
 export interface AuthVerifier {
   verifyIdToken(token: string): Promise<AuthenticatedUser>;
@@ -9,7 +12,8 @@ export interface AuthVerifier {
 export class AuthenticationError extends Error {
   constructor(
     message: string,
-    readonly statusCode: 401 | 403 = 401,
+    readonly statusCode: 401 | 403 | 503 = 401,
+    readonly identity?: { uid: string; role: UserRole | null },
   ) {
     super(message);
     this.name = "AuthenticationError";
@@ -17,27 +21,41 @@ export class AuthenticationError extends Error {
 }
 
 export class FirebaseAuthVerifier implements AuthVerifier {
+  constructor(private readonly accounts?: FirestoreAccountService) {}
   async verifyIdToken(token: string): Promise<AuthenticatedUser> {
+    let uid: string | undefined;
+    let currentRole: UserRole | null = null;
     try {
-      const decodedToken = await getAuth().verifyIdToken(token, true);
-      const role = normalizeUserRole(decodedToken.role);
-      if (role === null) {
+      const decodedToken = await (this.accounts?.auth ?? getAuth()).verifyIdToken(token, true);
+      uid = decodedToken.uid;
+      const account = await (this.accounts ??
+        new FirestoreAccountService(getFirestore(), getAuth())).current(uid);
+      currentRole = account.role;
+      if (account.account_status !== "active") {
         throw new AuthenticationError(
-          "This account does not have a valid FitNep role.",
-          403,
+          "This account is inactive. Contact FitNEP support.", 403,
+          { uid, role: account.role },
         );
       }
       const displayName = firstNonEmptyString(
-        decodedToken.name,
-        decodedToken.email,
+        account.full_name, account.email,
       );
       return {
         uid: decodedToken.uid,
-        role,
+        role: account.role,
+        roleRevision: account.role_revision,
+        emailVerified: decodedToken.email_verified === true,
         ...(displayName === null ? {} : { displayName }),
       };
     } catch (error) {
       if (error instanceof AuthenticationError) throw error;
+      if (error instanceof PermissionDeniedError) {
+        throw new AuthenticationError(error.message, 403,
+          uid ? { uid, role: currentRole } : undefined);
+      }
+      if (!(error as { code?: string }).code?.startsWith("auth/")) {
+        throw new AuthenticationError("Session verification is unavailable. Try again.", 503);
+      }
       throw new AuthenticationError("The authentication token is invalid.");
     }
   }

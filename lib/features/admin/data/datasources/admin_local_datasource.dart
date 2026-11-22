@@ -1,21 +1,24 @@
 import '../../domain/entities/client_entity.dart';
 import '../../domain/entities/audit_log_entity.dart';
 import '../models/audit_log_model.dart';
+import 'admin_datasource.dart';
 
 /// In-memory datasource that simulates async API behaviour.
 /// Replace this with a real network datasource (Dio) when the backend is ready.
-class AdminLocalDatasource {
+class AdminLocalDatasource implements AdminDatasource {
   // Mutable in-memory store
   final List<ClientEntity> _clients = _buildInitialClients();
   final List<AuditLogEntity> _auditLogs = [];
 
   // ── Clients ──────────────────────────────────────────────────────────────
 
+  @override
   Future<List<ClientEntity>> getAllClients() async {
     await Future.delayed(const Duration(milliseconds: 400));
     return List.unmodifiable(_clients);
   }
 
+  @override
   Future<ClientEntity> getClientById(String id) async {
     await Future.delayed(const Duration(milliseconds: 200));
     return _clients.firstWhere(
@@ -24,6 +27,7 @@ class AdminLocalDatasource {
     );
   }
 
+  @override
   Future<List<ClientEntity>> searchClients(String query) async {
     await Future.delayed(const Duration(milliseconds: 200));
     final q = query.toLowerCase().trim();
@@ -33,6 +37,7 @@ class AdminLocalDatasource {
 
   // ── Deactivation / Reactivation ───────────────────────────────────────
 
+  @override
   Future<void> deactivateClient(
     String clientId,
     String reason,
@@ -58,6 +63,7 @@ class AdminLocalDatasource {
     );
   }
 
+  @override
   Future<void> reactivateClient(
     String clientId,
     String reason,
@@ -84,6 +90,7 @@ class AdminLocalDatasource {
 
   // ── Audit Logs ───────────────────────────────────────────────────────────
 
+  @override
   Future<List<AuditLogEntity>> getAllAuditLogs() async {
     await Future.delayed(const Duration(milliseconds: 300));
     return List.unmodifiable(
@@ -91,6 +98,7 @@ class AdminLocalDatasource {
     );
   }
 
+  @override
   Future<List<AuditLogEntity>> getAuditLogsForClient(String clientId) async {
     await Future.delayed(const Duration(milliseconds: 200));
     return _auditLogs.where((l) => l.clientId == clientId).toList()

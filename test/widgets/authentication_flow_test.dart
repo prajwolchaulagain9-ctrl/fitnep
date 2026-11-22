@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
+import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/memory_session_preference_store.dart';
+import '../support/empty_notifications.dart';
 
 class _User extends Fake implements User {
   @override
@@ -72,6 +75,11 @@ Future<ProviderContainer> _open(
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(preferences),
+        routeSessionProvider.overrideWith((ref) async {
+          final user = await ref.watch(authenticationStateProvider.future);
+          return user == null ? null : (uid: user.uid, role: FitNepRole.client);
+        }),
+        notificationControllerProvider.overrideWith(EmptyNotifications.new),
       ],
       child: const FitNepApp(),
     ),
@@ -101,7 +109,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('real Firebase login reaches development screen and logs out', (
+  testWidgets('Firebase login reaches the client dashboard and logs out', (
     tester,
   ) async {
     final auth = _Auth();
@@ -126,12 +134,20 @@ void main() {
     expect(auth.email, 'client@example.com');
     expect(auth.password, 'Password!12');
     expect(preferences.rememberSession, isTrue);
-    expect(find.text('App Under Development'), findsOneWidget);
-    expect(find.text('Coming Soon'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Logout'));
+    expect(find.text('Your FitNep updates'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Logout'));
+
+    await tester.scrollUntilVisible(
+      find.text('Logout'),
+      180,
+      scrollable: find.descendant(
+        of: find.byType(Drawer),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Logout'));
     await tester.pumpAndSettle();
 
     expect(auth.signOuts, 1);
@@ -170,7 +186,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('remembered sessions open the development screen on startup', (
+  testWidgets('remembered sessions open the client dashboard on startup', (
     tester,
   ) async {
     final auth = _Auth(user: _User());
@@ -180,7 +196,7 @@ void main() {
       MemorySessionPreferenceStore(rememberSession: true),
     );
 
-    expect(find.text('App Under Development'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsOneWidget);
     expect(auth.signOuts, 0);
     await _close(tester, auth);
   });

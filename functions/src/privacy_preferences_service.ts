@@ -1,4 +1,5 @@
 import { AuthenticatedUser } from "./domain";
+import { requirePermission } from "./authorization_policy";
 import {
   PrivacyPreferences,
   PrivacyPreferencesRepository,
@@ -53,7 +54,5 @@ export class PrivacyPreferencesService {
 }
 
 function requireClient(user: AuthenticatedUser): void {
-  if (user.role !== "client") {
-    throw new PrivacyPreferencesAuthorizationError();
-  }
+  requirePermission(user.role, "manage_own_privacy");
 }

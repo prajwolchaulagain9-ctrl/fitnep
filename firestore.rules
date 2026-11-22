@@ -2,6 +2,25 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Profiles and roles are read through the revocation-aware backend.
+    match /users/{userId} {
+      allow read, write: if false;
+    }
+    // This contains only a change signal, never profile data or permissions.
+    // Receiving a signal makes Flutter refetch the account through the API.
+    match /account_access/{userId} {
+      allow get: if request.auth != null && request.auth.uid == userId;
+      allow list, create, update, delete: if false;
+    }
+    match /audit_logs/{auditId} {
+      allow read, write: if false;
+    }
+    match /client_profiles/{clientId} {
+      allow read, write: if false;
+    }
+    match /conversations/{id} {
+      allow read, write: if false;
+    }
     // Package selection and verified activation use the revocation-aware API.
     match /package_catalog/{id} {
       allow read, write: if false;

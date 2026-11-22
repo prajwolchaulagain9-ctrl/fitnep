@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
 import '../storage/token_storage.dart';
@@ -6,17 +7,20 @@ import '../storage/token_storage.dart';
 class ApiClient {
   final Dio dio;
 
-  ApiClient({required TokenStorage tokenStorage, Dio? dio})
-    : dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              baseUrl: AppConfig.apiBaseUrl,
-              connectTimeout: const Duration(seconds: 15),
-              receiveTimeout: const Duration(seconds: 15),
-              headers: const {'Accept': 'application/json'},
-            ),
-          ) {
+  ApiClient({
+    required TokenStorage tokenStorage,
+    Dio? dio,
+    VoidCallback? onPermissionDenied,
+  }) : dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               baseUrl: AppConfig.apiBaseUrl,
+               connectTimeout: const Duration(seconds: 15),
+               receiveTimeout: const Duration(seconds: 15),
+               headers: const {'Accept': 'application/json'},
+             ),
+           ) {
     this.dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -29,6 +33,13 @@ class ApiClient {
           } catch (error) {
             handler.reject(DioException(requestOptions: options, error: error));
           }
+        },
+        onError: (error, handler) {
+          if (error.response?.statusCode == 403 &&
+              error.requestOptions.path != 'session') {
+            onPermissionDenied?.call();
+          }
+          handler.next(error);
         },
       ),
     );

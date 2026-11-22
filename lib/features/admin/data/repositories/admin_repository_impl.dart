@@ -1,10 +1,10 @@
 import '../../domain/entities/client_entity.dart';
 import '../../domain/entities/audit_log_entity.dart';
 import '../../domain/repositories/admin_repository.dart';
-import '../datasources/admin_local_datasource.dart';
+import '../datasources/admin_datasource.dart';
 
 class AdminRepositoryImpl implements AdminRepository {
-  final AdminLocalDatasource _datasource;
+  final AdminDatasource _datasource;
   AdminRepositoryImpl(this._datasource);
 
   @override

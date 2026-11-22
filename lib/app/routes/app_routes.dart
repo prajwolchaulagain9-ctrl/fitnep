@@ -19,6 +19,16 @@ abstract final class AppRoutes {
   static const resetPasswordPath = '/reset-password';
   static const privacyPolicyPath = '/privacy-policy';
   static const demoEntry = '/demo';
+  static const dashboard = '/dashboard';
+  static const staffHome = '/staff/home';
+  static const dietitianHome = '/dietitian/home';
+  static const adminHome = '/admin/home';
+  static const ownProfile = '/account/profile';
+  static const adminUsers = '/admin/users';
+  static const assignedClients = '/care/clients';
+  static const clientRecords = '/client/records';
+  static const assignedClientRecords = '/care/clients/:id/records';
+  static const accessDenied = '/access-denied';
 
   // Shared
   static const notifications = '/notifications';

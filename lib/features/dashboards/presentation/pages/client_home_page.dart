@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
+import '../../../authorization/presentation/role_home_page.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 
 class ClientHomePage extends ConsumerWidget {
@@ -18,6 +19,7 @@ class ClientHomePage extends ConsumerWidget {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
 
     return Scaffold(
+      drawer: const RoleNavigationDrawer(),
       backgroundColor: AppColors.background,
       appBar: AppBar(
         titleSpacing: 16,

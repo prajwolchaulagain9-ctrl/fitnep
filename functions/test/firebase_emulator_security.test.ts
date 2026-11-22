@@ -191,8 +191,8 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.equal(clientAList.body.data.notifications.length, 1);
     assert.equal(clientBList.status, 200);
     assert.deepEqual(clientBList.body.data.notifications, []);
-    assert.equal(clientBDirect.status, 404);
-    assert.equal(clientBMark.status, 404);
+    assert.equal(clientBDirect.status, 403);
+    assert.equal(clientBMark.status, 403);
     assert.deepEqual(dietitianList.body.data.notifications, []);
     assert.equal(directFirestoreRead.status, 403);
     assert.equal(directFirestoreWrite.status, 403);
@@ -525,6 +525,7 @@ async function createAccount(
     uid,
     email,
     password: "Password123!",
+    emailVerified: true,
     ...(displayName === undefined ? {} : { displayName }),
   });
   await auth.setCustomUserClaims(uid, { role });

@@ -7,6 +7,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
+import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/data/authentication_service.dart';
 import 'package:fitnep/features/authentication/data/email_verification_service.dart';
@@ -20,6 +22,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/memory_session_preference_store.dart';
+import '../support/empty_notifications.dart';
 
 class _ProviderInfo extends Fake implements UserInfo {
   @override
@@ -173,6 +176,11 @@ Future<ProviderContainer> _open(
       overrides: [
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        routeSessionProvider.overrideWith((ref) async {
+          final user = await ref.watch(authenticationStateProvider.future);
+          return user == null ? null : (uid: user.uid, role: FitNepRole.client);
+        }),
+        notificationControllerProvider.overrideWith(EmptyNotifications.new),
         sessionPreferenceStoreProvider.overrideWithValue(
           MemorySessionPreferenceStore(),
         ),
@@ -307,7 +315,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('signup enters development screen when OTP is disabled', (
+  testWidgets('signup enters the client dashboard when OTP is disabled', (
     tester,
   ) async {
     final auth = _Auth();
@@ -318,7 +326,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Create account'));
     await tester.pumpAndSettle();
     expect(auth.signUps, 1);
-    expect(find.text('App Under Development'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -350,7 +358,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '123456');
     await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
     await tester.pumpAndSettle();
-    expect(find.text('App Under Development'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -370,7 +378,7 @@ void main() {
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
       expect(auth.googleSignIns, 1);
-      expect(find.text('App Under Development'), findsOneWidget);
+      expect(find.text('Your FitNep updates'), findsOneWidget);
       expect(find.text('Verify your email'), findsNothing);
       await _close(tester, auth);
     },

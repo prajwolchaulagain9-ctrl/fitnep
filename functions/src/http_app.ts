@@ -6,6 +6,10 @@ import express, {
 } from "express";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
+import { AccountInputError, FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { PermissionDeniedError, requirePermission } from "./authorization_policy";
+import { endpointAccess } from "./endpoint_access";
+import { BackendUnavailableError, createRbacRouter } from "./rbac_http";
 import {
   AuthenticatedUser,
   NotificationRecord,
@@ -70,6 +74,8 @@ import {
 } from "./purchase_service";
 
 export interface NotificationAppDependencies {
+  accounts?: FirestoreAccountService;
+  audit?: FirestoreAuditStore;
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
   privacyPreferencesRepository?: PrivacyPreferencesRepository;
@@ -105,6 +111,21 @@ export function createNotificationApp(
   });
 
   app.use(authenticate(dependencies.authVerifier));
+  app.use(asyncRoute(async (request, response, next) => {
+    const access = endpointAccess(request.method, request.path) ??
+      (/^\/admin(?:\/|$)/i.test(request.path) ? { permission: "manage_user_roles" as const, resource: "admin_features" } : null);
+    response.locals.access = access;
+    if (access) {
+      const user = currentUser(response);
+      requirePermission(user.role, access.permission);
+      if (user.emailVerified === false &&
+          !["view_dashboard", "view_own_profile", "edit_own_profile"].includes(access.permission)) {
+        throw new PermissionDeniedError("Email verification is required.");
+      }
+    }
+    next();
+  }));
+  app.use(createRbacRouter(dependencies.accounts, dependencies.audit));
   app.use(rejectRecipientOverrides);
 
   const packages = () => {
@@ -113,12 +134,12 @@ export function createNotificationApp(
   };
   const client = (response: Response) => {
     const user = currentUser(response);
-    if (user.role !== "client") throw new AuthenticationError("Package selection is available to clients only.", 403);
+    requirePermission(user.role, "manage_own_membership");
     return user.uid;
   };
   const admin = (response: Response) => {
     const user = currentUser(response);
-    if (user.role !== "admin") throw new AuthenticationError("Administrator access is required.", 403);
+    requirePermission(user.role, "manage_business_settings");
     return user;
   };
   app.get("/admin/memberships/pending", asyncRoute(async (_request, response) => {
@@ -263,9 +284,7 @@ export function createNotificationApp(
     "/admin/packages",
     asyncRoute(async (_request, response) => {
       const user = currentUser(response);
-      if (user.role !== "admin") {
-        throw new PackageAuthorizationError();
-      }
+      requirePermission(user.role, "manage_business_settings");
       const packages = await packageService.listAll();
       response.status(200).json({
         data: { packages: packages.map(toApiPackage) },
@@ -383,10 +402,39 @@ export function createNotificationApp(
   app.use(
     (
       error: unknown,
-      _request: Request,
+      request: Request,
       response: Response,
       _next: NextFunction,
     ) => {
+      const denied = error instanceof PermissionDeniedError ||
+        error instanceof AuthenticationError && error.statusCode === 403 ||
+        error instanceof PackageError && error.statusCode === 403 ||
+        error instanceof PrivacyPreferencesAuthorizationError ||
+        error instanceof PrivateRecordAuthorizationError ||
+        error instanceof PackageAuthorizationError || error instanceof PurchaseAuthorizationError;
+      if (denied) {
+        const user = response.locals.user as AuthenticatedUser | undefined;
+        const identity = error instanceof AuthenticationError ? error.identity : undefined;
+        const access = response.locals.access ?? endpointAccess(request.method, request.path);
+        const attempt = { uid: user?.uid ?? identity?.uid ?? null, role: user?.role ?? identity?.role ?? null,
+          action: access?.permission ?? "access_protected_feature", resource: access?.resource ?? "protected_endpoint",
+          recordId: access?.recordId ?? null,
+          reason: error instanceof PermissionDeniedError ? error.reason : "Authorization denied." };
+        void (dependencies.audit?.denied(attempt) ?? Promise.resolve()).then(() => {
+          response.status(403).json({ code: "permission-denied", error: "You do not have permission to access this feature." });
+        }).catch(() => {
+          response.status(503).json({ code: "unavailable", error: "Authorization is temporarily unavailable. Try again." });
+        });
+        return;
+      }
+      if (error instanceof AccountInputError) {
+        response.status(400).json({ code: "invalid-argument", error: error.message });
+        return;
+      }
+      if (error instanceof BackendUnavailableError) {
+        response.status(503).json({ code: "unavailable", error: "Account services are unavailable. Try again." });
+        return;
+      }
       if (error instanceof AuthenticationError) {
         response.status(error.statusCode).json({ error: error.message });
         return;
