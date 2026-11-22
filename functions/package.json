@@ -6,18 +6,20 @@
     "node": "22"
   },
   "scripts": {
+    "start": "node lib/server.js",
     "prebuild": "node scripts/clean-output.mjs lib",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
     "prebuild:test": "node scripts/clean-output.mjs .test-build",
     "build:test": "tsc -p tsconfig.test.json",
-    "test": "npm run typecheck && npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 test/session.test.cjs .test-build/test/signup_email_code_service.test.js .test-build/test/auth.test.js .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js",
+    "test": "npm run typecheck && npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 test/session.test.cjs .test-build/test/signup_email_code_service.test.js .test-build/test/auth.test.js .test-build/test/hosted_api.test.js .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/audit_session_emulator.test.js .test-build/test/workflow_trigger_emulator.test.js",
     "serve": "npm run build && npx firebase-tools emulators:start --only functions",
     "deploy": "npx firebase-tools deploy --only functions",
     "demo:serve": "npm run build && node lib/demo_server.js",
     "seed:admin": "node scripts/seed-demo-admin.cjs --run",
     "test:packages:emulator": "npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 .test-build/test/package_emulator.test.js",
-    "test:emulator": "npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 test/auth-emulator.test.cjs .test-build/test/auth.test.js .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/workflow_trigger_emulator.test.js .test-build/test/package_workflow_emulator.test.js"
+    "test:emulator": "npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 test/auth-emulator.test.cjs .test-build/test/auth.test.js .test-build/test/notification_security.test.js .test-build/test/package_api.test.js .test-build/test/firestore_notification_repository.test.js .test-build/test/firebase_emulator_security.test.js .test-build/test/audit_session_emulator.test.js .test-build/test/workflow_trigger_emulator.test.js .test-build/test/package_workflow_emulator.test.js",
+    "test:day1:emulator": "npm run build:test && node --test --experimental-test-isolation=none --test-concurrency=1 .test-build/test/audit_session_emulator.test.js"
   },
   "dependencies": {
     "express": "^4.21.2",

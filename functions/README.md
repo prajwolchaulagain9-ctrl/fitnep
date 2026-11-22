@@ -1,4 +1,4 @@
-# FitNep Firebase notification backend
+# FitNep API and Firebase notification backend
 
 This folder contains the mobile application's Firebase Cloud Functions backend.
 It exposes authenticated HTTPS APIs for the Flutter app; it does not contain a
@@ -8,6 +8,13 @@ The shared project stays on **Spark**. These Functions are local emulator
 implementations; they are not deployed. Cloud Functions deployment requires a
 billing-enabled project and is outside the agreed scope. The Flutter API URL
 defaults to empty until a supported backend is supplied.
+
+Sprint 2 adds a standalone Node 22 runner in src/server.ts. After building,
+npm start runs the same Express API against cloud Firebase Auth/Firestore
+with opaque platform sessions and backend-created audit storage. The
+[Render setup](../docs/hosted-api.md) and [Day 1 handoff](../docs/sprint2-day1.md)
+describe configuration and remaining integrations. Hosting is prepared and
+has not yet been deployed or verified online.
 
 ## Firebase project and runtime
 

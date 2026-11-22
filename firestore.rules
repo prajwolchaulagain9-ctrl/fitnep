@@ -2,6 +2,25 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Sessions and immutable audit/event metadata are owned by the trusted API.
+    match /platform_sessions/{id} {
+      allow read, write: if false;
+    }
+    match /platform_auth_contexts/{id} {
+      allow read, write: if false;
+    }
+    match /platform_login_state/{id} {
+      allow read, write: if false;
+    }
+    match /audit_events/{id} {
+      allow read, write: if false;
+    }
+    match /workflow_outbox/{id} {
+      allow read, write: if false;
+    }
+    match /outbox_deliveries/{id} {
+      allow read, write: if false;
+    }
     // Package selection and verified activation use the revocation-aware API.
     match /package_catalog/{id} {
       allow read, write: if false;

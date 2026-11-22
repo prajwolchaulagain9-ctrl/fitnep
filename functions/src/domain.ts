@@ -16,6 +16,14 @@ export interface AuthenticatedUser {
   uid: string;
   role: UserRole;
   displayName?: string;
+  roleVersion?: number;
+  authTime?: number;
+  emailVerified?: boolean;
+  mustChangePassword?: boolean;
+  permissions?: {
+    auditRead: boolean;
+    paymentsVerify: boolean;
+  };
 }
 
 export interface StaffAccount {
