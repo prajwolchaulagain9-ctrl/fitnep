@@ -11,13 +11,13 @@ US 2/US 9 integration. Barsha remains the integration/release owner.
 - Implemented standalone Node hosting, persisted platform sessions, the
   append-only audit writer, denial auditing and transaction/event interfaces.
 - Prepared [Render configuration](../render.yaml) and
-  [deployment instructions](hosted-api.md). The user confirmed no hosted
-  service exists yet and requested preparation.
+  [deployment instructions](hosted-api.md). The user configured Render at
+  https://fitnep-api.onrender.com and deployed the Firestore rules/indexes.
 - Node 22 build, unit checks and the full local emulator checks passed;
   results are recorded below.
-- Hosted evidence and consumer acknowledgment remain pending. No main
-  promotion, online MVP, complete story acceptance or actual-hours claim is
-  made by this handoff.
+- Eight hosted health/session/audit checks passed; the results below close the
+  Day 1 protected hosted-request/audit gate. Consumer acknowledgment, native
+  integration and service-restart validation remain pending.
 
 ## Shared interfaces for review
 
@@ -111,7 +111,7 @@ already complete.
 ## Verification
 
 Environment: Windows; Node 22.23.5; Firebase CLI 15.32.0; synthetic demo-fitnep
-Auth, Functions and Firestore emulators. No live hosted test was performed.
+Auth, Functions and Firestore emulators for the local checks below.
 
 | Check | Result | Evidence level |
 | --- | --- | --- |
@@ -143,12 +143,44 @@ port 5001. Synthetic health/build metadata and API reconstruction establish
 local behavior; they do not establish provider hosting, a full process restart,
 native Android/iOS behavior, or later business-producer integration.
 
+### Live Render verification
+
+Verified on 22 November 2026 at 12:12 Asia/Kathmandu (06:27 UTC), using the
+existing controlled fitnep-demo-admin account. Only its identity/session and
+audit metadata were accessed.
+
+- API: https://fitnep-api.onrender.com
+- Firebase project: fitnep-88908
+- Deployed SHA: c76d663a797e1e3075682423207f320e28227880
+- Runtime: Node 22.23.5
+- Result: eight live checks passed.
+- [Recorded evidence](sprint2-day1-live-verification.json) includes the
+  server-created session.started/session.ended audit IDs and timestamps.
+
+| Live check | Result |
+| --- | --- |
+| GET /healthz | HTTP 200, ready true |
+| GET /sessions/me without authentication | HTTP 401 |
+| POST /sessions/start with the controlled Firebase identity | HTTP 200 |
+| GET /sessions/me with the issued platform session | HTTP 200; verified UID/role |
+| Direct Firestore audit read with the app identity | HTTP 403 |
+| POST /sessions/end | HTTP 204 |
+| Replay of the closed platform session | HTTP 401 |
+| Reopening the closed authentication context with the captured Firebase token | HTTP 401 |
+
+The session start/end each had one persisted audit event with the verified
+actor, action, target, server timestamp and successful outcome. Evidence
+contains no passwords, Firebase ID tokens, opaque session IDs or private keys.
+Live host-restart restoration, native app integration and later business
+producer adoption are separate checks.
+
 ## Remaining Day 1 exit conditions
 
 - [ ] Review and acknowledge the account/session/owner/event/version interfaces.
-- [ ] Review/merge the feature change into development.
-- [ ] Create the Render service, configure private credentials and deploy.
-- [ ] Record real HTTPS /healthz, deployed SHA and restart persistence.
+- [x] Make the Day 1 implementation available on development.
+- [x] Create the Render service, configure private credentials and deploy.
+- [x] Record real HTTPS /healthz, deployed SHA and protected session/audit evidence.
+- [ ] Verify session restoration after an actual hosted-service restart.
 - [ ] Coordinate iOS/signing access with Barsha; Windows tests are not iOS evidence.
 
 Day 2 remains responsible for assigned support-team privacy and auditable

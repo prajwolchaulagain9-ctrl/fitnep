@@ -13,8 +13,9 @@ Sprint 2 adds a standalone Node 22 runner in src/server.ts. After building,
 npm start runs the same Express API against cloud Firebase Auth/Firestore
 with opaque platform sessions and backend-created audit storage. The
 [Render setup](../docs/hosted-api.md) and [Day 1 handoff](../docs/sprint2-day1.md)
-describe configuration and remaining integrations. Hosting is prepared and
-has not yet been deployed or verified online.
+describe configuration and remaining integrations. The Node API is live at
+https://fitnep-api.onrender.com. Eight hosted health/session/audit checks passed
+on 22 November 2026; see the [verification evidence](../docs/sprint2-day1-live-verification.json).
 
 ## Firebase project and runtime
 

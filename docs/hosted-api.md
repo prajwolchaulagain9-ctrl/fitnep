@@ -5,9 +5,11 @@ Firebase Auth and Firestore. The standalone entry point is
 functions/src/server.ts; npm start runs its compiled output. A Firebase
 Functions deployment is not needed for this runner.
 
-This is a prepared deployment. No Render service has been created or verified
-online yet. The current Flutter client still needs the session/auth integration
-listed in [the Day 1 handoff](sprint2-day1.md).
+The API is deployed at https://fitnep-api.onrender.com. Eight live
+health/session/audit checks passed on 22 November 2026; see the
+[verification evidence](sprint2-day1-live-verification.json).
+The current Flutter client still needs the session/auth integration listed in
+[the Day 1 handoff](sprint2-day1.md). The steps below describe the service setup.
 
 ## Create the Render service
 
