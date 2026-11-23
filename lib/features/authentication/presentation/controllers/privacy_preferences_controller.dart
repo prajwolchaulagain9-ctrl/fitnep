@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/routes/route_access_gate.dart';
-import '../../../../core/services/firebase_providers.dart';
+import '../../../../core/network/api_client_provider.dart';
 import '../../data/repositories/privacy_preferences_repository_impl.dart';
 import '../../domain/entities/privacy_preferences.dart';
 import '../../domain/repositories/privacy_preferences_repository.dart';
@@ -13,13 +13,7 @@ final privacyPreferencesRepositoryProvider =
           (session.role != null && session.role != FitNepRole.client)) {
         throw StateError('Privacy preferences require a client account.');
       }
-      return PrivacyPreferencesRepositoryImpl(
-        ref.watch(firebaseAuthProvider),
-        ref
-            .watch(firestoreProvider)
-            .collection('privacy_preferences')
-            .doc(session.uid),
-      );
+      return PrivacyPreferencesRepositoryImpl(ref.watch(apiClientProvider));
     });
 
 final privacyPreferencesControllerProvider =

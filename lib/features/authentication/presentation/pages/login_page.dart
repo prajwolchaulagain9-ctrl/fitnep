@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../../app/theme/app_theme.dart';
 import '../../data/password_recovery_service.dart';
 import '../controllers/authentication_controller.dart';
 import '../widgets/google_sign_in_button.dart';
@@ -79,7 +80,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               Text(
                 'YOUR WELLNESS, ELEVATED.',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.4,
                 ),
@@ -138,26 +139,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 onFieldSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 8),
-              Wrap(
-                alignment: WrapAlignment.spaceBetween,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 4,
+              Row(
                 children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: busy ? null : () => _setRememberMe(!_rememberMe),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Checkbox(
-                          value: _rememberMe,
-                          onChanged: busy
-                              ? null
-                              : (value) => _setRememberMe(value ?? false),
-                        ),
-                        const Flexible(child: Text('Remember me')),
-                      ],
+                  Expanded(
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: busy ? null : () => _setRememberMe(!_rememberMe),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Checkbox(
+                            value: _rememberMe,
+                            onChanged: busy
+                                ? null
+                                : (value) => _setRememberMe(value ?? false),
+                          ),
+                          const Flexible(child: Text('Remember me')),
+                        ],
+                      ),
                     ),
                   ),
                   TextButton(
@@ -201,16 +200,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     child: const Text('Sign up'),
                   ),
                 ],
-              ),
-              Center(
-                child: TextButton.icon(
-                  key: const Key('login_privacy_policy_button'),
-                  onPressed: busy
-                      ? null
-                      : () => context.pushNamed(AppRoutes.privacyPolicy),
-                  icon: const Icon(Icons.privacy_tip_outlined, size: 20),
-                  label: const Text('Privacy Policy'),
-                ),
               ),
             ],
           ),

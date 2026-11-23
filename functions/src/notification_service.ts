@@ -10,12 +10,13 @@ import {
 import {
   ProtectedAction,
   roleCanPerformAction,
+  PermissionDeniedError,
 } from "./authorization_policy";
 import { NotificationRepository } from "./notification_repository";
 
-export class NotificationNotFoundError extends Error {
+export class NotificationNotFoundError extends PermissionDeniedError {
   constructor() {
-    super("Notification not found.");
+    super("The notification is outside this account.");
     this.name = "NotificationNotFoundError";
   }
 }

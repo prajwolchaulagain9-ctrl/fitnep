@@ -124,9 +124,11 @@ code flow into a link flow.
    parameters. Configure them with `firebase functions:secrets:set BREVO_API_KEY`
    and `firebase functions:secrets:set SIGNUP_OTP_HASH_SECRET`.
 5. Configure Firestore. `signup_email_codes` is server-only under the existing
-   deny-all rules. Enable Firestore TTL on `expires_at` for cleanup; expiration
-   is enforced by the callable even before TTL deletion. The TTL timestamp also
-   preserves the full hourly rate-limit window.
+   deny-all rules. On Spark, do not enable Firestore TTL: TTL deletion requires
+   billing. The callable already enforces expiration and preserves the hourly
+   rate-limit window without TTL. An approved future paid-plan rollout can use
+   TTL on `expires_at` for cleanup; an external cleanup job must preserve that
+   full rate-limit window.
 6. Supply callables in `us-central1`, or configure the serverless host URLs
    described below. The shared Functions provider uses
    `FIREBASE_FUNCTIONS_REGION`; the recovery callable shares this region.

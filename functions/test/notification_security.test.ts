@@ -80,8 +80,9 @@ describe("recipient-based notification security", () => {
       .get(`/notifications/${created.notification.id}`)
       .set(bearer("token-client-b"));
 
-    assert.equal(response.status, 404);
-    assert.equal(response.body.error, "Notification not found.");
+    assert.equal(response.status, 403);
+    assert.equal(response.body.code, "permission-denied");
+    assert.equal(response.body.error, "You do not have permission to access this feature.");
   });
 
   it("4. Client B cannot mark Client A's notification as read", async () => {
@@ -91,7 +92,7 @@ describe("recipient-based notification security", () => {
       .patch(`/notifications/${created.notification.id}/read`)
       .set(bearer("token-client-b"));
 
-    assert.equal(response.status, 404);
+    assert.equal(response.status, 403);
     const stored = await repository.getForRecipient(
       created.notification.id,
       clientA.uid,
@@ -111,7 +112,7 @@ describe("recipient-based notification security", () => {
 
     assert.equal(listResponse.status, 200);
     assert.deepEqual(listResponse.body.data.notifications, []);
-    assert.equal(directResponse.status, 404);
+    assert.equal(directResponse.status, 403);
   });
 
   it("6. Mark All as Read updates only the authenticated recipient", async () => {

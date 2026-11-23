@@ -2,86 +2,65 @@ import assert from "node:assert/strict";
 import { it } from "node:test";
 import { DecodedIdToken, UserRecord } from "firebase-admin/auth";
 import { AuthenticationError, FirebaseAuthVerifier } from "../src/auth";
+import { Account } from "../src/account_service";
+import { PermissionDeniedError } from "../src/authorization_policy";
+import { UserRole } from "../src/domain";
 
-function verifier(claims: Record<string, unknown>, currentClaims = claims) {
+function verifier(role: UserRole, tokenClaims: Record<string, unknown> = {},
+  current: Record<string, unknown> = {}, revision = 1) {
   return new FirebaseAuthVerifier({
-    verifyIdToken: async (token, checkRevoked) => {
-      assert.equal(token, "signed-token");
-      assert.equal(checkRevoked, true);
-      return { uid: "client-a", auth_time: 1700000000, ...claims } as DecodedIdToken;
+    auth: {
+      verifyIdToken: async (token, checkRevoked) => {
+        assert.equal(token, "signed-token"); assert.equal(checkRevoked, true);
+        return { uid: "client-a", auth_time: 1700000000, email_verified: true, ...tokenClaims } as DecodedIdToken;
+      },
+      getUser: async () => ({ uid: "client-a", disabled: current.disabled === true,
+        emailVerified: true, email: "a@fitnep.test", customClaims: current }) as UserRecord,
     },
-    getUser: async uid => {
-      assert.equal(uid, "client-a");
-      return {
-        uid, disabled: currentClaims.disabled === true,
-        emailVerified: currentClaims.email_verified === true,
-        customClaims: currentClaims,
-      } as UserRecord;
+    current: async () => {
+      if (current.invalid) throw new PermissionDeniedError("Invalid current account.");
+      return { id: "client-a", role, role_revision: revision, account_status: "active" } as Account;
     },
   });
 }
-
-it("a verified account without an assigned role receives client access", async () => {
-  assert.deepEqual(await verifier({ email_verified: true }).verifyIdToken("signed-token"), {
-    uid: "client-a", role: "client",
-    roleVersion: 0, authTime: 1700000000, emailVerified: true,
-    mustChangePassword: false, permissions: { auditRead: false, paymentsVerify: false },
-  });
-});
-
-it("assigned roles are preserved and normalized", async () => {
-  for (const role of ["admin", "dietitian", "client", "staff"]) {
-    const user = await verifier({ role: ` ${role.toUpperCase()} `, email_verified: true })
-      .verifyIdToken("signed-token");
-    assert.equal(user.role, role);
+it("canonical accounts supply exactly one role; token claims cannot override it", async () => {
+  for (const role of ["client", "staff", "dietitian", "admin"] as UserRole[]) {
+    const user = await verifier(role, { role: "owner" }).verifyIdToken("signed-token");
+    assert.equal(user.role, role); assert.equal(user.roleRevision, 1);
   }
 });
-
-it("unverified accounts and unsupported assigned roles are rejected", async () => {
-  for (const claims of [{}, { email_verified: false }, { email_verified: "true" },
-    ...[null, "owner", "", 1, ["admin"]].map(role => ({ role, email_verified: true }))]) {
-    await assert.rejects(verifier(claims).verifyIdToken("signed-token"),
+it("captured admin claims cannot retain permissions after canonical demotion", async () => {
+  const user = await verifier("staff", { role: "admin", role_version: 1 }, { role: "admin" }, 2).verifyIdToken("signed-token");
+  assert.equal(user.roleVersion, 2);
+  assert.deepEqual(user.permissions, { auditRead: false, paymentsVerify: false });
+});
+it("unverified identities can finish OTP but cannot claim email verification", async () => {
+  const user = await verifier("client", { email_verified: false }).verifyIdToken("signed-token");
+  assert.equal(user.emailVerified, false);
+});
+it("deactivated or malformed current accounts fail closed", async () => {
+  for (const current of [{ disabled: true }, { invalid: true }]) {
+    await assert.rejects(verifier("client", {}, current).verifyIdToken("signed-token"),
       error => error instanceof AuthenticationError && error.statusCode === 403);
   }
 });
-
-it("revoked or invalid Firebase tokens cannot receive default client access", async () => {
-  const auth = new FirebaseAuthVerifier({
-    verifyIdToken: async (_token, checkRevoked) => {
-      assert.equal(checkRevoked, true);
-      throw Object.assign(new Error("revoked"), { code: "auth/id-token-revoked" });
-    },
-    getUser: async () => assert.fail("must not read an account for a revoked token"),
-  });
-  await assert.rejects(auth.verifyIdToken("revoked-token"),
+it("a changed staff credential marker rejects a captured token", async () => {
+  await assert.rejects(verifier("staff", { staffRoleVersion: "old" }, { staffRoleVersion: "new" }).verifyIdToken("signed-token"),
     error => error instanceof AuthenticationError && error.statusCode === 401);
 });
-
-it("current roles and permissions replace a captured privileged token on the next request", async () => {
-  const user = await verifier(
-    { role: "admin", role_version: 1, email_verified: true },
-    { role: "staff", role_version: 2, email_verified: true, permissions: { audit_read: true } },
-  ).verifyIdToken("signed-token");
-  assert.equal(user.role, "staff");
-  assert.equal(user.roleVersion, 2);
-  assert.deepEqual(user.permissions, { auditRead: true, paymentsVerify: false });
-});
-
-it("deactivated accounts and malformed current role versions fail closed", async () => {
-  for (const current of [{ disabled: true }, { role_version: -1 }, { role_version: "2" }]) {
-    await assert.rejects(
-      verifier({ role: "admin" }, { role: "client", email_verified: true, ...current })
-        .verifyIdToken("signed-token"),
-      error => error instanceof AuthenticationError && error.statusCode === 403,
-    );
-  }
-});
-
-it("an unavailable current-account lookup fails without treating the request as a successful login", async () => {
+it("revoked tokens cannot reach the canonical account lookup", async () => {
   const auth = new FirebaseAuthVerifier({
-    verifyIdToken: async () => ({ uid: "client-a" }) as DecodedIdToken,
-    getUser: async () => { throw new Error("upstream unavailable"); },
+    auth: { verifyIdToken: async () => { throw Object.assign(new Error("revoked"), { code: "auth/id-token-revoked" }); },
+      getUser: async () => assert.fail("must not read account") },
+    current: async () => assert.fail("must not provision after revocation"),
   });
-  await assert.rejects(auth.verifyIdToken("signed-token"),
-    error => error instanceof AuthenticationError && error.statusCode === 503);
+  await assert.rejects(auth.verifyIdToken("captured"), error => error instanceof AuthenticationError && error.statusCode === 401);
+});
+it("unavailable account lookup cannot produce a successful login", async () => {
+  const auth = new FirebaseAuthVerifier({
+    auth: { verifyIdToken: async () => ({ uid: "client-a" }) as DecodedIdToken,
+      getUser: async () => { throw new Error("unavailable"); } },
+    current: async () => assert.fail("must not provision"),
+  });
+  await assert.rejects(auth.verifyIdToken("signed-token"), error => error instanceof AuthenticationError && error.statusCode === 503);
 });

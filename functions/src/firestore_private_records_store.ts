@@ -1,6 +1,7 @@
 import { FieldPath, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 
 import { AuthenticatedUser } from "./domain";
+import { accountFrom } from "./account_service";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { PrivateRecordAccessService } from "./nutrition_record_access_service";
 import {
@@ -24,7 +25,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
 
   list(actor: AuthenticatedUser, clientId: string, category: RecordCategory, after?: string): Promise<PrivateRecord[]> {
     return this.firestore.runTransaction(async (transaction) => {
-      await this.access(transaction).assertCanRead(actor, clientId, recordSharingChoices[category]);
+      await this.access(transaction, actor.roleRevision).assertCanRead(actor, clientId, recordSharingChoices[category]);
       const ordered = this.records(clientId, category).orderBy(FieldPath.documentId());
       const query = (after === undefined ? ordered : ordered.startAfter(after))
         .select("recorded_at", "details").limit(50);
@@ -41,7 +42,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
     return this.firestore.runTransaction(async (transaction) => {
       // Reading consent and writing the entry in one transaction makes collection
       // and consent withdrawal serialize against the same Firestore document.
-      await this.access(transaction).assertCanCollect(actor, clientId, recordSharingChoices[category]);
+      await this.access(transaction, actor.roleRevision).assertCanCollect(actor, clientId, recordSharingChoices[category]);
       const record = parseRecord(category, body);
       const reference = this.records(clientId, category).doc();
       const recordedAt = Timestamp.now();
@@ -57,7 +58,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
       throw new PrivateRecordsError(404, "Photo not found.");
     }
     return this.firestore.runTransaction(async (transaction) => {
-      await this.access(transaction).assertCanRead(actor, clientId, recordSharingChoices[category]);
+      await this.access(transaction, actor.roleRevision).assertCanRead(actor, clientId, recordSharingChoices[category]);
       const snapshot = await transaction.get(this.records(clientId, category).doc(id));
       const bytes: unknown = snapshot.get("photo");
       const contentType = Buffer.isBuffer(bytes) ? photoContentType(bytes) : null;
@@ -72,12 +73,17 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
     return this.firestore.collection("client_records").doc(clientId).collection(category);
   }
 
-  private access(transaction: Transaction): PrivateRecordAccessService {
+  private access(transaction: Transaction, thisActorRevision?: number): PrivateRecordAccessService {
     return new PrivateRecordAccessService({
       getCurrentDietitianId: async (clientId) => {
         const reference = this.firestore.collection("client_assignments").doc(clientId);
         const assignment = (await transaction.get(reference)).data();
-        return assignment?.active === true && typeof assignment.dietitian_id === "string"
+        const client = accountFrom(clientId, (await transaction.get(this.firestore.collection("users").doc(clientId))).data());
+        if (client.role !== "client" || client.account_status !== "active") return null;
+        if ((assignment?.client_role_revision ?? 0) !== client.role_revision) return null;
+        return assignment?.active === true &&
+          (assignment.dietitian_role_revision ?? 0) === (thisActorRevision ?? 0) &&
+          typeof assignment.dietitian_id === "string"
           ? assignment.dietitian_id : null;
       },
     }, {

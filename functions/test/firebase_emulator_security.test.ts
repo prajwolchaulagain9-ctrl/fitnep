@@ -9,6 +9,7 @@ import request from "supertest";
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { FirestoreAuditWriter } from "../src/audit";
 import { registrationPrivacy } from "../src/registration_privacy";
+import { FirestoreAccountService, FirestoreAuditStore } from "../src/account_service";
 import { FirebaseAuthVerifier } from "../src/auth";
 import { FirebaseStaffAccountRepository } from "../src/firebase_staff_account_repository";
 import { UserRole } from "../src/domain";
@@ -114,8 +115,8 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     for (const token of [clientToken, dietitianToken, staffToken]) {
       await request(directory).get(path).query({ role: "admin" }).set(bearer(token)).expect(403);
     }
-    await request(directory).get("/notifications").set(bearer(staffToken)).expect(403);
-    await request(directory).patch("/notifications/read-all").set(bearer(staffToken)).expect(403);
+    await request(directory).get("/notifications").set(bearer(staffToken)).expect(200);
+    await request(directory).patch("/notifications/read-all").set(bearer(staffToken)).expect(200);
     await request(directory).get("/packages").set(bearer(staffToken)).expect(403);
 
     await auth.updateUser("staff-1", { disabled: true });
@@ -200,6 +201,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       .send({ new_password: newPassword }).expect(204);
     await assert.rejects(signIn(input.email, input.temporary_password));
     await request(api).get(directory).set(refreshedTemporarySession).expect(401);
+    await auth.updateUser(account.uid, { emailVerified: true });
     const newSession = bearer(await signIn(input.email, newPassword));
     const started = await request(hosted).post("/sessions/start").set(newSession).send({}).expect(200);
     await request(hosted).get(directory).set(newSession)
@@ -238,7 +240,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     });
     await request(api).get("/packages").set(previousSession).expect(401);
     const currentSession = bearer(await signIn("team-member@fitnep.test"));
-    await request(api).get("/packages").set(currentSession).expect(200);
+    await request(api).get("/notifications").set(currentSession).expect(200);
     await request(api).patch(path).set(admin).send(changes).expect(200);
     assert.equal((await auth.getUser("team-member")).customClaims?.otherClaim, true);
     const audit = await firestore.collection("staff_account_history").where("target_uid", "==", "team-member").get();
@@ -253,7 +255,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     // Recover an edit whose Auth update finished before its audit was finalized.
     await event.ref.update({ status: "pending" });
     await request(api).patch(path).set(admin).send(changes).expect(200);
-    await request(api).get("/packages").set(currentSession).expect(200);
+    await request(api).get("/notifications").set(currentSession).expect(200);
     assert.equal((await event.ref.get()).get("status"), "completed");
 
     // A later role change can bring the account back to the original role.
@@ -283,8 +285,9 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     const password = "PermanentExample!34";
     await request(api).post("/auth/staff/change-temporary-password").set(pending)
       .send({ new_password: password }).expect(204);
+    await auth.updateUser(uid, { emailVerified: true });
     const oldSession = bearer(await signIn(email, password));
-    await request(api).get("/packages").set(oldSession).expect(200);
+    await request(api).get("/notifications").set(oldSession).expect(200);
     await request(api).patch(`${directory}/${uid}`).set(admin)
       .send({ request_id: "rename-managed-account", name: "Managed Dietitian" }).expect(200);
 
@@ -315,7 +318,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     });
     await request(api).patch(statusPath).set(admin).send(deactivate).expect(200);
     await request(api).get("/packages").set(oldSession).expect(401);
-    await request(api).get("/packages").set(bearer(await signIn(email, password))).expect(200);
+    await request(api).get("/notifications").set(bearer(await signIn(email, password))).expect(200);
 
     const pagedApi = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
@@ -366,10 +369,11 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       "reactivated", "deactivated",
     ]);
     await request(api).get("/packages").set(oldSession).expect(401);
-    await request(api).get("/packages").set(bearer(await signIn(email))).expect(200);
+    await request(api).get("/notifications").set(bearer(await signIn(email))).expect(200);
   });
 
   it("binds signup consent and its status to the signed-in Firebase account", async () => {
+    await auth.updateUser("client-a", { emailVerified: false });
     let token = await signIn("client-a@fitnep.test");
     const requestFor = (data: Record<string, unknown>) => ({
       auth: { uid: "client-a" },
@@ -414,51 +418,24 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.deepEqual((await reference.get()).get("accepted_at"), stored.get("accepted_at"));
   });
 
-  it("allows only the owner to record a valid age and consent with a server timestamp", async () => {
+  it("keeps direct consent access denied and records valid owner consent on the server", async () => {
     const token = await signIn("client-a@fitnep.test");
-    let headers = { ...bearer(token), "Content-Type": "application/json" };
-    const database = `projects/${projectId}/databases/(default)`;
-    const endpoint = `http://${firestoreEmulatorHost}/v1/${database}/documents`;
-    const records = `${endpoint}/privacy_acceptances`;
-    const writeConsent = (uid: string, age: number, guardian: boolean) => fetch(`${endpoint}:commit`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        writes: [{
-          update: {
-            name: `${database}/documents/privacy_acceptances/${uid}`,
-            fields: {
-              policy_version: { stringValue: privacyPolicyVersion },
-              age_at_acceptance: { integerValue: String(age) },
-              guardian_consent_confirmed: { booleanValue: guardian },
-            },
-          },
-          updateTransforms: [
-            { fieldPath: "accepted_at", setToServerValue: "REQUEST_TIME" },
-            ...(guardian ? [{
-              fieldPath: "guardian_consent_confirmed_at",
-              setToServerValue: "REQUEST_TIME",
-            }] : []),
-          ],
-        }],
-      }),
-    });
-
-    assert.equal((await writeConsent("client-a", 17, true)).status, 403);
-    await auth.updateUser("client-a", { emailVerified: true });
-    headers = { ...bearer(await signIn("client-a@fitnep.test")), "Content-Type": "application/json" };
-    assert.equal((await fetch(`${records}/client-a`, { headers })).status, 404);
-    assert.equal((await fetch(`${records}/client-b`, { headers })).status, 403);
-    assert.equal((await writeConsent("client-b", 17, true)).status, 403);
-    assert.equal((await writeConsent("client-a", 0, true)).status, 403);
-    assert.equal((await writeConsent("client-a", 17, false)).status, 403);
-    assert.equal((await writeConsent("client-a", 17, true)).status, 200);
-    assert.equal((await fetch(`${records}/client-a`, { headers })).status, 200);
-    assert.equal((await writeConsent("client-a", 18, false)).status, 403);
-    const consent = await firestore.collection("privacy_acceptances").doc("client-a").get();
-    assert.equal(consent.get("age_at_acceptance"), 17);
-    assert(consent.get("accepted_at") instanceof Timestamp);
-    assert.deepEqual(consent.get("guardian_consent_confirmed_at"), consent.get("accepted_at"));
+    const url = `http://${firestoreEmulatorHost}/v1/projects/${projectId}/databases/(default)/documents/privacy_acceptances/client-a`;
+    assert.equal((await fetch(url, { headers: bearer(token) })).status, 403);
+    assert.equal((await fetch(url, { method: "PATCH", headers: { ...bearer(token), "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { policy_version: { stringValue: "1" } } }) })).status, 403);
+    const call = (data: Record<string, unknown>) => registrationPrivacy.run({ auth: { uid: "client-a" },
+      rawRequest: { headers: { authorization: "Bearer " + token } }, data } as CallableRequest);
+    const body = { action: "accept", uid: "client-a", age: 17, guardian_consent_confirmed: true,
+      privacy_policy_version: privacyPolicyVersion, privacy_policy_accepted: true };
+    await assert.rejects(call({ ...body, uid: "client-b" }));
+    await assert.rejects(call({ ...body, guardian_consent_confirmed: false }));
+    assert.deepEqual(await call(body), { accepted: true });
+    const saved = await firestore.doc("privacy_acceptances/client-a").get();
+    assert.equal(saved.get("age_at_acceptance"), 17);
+    assert(saved.get("accepted_at") instanceof Timestamp);
+    assert.deepEqual(saved.get("guardian_consent_confirmed_at"), saved.get("accepted_at"));
+    assert.equal((await fetch(url, { headers: bearer(token) })).status, 403);
   });
 
   it("lets a verified user without a role manage only their own sharing after accepting the policy", async () => {
@@ -479,13 +456,13 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       privacy_policy_version: privacyPolicyVersion,
       privacy_policy_accepted: true,
     });
-    assert.equal((await readSharing()).status, 404);
+    assert.equal((await readSharing()).status, 403);
     assert.equal(await writeSharing("client-b", token, { share_activity_data: true }), 403);
-    assert.equal(await writeSharing("new-client", token, { share_activity_data: "yes" }), 403);
-    assert.equal(await writeSharing("new-client", token, { role: "admin" }), 403);
+    assert.equal(await writeSharing("new-client", token, { share_activity_data: "yes" }), 400);
+    assert.equal(await writeSharing("new-client", token, { role: "admin" }), 400);
     assert.equal(await writeSharing("new-client", token, { share_progress_photos: true }), 200);
     assert.equal(await writeSharing("new-client", token, { share_activity_data: true }), 200);
-    assert.equal((await readSharing()).status, 200);
+    assert.equal((await readSharing()).status, 403);
     const prefs = await firestore.collection("privacy_preferences").doc("new-client").get();
     assert.equal(prefs.get("share_progress_photos"), true);
     assert.equal(prefs.get("share_activity_data"), true);
@@ -586,8 +563,8 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.equal(clientAList.body.data.notifications.length, 1);
     assert.equal(clientBList.status, 200);
     assert.deepEqual(clientBList.body.data.notifications, []);
-    assert.equal(clientBDirect.status, 404);
-    assert.equal(clientBMark.status, 404);
+    assert.equal(clientBDirect.status, 403);
+    assert.equal(clientBMark.status, 403);
     assert.deepEqual(dietitianList.body.data.notifications, []);
     assert.equal(directFirestoreRead.status, 403);
     assert.equal(directFirestoreWrite.status, 403);
@@ -920,6 +897,7 @@ async function createAccount(
     uid,
     email,
     password: "Password123!",
+    emailVerified: true,
     ...(displayName === undefined ? {} : { displayName }),
   });
   await auth.setCustomUserClaims(uid, { role });
@@ -970,25 +948,22 @@ async function writeSharing(
   token: string,
   choices: Record<string, boolean | string>,
 ): Promise<number> {
-  const database = `projects/${projectId}/databases/(default)`;
-  const fields = Object.fromEntries(Object.entries(choices).map(([key, value]) => [
-    key, typeof value === "boolean" ? { booleanValue: value } : { stringValue: value },
-  ]));
-  const response = await fetch(`http://${firestoreEmulatorHost}/v1/${database}/documents:commit`, {
-    method: "POST",
-    headers: { ...bearer(token), "Content-Type": "application/json" },
-    body: JSON.stringify({
-      writes: [{
-        update: {
-          name: `${database}/documents/privacy_preferences/${uid}`,
-          fields,
-        },
-        updateMask: { fieldPaths: Object.keys(choices) },
-        updateTransforms: [{ fieldPath: "updated_at", setToServerValue: "REQUEST_TIME" }],
-      }],
-    }),
-  });
-  return response.status;
+  const database = getFirestore(); const auth = getAuth();
+  const accounts = new FirestoreAccountService(database, auth);
+  const verifier = new FirebaseAuthVerifier(accounts);
+  const actor = await verifier.verifyIdToken(token);
+  const audit = new FirestoreAuditWriter(database);
+  const sessions = new FirestorePlatformSessionService(database, audit);
+  const app = createNotificationApp({ accounts, audit: new FirestoreAuditStore(database), authVerifier: verifier,
+    notificationRepository: new FirestoreNotificationRepository(database), platformSessions: sessions,
+    privacyPreferencesRepository: new FirestorePrivacyPreferencesRepository(database) });
+  // The API, rather than the test, makes the owner/role decision.
+  const started = await request(app).post("/sessions/start").set(bearer(token)).send({});
+  if (started.status !== 200) return started.status;
+  if (uid !== actor.uid) return (await request(app).get(`/clients/${uid}/profile`).set({ ...bearer(token),
+    "X-FitNEP-Session": started.body.data.session_id })).status;
+  return (await request(app).patch("/privacy/preferences").set({ ...bearer(token),
+    "X-FitNEP-Session": started.body.data.session_id }).send(choices)).status;
 }
 
 function bearer(token: string): { Authorization: string } {

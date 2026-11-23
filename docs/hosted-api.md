@@ -8,17 +8,19 @@ Functions deployment is not needed for this runner.
 The API is deployed at https://fitnep-api.onrender.com. Eight live
 health/session/audit checks passed on 22 November 2026; see the
 [verification evidence](sprint2-day1-live-verification.json).
-The current Flutter client still needs the session/auth integration listed in
-[the Day 1 handoff](sprint2-day1.md). The steps below describe the service setup.
+The Barsha consumer integration is implemented locally. Its release and live
+restart acceptance are tracked in [the integration report](barsha-day1-integration.md).
+The setup below is historical: reuse the existing service and database.
 
-## Create the Render service
+## Existing Render service
 
 1. Have the feature change reviewed and merged into development. The
    [render.yaml](../render.yaml) Blueprint deliberately uses that branch.
-2. In the Render Dashboard, create a Blueprint from
-   https://github.com/prajwolchaulagain9-ctrl/fitnep-, using development and
-   the root render.yaml.
-3. Supply these private environment values when prompted:
+2. In the Render Dashboard, open the existing `fitnep-api` service. Verify its
+   repository https://github.com/prajwolchaulagain9-ctrl/fitnep, development
+   branch and existing render.yaml settings. Do not create another Blueprint,
+   service or database.
+3. Verify these private environment values on that service:
 
    | Variable | Value |
    | --- | --- |
@@ -82,27 +84,34 @@ Persist the opaque ID in secure client storage. The session_id returned by
 start must stay out of logs. The unrelated server-created X-Request-Id is the
 non-secret audit correlation ID.
 
-The verifier checks Firebase revocation and reads the current Firebase Auth
-account on every request. Current custom claims supply role, role_version,
-must_change_password and permissions.audit_read/payments_verify. Legacy
-role versions default to zero; verified accounts without a role remain clients.
-A token's old privileged claims cannot override current account state.
+The verifier checks Firebase revocation and current Auth credential state on
+every request. Canonical users/{uid} records supply role, account status and
+role_revision. The session contract exposes that revision as role_version and
+maps permissions from the centralized server policy. Existing Auth roles are
+used only to provision an absent canonical profile. No token claim can replace
+an existing canonical role. Both account-management adapters mutate that same
+authority; credential markers remain in Firebase Auth.
 
 The session guard checks owner UID, authentication time, current role/version/
 permissions, revocation, expiry, required password change, the current saved
 privacy acceptance for clients, and any server-owned login lock. The default
 idle timeout is 900 seconds. Polling, repeated start and process restart do not
-renew it. Expired or logged-out contexts require reauthentication.
+renew it. Expired or logged-out contexts require reauthentication. A current role or
+permission change rejects the old session ID with session-authority-changed.
+Starting a replacement for an open context preserves its original idle expiry
+and last human activity. Polling and rotation cannot revive a closed context.
 
 Firebase auth_time has second precision. A new sign-in during the same
 second as a closed context can be refused until a later authentication time.
 The client must reauthenticate rather than retrying the captured token.
 
-## Integration still required
+## Consumer integration and remaining work
 
-Barsha connects native session start/storage/activity/end, credential exchange,
-the configurable failed-login producer, hosted signup/OTP/recovery adapters,
-offline logout reconciliation and cache cleanup. Tanmay connects saved
+The Flutter consumer now connects session start/storage/activity/end and
+restoration, Firebase native credential exchange, hosted OTP/privacy/recovery
+adapters, offline logout reconciliation and identity/role cache cleanup. The
+hosted adapter endpoints must be deployed before enabling this client in a
+release. Failed-password counting/lockout production remains Day 2. Tanmay connects saved
 acceptance/DOB/guardian onboarding and account/permission mutations. The guard
 consumes platform_login_state/{uid}.locked_until as a Firestore Timestamp;
 the actual failed-attempt/lockout writer remains Day 2 work.

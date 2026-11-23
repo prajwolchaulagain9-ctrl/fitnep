@@ -9,6 +9,8 @@ assert.ok(project?.startsWith('demo-'), 'Use a demo project; never run these tes
 assert.ok(process.env.FIREBASE_AUTH_EMULATOR_HOST, 'Run using firebase emulators:exec.');
 assert.ok(process.env.FIRESTORE_EMULATOR_HOST, 'Include the Firestore emulator.');
 const authHost = `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`;
+const functionsHost = process.env.FITNEP_FUNCTIONS_EMULATOR_HOST ?? '127.0.0.1:5001';
+assert.match(functionsHost, /^(127\.0\.0\.1|localhost):\d+$/);
 const auth = getAuth(initializeApp({ projectId: project }, 'fitnep-recovery-tests'));
 
 async function authPost(method, body) {
@@ -66,12 +68,12 @@ test('real Auth reset is single-use, changes credentials and denies both old ses
     const current = await requireValidSession(session(newLogin.body.idToken, uid), auth);
     assert.equal(current.uid, uid);
 
-    const callable = await fetch(`http://127.0.0.1:5001/${project}/us-central1/checkSession`, {
+    const callable = await fetch(`http://${functionsHost}/${project}/us-central1/checkSession`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${created.body.idToken}` },
       body: JSON.stringify({ data: {} }),
     });
     assert.equal(callable.status, 401);
-    const freshCallable = await fetch(`http://127.0.0.1:5001/${project}/us-central1/checkSession`, {
+    const freshCallable = await fetch(`http://${functionsHost}/${project}/us-central1/checkSession`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newLogin.body.idToken}` },
       body: JSON.stringify({ data: {} }),
     });

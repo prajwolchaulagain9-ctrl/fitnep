@@ -1,10 +1,11 @@
-import { Auth, UserRecord, getAuth } from "firebase-admin/auth";
+import { Auth, getAuth } from "firebase-admin/auth";
 
-import { AuthenticatedUser, normalizeUserRole } from "./domain";
-
-export const { staffSessionMatches }: {
-  staffSessionMatches: (user: UserRecord, actor: AuthenticatedUser) => boolean;
-} = require("../src/session.cjs");
+import { getFirestore } from "firebase-admin/firestore";
+import { AuthenticatedUser, UserRole } from "./domain";
+import { Account, FirestoreAccountService } from "./account_service";
+import { PermissionDeniedError } from "./authorization_policy";
+import { hasPermission } from "./authorization_policy";
+export const { staffSessionMatches } = require("../src/session.cjs");
 
 export interface AuthVerifier {
   verifyIdToken(token: string): Promise<AuthenticatedUser>;
@@ -14,6 +15,8 @@ export class AuthenticationError extends Error {
   constructor(
     message: string,
     readonly statusCode: 401 | 403 | 503 = 401,
+    readonly identity?: { uid: string; role: UserRole | null },
+    readonly code: string = "unauthenticated",
   ) {
     super(message);
     this.name = "AuthenticationError";
@@ -21,69 +24,62 @@ export class AuthenticationError extends Error {
 }
 
 export class FirebaseAuthVerifier implements AuthVerifier {
-  constructor(private readonly auth: Pick<Auth, "verifyIdToken" | "getUser"> = getAuth()) {}
-
+  private readonly accounts?: { auth: Pick<Auth, "verifyIdToken" | "getUser">; current(uid: string): Promise<Account> };
+  constructor(input?: { auth: Pick<Auth, "verifyIdToken" | "getUser">; current(uid: string): Promise<Account> } | Auth) {
+    this.accounts = input && "current" in input ? input : input
+      ? new FirestoreAccountService(getFirestore(input.app), input) : undefined;
+  }
   async verifyIdToken(token: string): Promise<AuthenticatedUser> {
+    let uid: string | undefined;
+    let currentRole: UserRole | null = null;
     try {
-      const decodedToken = await this.auth.verifyIdToken(token, true);
-      // Cached token claims cannot preserve privileges after an account change.
-      const account = await this.auth.getUser(decodedToken.uid);
-      if (account.disabled) {
-        throw new AuthenticationError("This account is inactive.", 403);
-      }
-      const claims = account.customClaims ?? {};
-      const role = claims.role === undefined && account.emailVerified === true
-        ? "client"
-        : normalizeUserRole(claims.role);
-      if (role === null) {
+      const decodedToken = await (this.accounts?.auth ?? getAuth()).verifyIdToken(token, true);
+      uid = decodedToken.uid;
+      const identity = await (this.accounts?.auth ?? getAuth()).getUser(uid);
+      const account = await (this.accounts ??
+        new FirestoreAccountService(getFirestore(), getAuth())).current(uid);
+      currentRole = account.role;
+      if (identity.disabled || account.account_status !== "active") {
         throw new AuthenticationError(
-          "This account does not have a valid FitNep role.",
-          403,
+          "This account is inactive. Contact FitNEP support.", 403,
+          { uid, role: account.role },
         );
       }
+      // Credential generation is separate from business role authority.
+      // Role changes apply from Firestore without trusting stale token claims.
+      if (identity.customClaims?.staffRoleVersion !== undefined &&
+          (identity.customClaims.staffRoleVersion !== decodedToken.staffRoleVersion ||
+           identity.email !== decodedToken.email)) {
+        throw new AuthenticationError("Your credential session changed. Sign in again.");
+      }
       const displayName = firstNonEmptyString(
-        account.displayName,
-        account.email,
+        account.full_name, account.email,
       );
-      const roleVersion = claims.role_version ?? 0;
-      if (!Number.isSafeInteger(roleVersion) || roleVersion < 0) {
-        throw new AuthenticationError("This account needs a valid role version.", 403);
-      }
-      const actor: AuthenticatedUser = {
+      return {
         uid: decodedToken.uid,
-        role,
-        ...(decodedToken.email === undefined ? {} : { email: decodedToken.email }),
-        ...(typeof decodedToken.staffRoleVersion === "string"
-          ? { staffRoleVersion: decodedToken.staffRoleVersion } : {}),
-        ...(decodedToken.firebase?.sign_in_provider === "password"
-          ? { passwordAuthenticatedAt: decodedToken.auth_time } : {}),
-        ...(displayName === null ? {} : { displayName }),
-        roleVersion,
+        role: account.role,
+        roleRevision: account.role_revision,
+        emailVerified: identity.emailVerified === true && decodedToken.email_verified === true,
+        email: identity.email,
         authTime: decodedToken.auth_time,
-        emailVerified: account.emailVerified,
-        mustChangePassword: claims.mustChangePassword === true || claims.must_change_password === true,
-        permissions: {
-          auditRead: role === "admin" || (role === "staff" && claims.permissions?.audit_read === true),
-          paymentsVerify: role === "admin" || (role === "staff" && claims.permissions?.payments_verify === true),
-        },
+        roleVersion: account.role_revision,
+        staffRoleVersion: typeof decodedToken.staffRoleVersion === "string" ? decodedToken.staffRoleVersion : undefined,
+        passwordAuthenticatedAt: decodedToken.firebase?.sign_in_provider === "password" ? decodedToken.auth_time : undefined,
+        mustChangePassword: identity.customClaims?.mustChangePassword === true || identity.customClaims?.must_change_password === true,
+        permissions: { auditRead: hasPermission(account.role, "view_audit_logs"),
+          paymentsVerify: hasPermission(account.role, "manage_business_settings") },
+        ...(displayName === null ? {} : { displayName }),
       };
-      // Account mutations on tanmay rotate the staff session version. Reject
-      // tokens from those old sessions even when Firebase timestamps match.
-      if ((claims.staffRoleVersion !== undefined || decodedToken.staffRoleVersion !== undefined) &&
-          (!staffSessionMatches(account, actor) ||
-           (decodedToken.role_version ?? 0) !== roleVersion ||
-           normalizeUserRole(decodedToken.role) !== role)) {
-        throw new AuthenticationError("Your staff session changed. Sign in again.");
-      }
-      return actor;
     } catch (error) {
       if (error instanceof AuthenticationError) throw error;
-      const code = (error as { code?: string } | null)?.code;
-      if (["auth/id-token-expired", "auth/id-token-revoked", "auth/invalid-id-token",
-        "auth/argument-error", "auth/user-disabled", "auth/user-not-found"].includes(code ?? "")) {
-        throw new AuthenticationError("The authentication token is invalid.");
+      if (error instanceof PermissionDeniedError) {
+        throw new AuthenticationError(error.message, 403,
+          uid ? { uid, role: currentRole } : undefined);
       }
-      throw new AuthenticationError("Authentication is temporarily unavailable.", 503);
+      if (!(error as { code?: string }).code?.startsWith("auth/")) {
+        throw new AuthenticationError("Session verification is unavailable. Try again.", 503);
+      }
+      throw new AuthenticationError("The authentication token is invalid.");
     }
   }
 }

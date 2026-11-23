@@ -8,6 +8,7 @@ class ClientModel extends ClientEntity {
     required super.phone,
     required super.gender,
     required super.dateOfBirth,
+    super.hasFinancialSummary,
     required super.address,
     required super.packageId,
     required super.packageName,
@@ -29,15 +30,19 @@ class ClientModel extends ClientEntity {
       id: json['id'] as String,
       name: json['name'] as String,
       email: json['email'] as String,
-      phone: json['phone'] as String,
+      phone: json['phone'] as String? ?? '',
       gender: Gender.values.firstWhere(
         (g) => g.name == json['gender'],
         orElse: () => Gender.other,
       ),
-      dateOfBirth: DateTime.parse(json['dateOfBirth'] as String),
-      address: json['address'] as String,
-      packageId: json['packageId'] as String,
-      packageName: json['packageName'] as String,
+      dateOfBirth: json['dateOfBirth'] is String
+          ? DateTime.parse(json['dateOfBirth'] as String)
+          : null,
+      hasFinancialSummary:
+          json['totalAmountPaid'] is num && json['outstandingAmount'] is num,
+      address: json['address'] as String? ?? '',
+      packageId: json['packageId'] as String? ?? '',
+      packageName: json['packageName'] as String? ?? 'Not available',
       status: ClientStatus.values.firstWhere(
         (s) => s.name == json['status'],
         orElse: () => ClientStatus.active,
@@ -49,15 +54,15 @@ class ClientModel extends ClientEntity {
           ? DateTime.parse(json['deactivatedAt'] as String)
           : null,
       deactivationReason: json['deactivationReason'] as String?,
-      totalAmountPaid: (json['totalAmountPaid'] as num).toDouble(),
-      outstandingAmount: (json['outstandingAmount'] as num).toDouble(),
+      totalAmountPaid: (json['totalAmountPaid'] as num?)?.toDouble() ?? 0,
+      outstandingAmount: (json['outstandingAmount'] as num?)?.toDouble() ?? 0,
       lastPaymentDate: json['lastPaymentDate'] != null
           ? DateTime.parse(json['lastPaymentDate'] as String)
           : null,
-      paymentHistory: (json['paymentHistory'] as List<dynamic>)
+      paymentHistory: (json['paymentHistory'] as List<dynamic>? ?? [])
           .map((e) => _paymentFromJson(e as Map<String, dynamic>))
           .toList(),
-      packageHistory: (json['packageHistory'] as List<dynamic>)
+      packageHistory: (json['packageHistory'] as List<dynamic>? ?? [])
           .map((e) => _packageHistoryFromJson(e as Map<String, dynamic>))
           .toList(),
     );
@@ -70,7 +75,7 @@ class ClientModel extends ClientEntity {
       'email': email,
       'phone': phone,
       'gender': gender.name,
-      'dateOfBirth': dateOfBirth.toIso8601String(),
+      'dateOfBirth': dateOfBirth?.toIso8601String(),
       'address': address,
       'packageId': packageId,
       'packageName': packageName,

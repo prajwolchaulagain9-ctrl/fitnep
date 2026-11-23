@@ -53,4 +53,5 @@ class AppConfig {
   }
 
   static bool get hasApiBaseUrl => apiBaseUrl.isNotEmpty;
+  static bool get hostedSessionsEnabled => hasApiBaseUrl && !useFirebaseEmulators;
 }

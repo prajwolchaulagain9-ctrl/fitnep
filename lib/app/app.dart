@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/services/firebase_providers.dart';
 import '../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../features/authentication/presentation/password_reset_session_observer.dart';
+import '../features/authentication/presentation/hosted_session_gate.dart';
 import '../shared/widgets/app_startup_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
@@ -45,7 +46,7 @@ class FitNepApp extends ConsumerWidget {
           );
         }
         return PasswordResetSessionObserver(
-          child: child ?? const SizedBox.shrink(),
+          child: HostedSessionObserver(child: child ?? const SizedBox.shrink()),
         );
       },
     );

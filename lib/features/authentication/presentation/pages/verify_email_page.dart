@@ -3,13 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../../../../app/routes/app_routes.dart';
 import '../../data/authentication_service.dart';
 import '../../data/email_verification_service.dart';
 import '../controllers/authentication_controller.dart';
-import '../sign_out_to_welcome.dart';
 import 'password_recovery_pages.dart';
 
 class VerifyEmailPage extends ConsumerStatefulWidget {
@@ -27,7 +24,6 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
   int _remaining = 0;
   bool _busy = false;
   bool _sent = false;
-  bool _usingLink = false;
   String? _error;
 
   @override
@@ -72,19 +68,17 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
       _error = null;
     });
     try {
-      final service = ref.read(emailVerificationServiceProvider);
-      final delivery = _usingLink
-          ? await service.sendVerificationLink()
-          : await service.sendCode(resend: resend);
+      final delivery = await ref
+          .read(emailVerificationServiceProvider)
+          .sendCode(resend: resend);
       if (!mounted) return;
       if (delivery.emailVerified) {
-        await _continueAfterVerification();
+        ref.invalidate(authenticationStateProvider);
         return;
       }
       _code.clear();
       setState(() {
         _sent = true;
-        _usingLink = delivery.usesVerificationLink;
         _startCooldown(delivery.resendAfterSeconds);
       });
     } on EmailVerificationFailure catch (error) {
@@ -110,26 +104,19 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
   }
 
   Future<void> _verify() async {
-    if (_busy || (!_usingLink && !_form.currentState!.validate())) return;
+    if (_busy || !_form.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      final service = ref.read(emailVerificationServiceProvider);
-      if (_usingLink) {
-        if (!await service.checkVerificationLink()) {
-          throw const AuthenticationFailure(
-            'Open the verification link in your email, then try again.',
-          );
-        }
-      } else {
-        await service.verifyCode(_code.text);
-      }
+      await ref.read(emailVerificationServiceProvider).verifyCode(_code.text);
       if (!mounted) return;
       _code.clear();
-      await _continueAfterVerification();
+      // Auth's authStateChanges does not emit on reload. Refresh the shared
+      // provider so the route guard reads the updated Firebase user.
+      ref.invalidate(authenticationStateProvider);
     } on AuthenticationFailure catch (error) {
       if (mounted) setState(() => _error = error.message);
     } catch (_) {
@@ -144,31 +131,15 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     }
   }
 
-  Future<void> _continueAfterVerification() async {
-    final router = GoRouter.of(context);
-    final uid = ref.read(authenticationStateProvider).value?.uid;
-    // Firebase's authStateChanges does not emit when the user is reloaded.
-    ref.invalidate(authenticationStateProvider);
-    final user = await ref.read(authenticationStateProvider.future);
-    if (user != null && user.uid == uid && user.emailVerified) {
-      router.goNamed(AppRoutes.welcome);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authenticationStateProvider).value;
     final action = ref.watch(authenticationControllerProvider);
     final busy = _busy || action.isLoading;
-    final email = user?.email ?? 'your email address';
-    final deliveryType = _usingLink ? 'link' : 'code';
     return RecoveryPage(
       title: 'Verify your email',
-      description: _sent
-          ? (_usingLink
-                ? 'Open the verification link sent to $email.'
-                : 'Enter the 6-digit code sent to $email.')
-          : 'Verify $email to finish registration.',
+      description:
+          'Enter the 6-digit code sent to ${user?.email ?? 'your email address'}.',
       showBackButton: false,
       child: Form(
         key: _form,
@@ -178,43 +149,36 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
             if (_error ?? action.errorMessage case final String error)
               RecoveryMessage(error),
             if (_sent) ...[
-              const Text('Check your inbox and spam folder.'),
+              const Text('Code sent. Check your inbox and spam folder.'),
               const SizedBox(height: 16),
             ],
-            if (!_usingLink)
-              TextFormField(
-                controller: _code,
-                readOnly: busy,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                autofillHints: const [AutofillHints.oneTimeCode],
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(6),
-                ],
-                decoration: const InputDecoration(
-                  labelText: 'Verification code',
-                  hintText: '6-digit code',
-                  prefixIcon: Icon(Icons.verified_user_outlined),
-                ),
-                validator: (value) => RegExp(r'^\d{6}$').hasMatch(value ?? '')
-                    ? null
-                    : 'Enter the 6-digit code from your email.',
-                onChanged: (_) {
-                  if (_error != null) setState(() => _error = null);
-                },
-                onFieldSubmitted: (_) => _verify(),
+            TextFormField(
+              controller: _code,
+              readOnly: busy,
+              keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
+              autofillHints: const [AutofillHints.oneTimeCode],
+              inputFormatters: [
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'Verification code',
+                hintText: '6-digit code',
+                prefixIcon: Icon(Icons.verified_user_outlined),
               ),
+              validator: (value) => RegExp(r'^\d{6}$').hasMatch(value ?? '')
+                  ? null
+                  : 'Enter the 6-digit code from your email.',
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+              onFieldSubmitted: (_) => _verify(),
+            ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: busy ? null : _verify,
-              child: Text(
-                _busy
-                    ? 'Please wait\u2026'
-                    : _usingLink
-                    ? 'I verified my email'
-                    : 'Verify email',
-              ),
+              child: Text(_busy ? 'Please wait\u2026' : 'Verify email'),
             ),
             const SizedBox(height: 12),
             TextButton(
@@ -223,14 +187,18 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
                   : () => _send(resend: _sent),
               child: Text(
                 _remaining > 0
-                    ? 'Resend $deliveryType in ${_remaining}s'
+                    ? 'Resend code in ${_remaining}s'
                     : _sent
-                    ? 'Resend $deliveryType'
-                    : 'Send verification email',
+                    ? 'Resend code'
+                    : 'Send code',
               ),
             ),
             TextButton(
-              onPressed: busy ? null : () => signOutToWelcome(context, ref),
+              onPressed: busy
+                  ? null
+                  : () => ref
+                        .read(authenticationControllerProvider.notifier)
+                        .signOut(),
               child: const Text('Use another account'),
             ),
           ],

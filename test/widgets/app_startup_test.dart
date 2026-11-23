@@ -30,7 +30,7 @@ void main() {
       expect(find.text('We couldn’t connect.'), findsOneWidget);
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
-      expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+      expect(find.text('Learn about FitNEP'), findsOneWidget);
       expect(attempts, 2);
     },
   );
@@ -54,10 +54,10 @@ void main() {
     final logo = tester.widget<Image>(find.byType(Image));
     expect((logo.image as AssetImage).assetName, FitNepWordmark.assetPath);
     expect(logo.width! / logo.height!, closeTo(641 / 615, 0.001));
-    expect(find.byKey(const Key('welcome_carousel')), findsNothing);
+    expect(find.text('Learn about FitNEP'), findsNothing);
     ready.complete();
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+    expect(find.text('Learn about FitNEP'), findsOneWidget);
   });
 
   testWidgets('branded startup fits a small screen with large text', (
@@ -86,43 +86,33 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets(
-    'welcome swipes, advances, and opens signup and login with larger text',
-    (tester) async {
-      tester.view.physicalSize = const Size(320, 568);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
-      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
-      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
-            firebaseInitializationProvider.overrideWith((ref) async {}),
-          ],
-          child: const FitNepApp(),
-        ),
-      );
-      await tester.pumpAndSettle();
-      final carousel = find.byKey(const Key('welcome_carousel'));
-      await tester.drag(carousel, const Offset(-280, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('Your goals.\nYour kind of plan.'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('welcome_next_button')));
-      await tester.pumpAndSettle();
-      expect(find.text('Get started'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('welcome_next_button')));
-      await tester.pumpAndSettle();
-      expect(find.text('Create your account'), findsOneWidget);
-      await tester.ensureVisible(find.text('Back'));
-      await tester.tap(find.text('Back'));
-      await tester.pumpAndSettle();
-      expect(find.text('Get started'), findsOneWidget);
-      await tester.tap(find.byKey(const Key('welcome_skip_button')));
-      await tester.pumpAndSettle();
-      expect(find.text('Welcome back'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('welcome navigation works on a small screen with larger text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 568);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
+          firebaseInitializationProvider.overrideWith((ref) async {}),
+        ],
+        child: const FitNepApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Learn about FitNEP'));
+    await tester.tap(find.text('Learn about FitNEP'));
+    await tester.pumpAndSettle();
+    expect(find.text('About FitNEP'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('Back to welcome'));
+    await tester.tap(find.text('Back to welcome'));
+    await tester.pumpAndSettle();
+    expect(find.text('Learn about FitNEP'), findsOneWidget);
+  });
 }
