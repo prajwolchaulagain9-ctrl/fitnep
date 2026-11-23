@@ -5,6 +5,7 @@ import { FirestoreAccountService, FirestoreAuditStore } from "./account_service"
 import { onRequest } from "firebase-functions/v2/https";
 
 import { FirebaseAuthVerifier } from "./auth";
+import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
@@ -36,6 +37,7 @@ const notificationApp = createNotificationApp({
   audit: new FirestoreAuditStore(getFirestore()),
   authVerifier: new FirebaseAuthVerifier(new FirestoreAccountService(getFirestore(), getAuth())),
   notificationRepository,
+  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), getFirestore()),
   privacyPreferencesRepository,
   privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository),
   packageService,

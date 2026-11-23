@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/firebase_providers.dart';
@@ -16,6 +17,13 @@ final emailVerificationServiceProvider = Provider<EmailVerificationService>(
     hostedRequest: AppConfig.hostedSessionsEnabled
         ? ref.read(hostedAuthRequestProvider)
         : null,
+    useLinkByDefault:
+        AppConfig.useFirebaseEmulators ||
+        !AppConfig.signupEmailOtpEnabled ||
+        (!AppConfig.hostedSessionsEnabled &&
+            AppConfig.signupOtpSendUrl.isEmpty &&
+            AppConfig.signupOtpVerifyUrl.isEmpty &&
+            !(kDebugMode && AppConfig.functionsEmulatorHost.isNotEmpty)),
   ),
 );
 
@@ -23,9 +31,11 @@ class EmailCodeDelivery {
   const EmailCodeDelivery({
     required this.resendAfterSeconds,
     this.emailVerified = false,
+    this.usesVerificationLink = false,
   });
   final int resendAfterSeconds;
   final bool emailVerified;
+  final bool usesVerificationLink;
 }
 
 class EmailVerificationFailure extends AuthenticationFailure {
@@ -43,12 +53,14 @@ class EmailVerificationService {
     required this.functions,
     this.sendUrl = '',
     this.verifyUrl = '',
+    this.useLinkByDefault = false,
     this.hostedRequest,
   });
   final FirebaseAuth auth;
   final FirebaseFunctions functions;
   final String sendUrl;
   final String verifyUrl;
+  final bool useLinkByDefault;
   final HostedAuthRequest? hostedRequest;
 
   HttpsCallable _callable(String name, String configuredUrl) {
@@ -75,12 +87,8 @@ class EmailVerificationService {
   }
 
   Future<EmailCodeDelivery> sendCode({bool resend = false}) async {
-    final user = auth.currentUser;
-    if (user == null) {
-      throw const AuthenticationFailure(
-        'Please log in again to verify your email.',
-      );
-    }
+    if (useLinkByDefault) return sendVerificationLink();
+    final user = _signedInUser();
     try {
       // The server derives UID and email from the authenticated session.
       final Object? data = hostedRequest != null
@@ -104,11 +112,41 @@ class EmailVerificationService {
     } on AuthenticationFailure {
       rethrow;
     } on FirebaseFunctionsException catch (error) {
+      if (const {
+        'not-found',
+        'unimplemented',
+        'failed-precondition',
+      }.contains(error.code)) {
+        return sendVerificationLink();
+      }
       throw _failure(error);
     } catch (_) {
       throw const AuthenticationFailure(
         'We couldn\u2019t send your code. Check your connection and try again.',
       );
+    }
+  }
+
+  Future<EmailCodeDelivery> sendVerificationLink() async {
+    final user = _signedInUser();
+    try {
+      final alreadyVerified = await _reloadVerification(user);
+      if (!alreadyVerified) await user.sendEmailVerification();
+      return EmailCodeDelivery(
+        resendAfterSeconds: alreadyVerified ? 0 : 60,
+        emailVerified: alreadyVerified,
+        usesVerificationLink: true,
+      );
+    } on FirebaseAuthException catch (error) {
+      throw AuthenticationService.failureFor(error);
+    }
+  }
+
+  Future<bool> checkVerificationLink() async {
+    try {
+      return await _reloadVerification(_signedInUser());
+    } on FirebaseAuthException catch (error) {
+      throw AuthenticationService.failureFor(error);
     }
   }
 
@@ -118,12 +156,7 @@ class EmailVerificationService {
         'Enter the 6-digit code from your email.',
       );
     }
-    final user = auth.currentUser;
-    if (user == null) {
-      throw const AuthenticationFailure(
-        'Please log in again to verify your email.',
-      );
-    }
+    final user = _signedInUser();
     try {
       final Object? data = hostedRequest != null
           ? await hostedRequest!('auth/signup/otp/verify', {
@@ -151,7 +184,25 @@ class EmailVerificationService {
     }
   }
 
+  User _signedInUser() {
+    final user = auth.currentUser;
+    if (user == null) {
+      throw const AuthenticationFailure(
+        'Please log in again to verify your email.',
+      );
+    }
+    return user;
+  }
+
   Future<void> _refreshVerifiedUser(User user) async {
+    if (!await _reloadVerification(user)) {
+      throw const AuthenticationFailure(
+        'We couldn\u2019t refresh your verification. Please try again.',
+      );
+    }
+  }
+
+  Future<bool> _reloadVerification(User user) async {
     if (auth.currentUser?.uid != user.uid) {
       throw const AuthenticationFailure(
         'Your account changed. Please log in again.',
@@ -164,14 +215,15 @@ class EmailVerificationService {
         'Your account changed. Please log in again.',
       );
     }
-    final token = await refreshed!.getIdTokenResult(true);
+    if (!refreshed!.emailVerified) return false;
+    final token = await refreshed.getIdTokenResult(true);
     if (auth.currentUser?.uid != user.uid ||
-        refreshed.emailVerified != true ||
         token.claims?['email_verified'] != true) {
       throw const AuthenticationFailure(
         'We couldn\u2019t refresh your verification. Please try again.',
       );
     }
+    return true;
   }
 
   static EmailVerificationFailure _failure(FirebaseFunctionsException error) {

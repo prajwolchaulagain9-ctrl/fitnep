@@ -3,6 +3,7 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
 import { FirebaseAuthVerifier } from "./auth";
+import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
 import { createNotificationApp } from "./http_app";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
@@ -19,6 +20,7 @@ export function createFitnepApi() {
   const preferences = new FirestorePrivacyPreferencesRepository(db);
   return createNotificationApp({ accounts, audit: new FirestoreAuditStore(db),
     authVerifier: new FirebaseAuthVerifier(accounts), notificationRepository: new FirestoreNotificationRepository(db),
+    staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), db),
     privacyPreferencesRepository: preferences, privateRecordsStore: new FirestorePrivateRecordsStore(db, preferences),
     packageService: new FirestorePackageService(db), packageRepository: new FirestorePackageRepository(db),
     purchaseRepository: new FirestorePurchaseRepository(db),

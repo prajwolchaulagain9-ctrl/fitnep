@@ -115,4 +115,44 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Learn about FitNEP'), findsOneWidget);
   });
+
+  testWidgets(
+    'welcome swipes, advances, and opens signup and login with larger text',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
+            firebaseInitializationProvider.overrideWith((ref) async {}),
+          ],
+          child: const FitNepApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final carousel = find.byKey(const Key('welcome_carousel'));
+      await tester.drag(carousel, const Offset(-280, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Your goals.\nYour kind of plan.'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('welcome_next_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Get started'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('welcome_next_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Create your account'), findsOneWidget);
+      await tester.ensureVisible(find.text('Back'));
+      await tester.tap(find.text('Back'));
+      await tester.pumpAndSettle();
+      expect(find.text('Get started'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('welcome_skip_button')));
+      await tester.pumpAndSettle();
+      expect(find.text('Welcome back'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

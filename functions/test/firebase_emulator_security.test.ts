@@ -8,6 +8,7 @@ import request from "supertest";
 
 import type { CallableRequest } from "firebase-functions/v2/https";
 import { FirestoreAuditWriter } from "../src/audit";
+import { createFitnepApi } from "../src/api_factory";
 import { registrationPrivacy } from "../src/registration_privacy";
 import { FirestoreAccountService, FirestoreAuditStore } from "../src/account_service";
 import { FirebaseAuthVerifier } from "../src/auth";
@@ -89,6 +90,19 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
 
   after(async () => {
     await deleteApp(firebaseApp);
+  });
+
+  it("wires staff accounts into the shared Firebase API", async () => {
+    const accounts = new FirestoreAccountService(firestore, auth);
+    await accounts.provision(await auth.getUser("admin-1"));
+    await accounts.provision(await auth.getUser("client-a"));
+
+    const firebaseApi = createFitnepApi();
+    const path = "/admin/staff-accounts";
+    const admin = bearer(await signIn("admin@fitnep.test"));
+    const client = bearer(await signIn("client-a@fitnep.test"));
+    await request(firebaseApi).get(path).set(admin).expect(200);
+    await request(firebaseApi).get(path).set(client).expect(403);
   });
 
   it("lets only admins list paginated staff accounts and preserves inactive status", async () => {

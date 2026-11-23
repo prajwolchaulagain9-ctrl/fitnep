@@ -20,6 +20,8 @@ final hostedAuthRequestProvider = Provider<HostedAuthRequest>((ref) {
       throw FirebaseFunctionsException(
         code: body is Map && body['code'] is String
             ? body['code'] as String
+            : error.response?.statusCode == 404
+            ? 'unimplemented'
             : 'unavailable',
         message: 'The account service could not complete the request.',
         details: body is Map ? body['details'] : null,

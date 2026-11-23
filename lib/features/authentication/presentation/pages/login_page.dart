@@ -139,24 +139,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 onFieldSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 8),
-              Row(
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 4,
                 children: [
-                  Expanded(
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: busy ? null : () => _setRememberMe(!_rememberMe),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Checkbox(
-                            value: _rememberMe,
-                            onChanged: busy
-                                ? null
-                                : (value) => _setRememberMe(value ?? false),
-                          ),
-                          const Flexible(child: Text('Remember me')),
-                        ],
-                      ),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: busy ? null : () => _setRememberMe(!_rememberMe),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Checkbox(
+                          value: _rememberMe,
+                          onChanged: busy
+                              ? null
+                              : (value) => _setRememberMe(value ?? false),
+                        ),
+                        const Flexible(child: Text('Remember me')),
+                      ],
                     ),
                   ),
                   TextButton(
@@ -200,6 +202,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                     child: const Text('Sign up'),
                   ),
                 ],
+              ),
+              Center(
+                child: TextButton.icon(
+                  key: const Key('login_privacy_policy_button'),
+                  onPressed: busy
+                      ? null
+                      : () => context.pushNamed(AppRoutes.privacyPolicy),
+                  icon: const Icon(Icons.privacy_tip_outlined, size: 20),
+                  label: const Text('Privacy Policy'),
+                ),
               ),
             ],
           ),

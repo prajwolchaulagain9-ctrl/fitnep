@@ -15,10 +15,6 @@ final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
 );
 
-final signupEmailOtpEnabledProvider = Provider<bool>(
-  (ref) => AppConfig.signupEmailOtpEnabled,
-);
-
 final googleCredentialProvider = Provider<GoogleCredentialProvider>(
   (ref) => NativeGoogleCredentialProvider(),
 );
@@ -137,9 +133,12 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
   }) async {
     return _run(() async {
       final service = await ref.read(authenticationBootstrapProvider.future);
-      await service.signUp(name: name, email: email, password: password);
-      final uid = service.auth.currentUser?.uid;
-      if (uid != null && consent != null) {
+      final uid = await service.signUp(
+        name: name,
+        email: email,
+        password: password,
+      );
+      if (uid != null && consent != null && ref.mounted) {
         try {
           await ref
               .read(pendingRegistrationConsentStoreProvider)

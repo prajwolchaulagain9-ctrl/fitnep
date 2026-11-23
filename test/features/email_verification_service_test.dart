@@ -12,12 +12,20 @@ class _User extends Fake implements User {
   bool emailVerified = false;
   int reloads = 0;
   int tokenRefreshes = 0;
+  int verificationLinksSent = 0;
   bool verifiedOnReload = true;
   bool verifiedTokenClaim = true;
   @override
   Future<void> reload() async {
     reloads++;
     emailVerified = verifiedOnReload;
+  }
+
+  @override
+  Future<void> sendEmailVerification([
+    ActionCodeSettings? actionCodeSettings,
+  ]) async {
+    verificationLinksSent++;
   }
 
   @override
@@ -100,6 +108,35 @@ void main() {
       expect(functions.send.parameters, {'resend': false});
       await service.sendCode(resend: true);
       expect(functions.send.parameters, {'resend': true});
+    },
+  );
+
+  test(
+    'falls back to a Firebase link when hosted codes are unavailable',
+    () async {
+      user.verifiedOnReload = false;
+      service = EmailVerificationService(
+        auth: auth,
+        functions: functions,
+        hostedRequest: (path, data) async {
+          expect(path, 'auth/signup/otp/send');
+          expect(data, {'resend': false});
+          throw FirebaseFunctionsException(
+            code: 'failed-precondition',
+            message: 'Code delivery is not configured.',
+          );
+        },
+      );
+
+      final delivery = await service.sendCode();
+      expect(delivery.usesVerificationLink, isTrue);
+      expect(delivery.emailVerified, isFalse);
+      expect(user.verificationLinksSent, 1);
+      expect(await service.checkVerificationLink(), isFalse);
+
+      user.verifiedOnReload = true;
+      expect(await service.checkVerificationLink(), isTrue);
+      expect(user.tokenRefreshes, 1);
     },
   );
 

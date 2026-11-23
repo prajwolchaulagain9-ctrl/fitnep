@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
@@ -72,6 +73,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
@@ -110,6 +112,28 @@ void main() {
     await _close(tester, auth);
   });
 
+  testWidgets('Login opens the public privacy policy and returns to login', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final container = await _open(tester, auth, MemorySessionPreferenceStore());
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.login);
+    await tester.pumpAndSettle();
+
+    final policyLink = find.byKey(const Key('login_privacy_policy_button'));
+    await tester.ensureVisible(policyLink);
+    await tester.tap(policyLink);
+    await tester.pumpAndSettle();
+    expect(find.text('How FitNEP handles your data'), findsOneWidget);
+    expect(auth.currentUser, isNull);
+
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome back'), findsOneWidget);
+    await _close(tester, auth);
+  });
+
   testWidgets('Firebase login reaches the client dashboard and logs out', (
     tester,
   ) async {
@@ -117,7 +141,7 @@ void main() {
     final preferences = MemorySessionPreferenceStore();
     await _open(tester, auth, preferences);
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.byKey(const Key('welcome_login_button')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),
@@ -164,7 +188,7 @@ void main() {
       ..signInError = FirebaseAuthException(code: 'invalid-credential');
     await _open(tester, auth, MemorySessionPreferenceStore());
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Log in'));
+    await tester.tap(find.byKey(const Key('welcome_login_button')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byType(TextFormField).at(0),

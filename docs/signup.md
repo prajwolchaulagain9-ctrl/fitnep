@@ -2,7 +2,7 @@
 
 `/signup` uses the same `RecoveryPage` layout and `FitNepWordmark` as Login and
 Forgot Password: white background, orange buttons, rounded fields and the shared
-footer. It collects name, email, password and confirmation. Firebase creates the
+footer. It collects name, email, age, password and confirmation. Firebase creates the
 email/password account and owns its credentials. The display name is saved on
 the Firebase user; profile completion can recover a failed name update later.
 Firebase enforces its configured server password policy in addition to the
@@ -20,13 +20,11 @@ admin and dietitian claims retain their access. Unsupported assigned roles are
 rejected; no setup callable or client-written role is needed. The API verifies
 the Firebase token with revocation checks and applies the same client default.
 
-Clients enter `/client/packages` after sign-in. Confirming a successfully saved
-selection opens `/client/home`, which shows its Pending payment-verification
-status. Home links to membership, packages, notifications and privacy using
-normal back navigation. A previously saved selection also exposes a home
-shortcut on the package list. Failed saves keep the client on package selection
-and reuse the request ID on retry. The access error screen offers a working
-sign-out exit.
+Clients enter `/client/home` after sign-in and use **Packages** to choose a
+plan. A successfully saved selection returns them home, where they can see its
+pending payment status. Home links to membership, packages, notifications and
+privacy preferences. Failed saves keep the client on package selection and
+reuse the request ID on retry.
 
 ## Google configuration
 
@@ -58,21 +56,21 @@ form opens the Privacy Policy. The acceptance checkbox unlocks at the end,
 and clients under 18 also confirm guardian permission. Accepting creates the
 account and opens email verification by code or link. The app keeps the
 pending consent in secure device storage under the new account's UID.
-After verification, it saves the consent to Firebase before opening package
-selection. New Google sign-ins and clients resuming without a pending consent
+After verification, the server saves the consent and its date in Firestore
+before opening Client Home. New Google sign-ins and clients resuming without a pending consent
 record complete the age and policy review after Firebase verifies their email.
 
 Unverified email/password users also return to verification on login and restored
 sessions. Password recovery remains accessible.
 
-The verification screen defaults to a Firebase email link when no code
-endpoints are configured or when `SIGNUP_EMAIL_OTP_ENABLED=false`. It also uses
-the link when the configured send
-endpoint returns 404. After opening the link, return to the app and tap
-**I verified my email**. Verification reloads the Firebase user and checks the
-refreshed token's `email_verified` claim before protected navigation.
-When code endpoints are configured and available, the screen accepts the
-six-digit code and reuses it until expiry or an explicit resend.
+With the hosted API configured, the app requests a six-digit code from the
+backend. The app sends a Firebase verification link if the code endpoint is
+missing or reports that delivery is unconfigured. If delivery fails for another
+reason, users can choose **Send a verification link instead** when the resend
+cooldown is clear. Set the Flutter define `SIGNUP_EMAIL_OTP_ENABLED=false` to
+start with a link. After opening it, return to the app and tap
+**I verified my email**. The app reloads the Firebase user and checks the
+refreshed token before continuing.
 
 Local email/password signup uses a test verification link from the Auth
 emulator. The built-in demo accounts are already verified.
@@ -102,9 +100,8 @@ Brevo hosts the transactional email delivery API, so no dedicated email server
 is needed. For custom six-digit signup verification, code generation, attempt
 limits, verification and the Firebase Admin update must run in a trusted
 environment. The Brevo API key cannot be bundled into the Flutter app. This
-implementation uses Firebase callable functions; serverless execution is enough
-and does not require maintaining a dedicated server. Brevo email delivery alone
-does not verify the code or mark the Firebase account's email as verified.
+implementation uses the hosted Render API or Firebase callable functions.
+The backend verifies codes and marks the Firebase account's email as verified.
 
 Firebase's built-in email verification links can use Firebase's hosted Auth
 service without this custom OTP backend, but that changes the requested numeric
@@ -133,30 +130,32 @@ code flow into a link flow.
    described below. The shared Functions provider uses
    `FIREBASE_FUNCTIONS_REGION`; the recovery callable shares this region.
 
-The shared project remains on **Spark**. Firebase Auth stays live. The OTP runtime
-and records run locally for USB testing until the existing serverless host is
-configured. No billing plan is changed.
+For local USB testing, the Functions emulator runs the OTP handlers and keeps
+OTP records in the local Firestore emulator. See the Render setup below for the
+shared backend.
 Before public rollout, configure App Check or equivalent anti-abuse protection
 in addition to per-account throttling. New Firebase accounts do not receive
 trusted role claims from this flow. The API treats verified accounts with no
 assigned role as clients and requires signed claims for privileged access.
 A Flutter route guard alone is not data authorization.
 
-## Existing serverless host
+## Existing Render service
 
-Set `SIGNUP_OTP_SEND_URL` and `SIGNUP_OTP_VERIFY_URL` to public HTTPS endpoints in
-`config/development.json`. Both must be configured together. The callable client
-attaches the current Firebase ID token. The host must validate it, derive UID and
-email server-side, persist OTP records atomically and return the Firebase callable
-protocol (`result` or `error`). Keep Brevo and Firebase Admin credentials in the
-host's secret store. Provider and project details are needed before deployment.
+Use the `API_BASE_URL` in `config/development.example.json`. The hosted app
+requests codes at `/auth/signup/otp/send`, verifies them at
+`/auth/signup/otp/verify`, and records consent at `/auth/privacy`.
 
-The default app saves the entered age, policy version and server timestamp in
-the signed-in user's Firestore consent record. Set up the default Firestore
-database and publish the project's Firestore rules before distributing the
-build. For an independently hosted privacy callable, set `SIGNUP_PRIVACY_URL`
-to its HTTPS URL. The app and any email-code backend must use the same Firebase
-Auth project and Firestore database.
+On the existing `fitnep-api` service, set `SIGNUP_EMAIL_OTP_ENABLED=true`,
+`BREVO_API_KEY`, a verified `BREVO_SENDER_EMAIL`, and a stable random
+`SIGNUP_OTP_HASH_SECRET` of at least 32 characters. `BREVO_SENDER_NAME` is
+optional. Keep credentials in Render's environment settings. Manually deploy
+`development` and verify its commit at `/healthz` before testing email delivery.
+See [Hosted API setup](hosted-api.md) for deployment details.
+
+For a separate Firebase callable setup, configure `SIGNUP_OTP_SEND_URL` and
+`SIGNUP_OTP_VERIFY_URL` together if overriding the default callable URLs. Use
+`SIGNUP_PRIVACY_URL` for an independently hosted consent callable. The app and
+backend must use the same Firebase Auth project and Firestore database.
 
 ## Local Samsung USB test
 

@@ -82,9 +82,10 @@ class RouteAccessGate extends ConsumerWidget {
             );
             if (AppConfig.hostedSessionsEnabled) {
               child = HostedSessionGate(uid: session.uid, child: child);
-              if (session.role == FitNepRole.client) {
-                child = RegistrationPrivacyGate(uid: session.uid, child: child);
-              }
+            }
+            if (!AppConfig.useFirebaseEmulators &&
+                session.role == FitNepRole.client) {
+              child = RegistrationPrivacyGate(uid: session.uid, child: child);
             }
             return child;
           },

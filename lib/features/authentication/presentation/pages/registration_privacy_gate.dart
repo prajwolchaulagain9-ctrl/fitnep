@@ -2,6 +2,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../../app/routes/app_routes.dart';
 
 import '../../data/registration_privacy.dart';
 import '../../domain/entities/privacy_policy.dart';
@@ -51,6 +54,11 @@ class RegistrationPrivacyGate extends ConsumerWidget {
                       TextButton(
                         onPressed: () => ref.invalidate(provider),
                         child: const Text('Try again'),
+                      ),
+                      TextButton(
+                        onPressed: () =>
+                            context.pushNamed(AppRoutes.privacyPolicy),
+                        child: const Text('Read Privacy Policy'),
                       ),
                       const _SwitchAccount(),
                     ],

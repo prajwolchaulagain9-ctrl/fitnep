@@ -124,9 +124,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : AppRoutes.changeStaffPasswordPath;
         }
       }
-      if (isAuthenticated &&
-          !AppConfig.useFirebaseEmulators &&
-          ref.read(signupEmailOtpEnabledProvider)) {
+      if (isAuthenticated && !AppConfig.useFirebaseEmulators) {
         final user = authentication.value!;
         if (!user.emailVerified &&
             user.providerData.any(

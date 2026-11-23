@@ -5,6 +5,7 @@ import 'package:fitnep/core/authorization/authorization_refresh.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
@@ -131,6 +132,7 @@ Future<ProviderContainer> _open(
 ) async {
   final container = ProviderContainer(
     overrides: [
+      registrationAcceptedProvider.overrideWith((ref, uid) async => true),
       authenticationStateProvider.overrideWith(
         (ref) => Stream.value(_Identity()),
       ),
