@@ -79,17 +79,22 @@ void main() {
   late HostedSessionService service;
   HostedIdentity? actor;
   var ended = 0;
+  var identityReads = 0;
   DateTime clock = DateTime.utc(2026, 11, 22);
   setUp(() {
     store = _Store();
     adapter = _Adapter();
     ended = 0;
+    identityReads = 0;
     actor = (uid: 'client-a', token: 'synthetic-token', authTime: 1234);
     clock = DateTime.utc(2026, 11, 22);
     final dio = Dio(BaseOptions(baseUrl: 'https://fitnep.test/'))
       ..httpClientAdapter = adapter;
     service = HostedSessionService(
-      identity: () async => actor,
+      identity: () async {
+        identityReads++;
+        return actor;
+      },
       store: store,
       enabled: true,
       dio: dio,
@@ -212,6 +217,15 @@ void main() {
       );
     },
   );
+  test(
+    'signing out before a hosted session starts skips the token and network',
+    () async {
+      await service.end();
+      expect(identityReads, 0);
+      expect(adapter.requests, isEmpty);
+    },
+  );
+
   test('offline logout clears the session and reconciles once connectivity returns', () async {
     await service.ensure();
     adapter.offlineLogout = true;

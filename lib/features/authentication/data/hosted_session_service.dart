@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -78,6 +80,7 @@ class HostedSessionService {
   final DateTime Function() now;
   static const sessionKey = 'fitnep_hosted_session';
   static const logoutKey = 'fitnep_pending_logout';
+  static const _logoutTimeout = Duration(seconds: 4);
   Future<String?>? _checking;
   DateTime? _lastHumanActivity;
   bool _reportingActivity = false;
@@ -188,6 +191,7 @@ class HostedSessionService {
     HostedIdentity? actor, {
     String method = 'GET',
     String? sessionId,
+    CancelToken? cancelToken,
   }) async {
     // Only idempotent session operations are retried for a sleeping free host.
     for (var attempt = 0; ; attempt++) {
@@ -195,6 +199,7 @@ class HostedSessionService {
         final response = await dio.request<Map<String, dynamic>>(
           path,
           data: method == 'POST' ? <String, Object>{} : null,
+          cancelToken: cancelToken,
           options: Options(
             method: method,
             headers: {
@@ -205,7 +210,8 @@ class HostedSessionService {
         );
         return Map<String, dynamic>.from(response.data?['data'] as Map? ?? {});
       } on DioException catch (error) {
-        if (attempt >= 1 ||
+        if (cancelToken != null ||
+            attempt >= 1 ||
             error.response != null ||
             !{
               DioExceptionType.connectionTimeout,
@@ -243,20 +249,34 @@ class HostedSessionService {
   Future<void> end() async {
     _generation++;
     if (!enabled) return;
-    final actor = await identity();
+    _lastHumanActivity = null;
     final saved = _decode(await store.read(sessionKey));
-    if (actor != null &&
-        saved?['uid'] == actor.uid &&
-        saved?['auth_time'] == actor.authTime) {
+    // Consent happens before an API session starts. There is nothing to revoke.
+    if (saved == null) return;
+    HostedIdentity? actor;
+    try {
+      actor = await identity().timeout(_logoutTimeout);
+    } on FirebaseAuthException {
+      // An unreachable token service must not prevent local sign-out.
+    } on TimeoutException {
+      // A stale hosted session still expires on the server.
+    }
+    final logoutToken =
+        actor != null &&
+            saved['uid'] == actor.uid &&
+            saved['auth_time'] == actor.authTime
+        ? actor.token
+        : null;
+    if (logoutToken != null) {
       // A short-lived token is retained only in encrypted pending-logout storage
       // until revocation succeeds, expires, or is rejected. It is never logged.
       await store.write(
         logoutKey,
-        jsonEncode({...saved!, 'token': actor.token}),
+        jsonEncode({...saved, 'token': logoutToken}),
       );
     }
     await store.write(sessionKey, null);
-    _lastHumanActivity = null;
+    if (logoutToken == null) return;
     try {
       await reconcileLogout();
     } on DioException {
@@ -267,6 +287,8 @@ class HostedSessionService {
   Future<void> reconcileLogout() async {
     final pending = _decode(await store.read(logoutKey));
     if (pending == null) return;
+    final cancel = CancelToken();
+    final timer = Timer(_logoutTimeout, cancel.cancel);
     try {
       await _request(
         'sessions/end',
@@ -277,9 +299,12 @@ class HostedSessionService {
         ),
         method: 'POST',
         sessionId: pending['session_id'] as String,
+        cancelToken: cancel,
       );
     } on DioException catch (error) {
       if (![401, 403].contains(error.response?.statusCode)) rethrow;
+    } finally {
+      timer.cancel();
     }
     await store.write(logoutKey, null);
   }

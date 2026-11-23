@@ -5,11 +5,15 @@ import 'package:go_router/go_router.dart';
 import '../../../app/routes/app_routes.dart';
 import 'controllers/authentication_controller.dart';
 
-Future<bool> signOutToWelcome(BuildContext context, WidgetRef ref) async {
-  final router = GoRouter.of(context);
+Future<bool> signOutToWelcome(
+  BuildContext context,
+  WidgetRef ref, {
+  GoRouter? router,
+}) async {
+  final navigation = router ?? GoRouter.of(context);
   final signedOut = await ref
       .read(authenticationControllerProvider.notifier)
       .signOut();
-  if (signedOut) router.goNamed(AppRoutes.welcome);
+  if (signedOut) navigation.goNamed(AppRoutes.welcome);
   return signedOut;
 }

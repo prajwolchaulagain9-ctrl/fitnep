@@ -112,6 +112,8 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     try {
       final service = await ref.read(authenticationBootstrapProvider.future);
       await service.signOut();
+      ref.invalidate(authenticationStateProvider);
+      await ref.read(authenticationStateProvider.future);
       state = const AuthenticationActionState();
       return true;
     } on AuthenticationFailure catch (error) {

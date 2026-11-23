@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
@@ -54,6 +55,7 @@ class _Auth extends Fake implements FirebaseAuth {
   _User? user;
   int signUps = 0;
   int googleSignIns = 0;
+  bool emitSignOut = true;
   final changes = StreamController<User?>.broadcast();
   @override
   User? get currentUser => user;
@@ -75,6 +77,16 @@ class _Auth extends Fake implements FirebaseAuth {
   }
 
   @override
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    user = _User()..emailVerified = true;
+    changes.add(user);
+    return _Credential(user);
+  }
+
+  @override
   Future<UserCredential> signInWithCredential(AuthCredential credential) async {
     googleSignIns++;
     user = _User()..emailVerified = true;
@@ -85,7 +97,7 @@ class _Auth extends Fake implements FirebaseAuth {
   @override
   Future<void> signOut() async {
     user = null;
-    changes.add(null);
+    if (emitSignOut) changes.add(null);
   }
 }
 
@@ -185,6 +197,7 @@ Future<ProviderContainer> _open(
   _Google? google,
   _Verification? verification,
   RegistrationPrivacyRequest? privacy,
+  Future<bool> Function()? staffPasswordCheck,
 }) async {
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
     await tester.runAsync(_loadCaptureFonts);
@@ -197,7 +210,11 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
+        staffPasswordChangeRequiredProvider.overrideWith((ref) async {
+          if (staffPasswordCheck == null) return false;
+          final user = await ref.watch(authenticationStateProvider.future);
+          return user == null ? false : staffPasswordCheck();
+        }),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         routeSessionProvider.overrideWith((ref) async {
@@ -234,6 +251,24 @@ Future<ProviderContainer> _open(
     await tester.pumpAndSettle();
   }
   return ProviderScope.containerOf(tester.element(find.byType(FitNepApp)));
+}
+
+Future<void> _signInExisting(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
+  container.read(appRouterProvider).goNamed(AppRoutes.login);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byType(TextFormField).at(0),
+    'client@example.com',
+  );
+  await tester.enterText(find.byType(TextFormField).at(1), 'Password!12');
+  final login = find.widgetWithText(FilledButton, 'Log in');
+  await tester.ensureVisible(login);
+  await tester.tap(login);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 Future<void> _close(WidgetTester tester, _Auth auth) async {
@@ -297,6 +332,156 @@ Future<void> _snapshot(WidgetTester tester, String name) async {
 }
 
 void main() {
+  testWidgets('an account service error after login still allows sign-out', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final container = await _open(
+      tester,
+      auth,
+      staffPasswordCheck: () async {
+        throw StateError('Session endpoint unavailable');
+      },
+    );
+    await _signInExisting(tester, container);
+    await tester.pumpAndSettle();
+    expect(find.text('We couldn’t connect.'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsNothing);
+    await tester.tap(find.text('Use another account'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+    expect(auth.currentUser, isNull);
+    await _close(tester, auth);
+  });
+
+  testWidgets(
+    'an existing client can read the policy and retry after the privacy service fails',
+    (tester) async {
+      final auth = _Auth();
+      var available = false;
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (_) async {
+          if (!available) {
+            throw FirebaseFunctionsException(
+              code: 'unimplemented',
+              message: 'Endpoint unavailable',
+            );
+          }
+          return true;
+        },
+      );
+      await _signInExisting(tester, container);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The privacy service is temporarily unavailable.'),
+        findsOneWidget,
+      );
+      expect(find.text('Your FitNep updates'), findsNothing);
+
+      await tester.tap(find.text('Read Privacy Policy'));
+      await tester.pumpAndSettle();
+      expect(find.text('How FitNEP handles your data'), findsOneWidget);
+      container.read(appRouterProvider).pop();
+      await tester.pumpAndSettle();
+
+      available = true;
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsOneWidget);
+      await _close(tester, auth);
+    },
+  );
+
+  testWidgets(
+    'a stalled privacy check times out and another account can be used while retrying',
+    (tester) async {
+      final auth = _Auth()..emitSignOut = false;
+      final pending = Completer<bool>();
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (_) => pending.future,
+      );
+      await _signInExisting(tester, container);
+      expect(
+        find.text('Checking your privacy policy acceptance…'),
+        findsOneWidget,
+      );
+      expect(find.text('Use another account'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 26));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The privacy check took too long. Please try again.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Try again'));
+      await tester.pump();
+      expect(
+        find.text('Checking your privacy policy acceptance…'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Use another account'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+      expect(auth.currentUser, isNull);
+
+      pending.complete(true);
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsNothing);
+      await _close(tester, auth);
+    },
+  );
+
+  testWidgets(
+    'an existing client can retry saving consent without reviewing it again',
+    (tester) async {
+      final auth = _Auth();
+      var attempts = 0;
+      var saved = false;
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (data) async {
+          if (data['action'] == 'status') return saved;
+          expect(data['age'], 25);
+          expect(data['privacy_policy_accepted'], isTrue);
+          attempts++;
+          if (attempts == 1) throw StateError('Consent save unavailable');
+          saved = true;
+          return saved;
+        },
+      );
+      await _signInExisting(tester, container);
+      await tester.pumpAndSettle();
+      expect(find.text('Complete registration'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '25');
+      await tester.pump();
+      await tester.tap(find.text('Review Privacy Policy'));
+      await tester.pumpAndSettle();
+      await _scrollPolicy(tester);
+      await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Accept and continue'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Could not save your acceptance. Try again or sign in later.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Your FitNep updates'), findsNothing);
+
+      await tester.tap(find.text('Retry saving'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsOneWidget);
+      expect(attempts, 2);
+      await _close(tester, auth);
+    },
+  );
+
   testWidgets('privacy policy is readable before signup and OTP verification', (
     tester,
   ) async {

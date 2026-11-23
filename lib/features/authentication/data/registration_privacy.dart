@@ -14,8 +14,7 @@ typedef RegistrationPrivacyRequest = Future<bool> Function(
 final registrationPrivacyProvider = Provider<RegistrationPrivacyRequest>((ref) {
   if (AppConfig.hostedSessionsEnabled) {
     final request = ref.watch(hostedAuthRequestProvider);
-    return (data) async =>
-        (await request('auth/privacy', data))['accepted'] == true;
+    return (data) async => _readAcceptance(await request('auth/privacy', data));
   }
   final endpoint = _privacyCallable(
     ref.watch(firebaseFunctionsProvider),
@@ -23,9 +22,16 @@ final registrationPrivacyProvider = Provider<RegistrationPrivacyRequest>((ref) {
   );
   return (data) async {
     final response = await endpoint.call(data);
-    return response.data is Map && response.data['accepted'] == true;
+    return _readAcceptance(response.data);
   };
 });
+
+const _privacyRequestTimeout = Duration(seconds: 25);
+
+bool _readAcceptance(Object? response) {
+  if (response case {'accepted': final bool accepted}) return accepted;
+  throw const FormatException('Invalid privacy acceptance response.');
+}
 
 HttpsCallable _privacyCallable(FirebaseFunctions functions, String url) {
   if (url.isEmpty) return functions.httpsCallable('registrationPrivacy');
@@ -43,13 +49,13 @@ final registrationAcceptedProvider = FutureProvider.autoDispose
     .family<bool, String>((ref, uid) async {
       final request = ref.watch(registrationPrivacyProvider);
       final store = ref.watch(pendingRegistrationConsentStoreProvider);
-      final accepted = await request({'uid': uid, 'action': 'status'});
       final pending = await store.read(uid);
-      if (pending == null) return accepted;
-      if (!accepted) {
-        if (!ref.mounted) return false;
-        await acceptRegistrationPrivacy(request, uid, pending);
+      if (pending == null) {
+        return request({'uid': uid, 'action': 'status'})
+            .timeout(_privacyRequestTimeout);
       }
+      if (!ref.mounted) return false;
+      await acceptRegistrationPrivacy(request, uid, pending);
       await store.clear(uid);
       return true;
     }, retry: (retryCount, error) => null);
@@ -66,7 +72,7 @@ Future<void> acceptRegistrationPrivacy(
     'privacy_policy_version': privacyPolicyVersion,
     'privacy_policy_accepted': true,
     'guardian_consent_confirmed': consent.guardianConfirmed,
-  });
+  }).timeout(_privacyRequestTimeout);
   if (!result) {
     throw StateError('Consent was not saved.');
   }
