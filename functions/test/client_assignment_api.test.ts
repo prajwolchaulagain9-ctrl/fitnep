@@ -85,6 +85,36 @@ describe("client assignment package validation", () => {
     assert.equal(fixture.assignments.records.length, 0);
   });
 
+  it("returns current counts and updates them after reassignment", async () => {
+    const fixture = createFixture("active");
+    fixture.assignments.records.push(
+      assignment("client-1", "dietitian-old"),
+      assignment("client-2", "dietitian-1"),
+      assignment("client-3", "dietitian-1"),
+    );
+
+    const before = await request(fixture.app)
+      .get("/admin/client-assignments/dietitian-counts")
+      .set(bearer("admin"))
+      .expect(200);
+    assert.deepEqual(before.body.data.counts, {
+      "dietitian-old": 1,
+      "dietitian-1": 2,
+    });
+
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
+
+    const after = await request(fixture.app)
+      .get("/admin/client-assignments/dietitian-counts")
+      .set(bearer("admin"))
+      .expect(200);
+    assert.deepEqual(after.body.data.counts, { "dietitian-1": 3 });
+  });
+
   it("does not allow a client account to use the admin assignment API", async () => {
     const fixture = createFixture("active");
     await request(fixture.app)
@@ -120,8 +150,17 @@ class InMemoryAssignmentRepository implements ClientAssignmentRepository {
   readonly records: ClientAssignmentRecord[] = [];
 
   async assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord> {
-    this.records.push(record);
+    const index = this.records.findIndex(item => item.clientId === record.clientId);
+    if (index === -1) this.records.push(record);
+    else this.records[index] = record;
     return record;
+  }
+
+  async currentClientCounts(): Promise<Record<string, number>> {
+    return this.records.reduce<Record<string, number>>((counts, record) => {
+      counts[record.dietitianId] = (counts[record.dietitianId] ?? 0) + 1;
+      return counts;
+    }, {});
   }
 }
 
@@ -148,4 +187,14 @@ class FakeAuthVerifier implements AuthVerifier {
 
 function bearer(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
+}
+
+function assignment(clientId: string, dietitianId: string): ClientAssignmentRecord {
+  return {
+    clientId,
+    dietitianId,
+    active: true,
+    assignedAt: "2026-11-23T12:00:00.000Z",
+    assignedById: "admin-1",
+  };
 }

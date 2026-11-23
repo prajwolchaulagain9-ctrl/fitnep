@@ -23,6 +23,7 @@ export interface ClientAssignmentRecord {
 
 export interface ClientAssignmentRepository {
   assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord>;
+  currentClientCounts(): Promise<Record<string, number>>;
 }
 
 export interface ClientPackageStatusReader {
@@ -84,6 +85,11 @@ export class ClientAssignmentService {
       assignedAt: this.now().toISOString(),
       assignedById: actor.uid,
     });
+  }
+
+  async dietitianClientCounts(actor: AuthenticatedUser) {
+    this.requireAdmin(actor);
+    return this.repository.currentClientCounts();
   }
 
   private requireAdmin(actor: AuthenticatedUser): void {

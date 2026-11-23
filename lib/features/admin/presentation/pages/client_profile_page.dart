@@ -11,6 +11,7 @@ import '../widgets/audit_log_tile.dart';
 import '../widgets/empty_state_widget.dart';
 import '../../domain/entities/client_entity.dart';
 import '../../domain/entities/staff_account_entity.dart';
+import '../../data/repositories/client_assignment_repository.dart';
 import '../../data/repositories/staff_account_repository.dart';
 import '../../../../app/theme/app_theme.dart';
 
@@ -142,9 +143,20 @@ class ClientProfilePage extends ConsumerWidget {
           title: const Text('Assign dietitian'),
           children: dietitians
               .map(
-                (dietitian) => SimpleDialogOption(
-                  onPressed: () => Navigator.pop(dialogContext, dietitian),
-                  child: Text(dietitian.displayName),
+                (option) => SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, option.dietitian),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(option.dietitian.displayName)),
+                      const SizedBox(width: 16),
+                      Text(
+                        option.clientCountLabel,
+                        style: Theme.of(dialogContext).textTheme.bodySmall
+                            ?.copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
                 ),
               )
               .toList(),
@@ -152,6 +164,10 @@ class ClientProfilePage extends ConsumerWidget {
       );
       if (selected != null) await controller.assignDietitian(selected);
     } on StaffAccountFailure catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    } on ClientAssignmentFailure catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.message)));

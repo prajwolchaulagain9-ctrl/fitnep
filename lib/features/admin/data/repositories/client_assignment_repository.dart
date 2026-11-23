@@ -65,6 +65,35 @@ class ClientAssignmentRepository {
     }
   }
 
+  Future<Map<String, int>> dietitianClientCounts() async {
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        'admin/client-assignments/dietitian-counts',
+      );
+      final data = response.data!['data'] as Map<String, dynamic>;
+      final values = data['counts'] as Map<String, dynamic>;
+      final counts = <String, int>{};
+      for (final entry in values.entries) {
+        final count = entry.value;
+        if (count is! int || count < 0) {
+          throw const FormatException('Invalid assignment count.');
+        }
+        counts[entry.key] = count;
+      }
+      return counts;
+    } on DioException catch (error) {
+      throw _failure(error, 'Unable to load current client counts.');
+    } on FormatException {
+      throw const ClientAssignmentFailure(
+        'The assignment service returned invalid client counts.',
+      );
+    } on TypeError {
+      throw const ClientAssignmentFailure(
+        'The assignment service returned invalid client counts.',
+      );
+    }
+  }
+
   ClientAssignmentFailure _failure(DioException error, String fallback) {
     final response = error.response;
     final data = response?.data;

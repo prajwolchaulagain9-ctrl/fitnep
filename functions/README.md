@@ -115,6 +115,8 @@ and writes are denied; administrators read history through the API.
 
 - `GET /admin/client-assignments/:clientId/eligibility` returns the client's
   effective package status and whether assignment is allowed.
+- `GET /admin/client-assignments/dietitian-counts` returns each dietitian's
+  current number of active client assignments.
 - `PUT /admin/client-assignments/:clientId` accepts `{ "dietitian_id": "..." }`.
 
 Both endpoints require an administrator. The write re-checks the existing

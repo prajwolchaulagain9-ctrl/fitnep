@@ -11,31 +11,56 @@ import '../../domain/entities/staff_account_entity.dart';
 import '../../../authentication/presentation/controllers/authentication_controller.dart';
 import 'client_list_controller.dart';
 
-final activeDietitiansProvider = FutureProvider.autoDispose<List<StaffAccount>>(
-  (ref) async {
-    final user = await ref.watch(authenticationStateProvider.future);
-    if (user == null) {
-      throw const StaffAccountFailure('Sign in to load dietitians.');
-    }
-    final repository = ref.watch(staffAccountRepositoryProvider(user.uid));
-    final dietitians = <StaffAccount>[];
-    String? cursor;
-    final seen = <String?>{null};
-    do {
-      final page = await repository.list(cursor);
-      dietitians.addAll(
-        page.items.where(
-          (account) => account.role == StaffRole.dietitian && account.isActive,
-        ),
+class DietitianAssignmentOption {
+  const DietitianAssignmentOption({
+    required this.dietitian,
+    required this.currentClientCount,
+  });
+
+  final StaffAccount dietitian;
+  final int currentClientCount;
+
+  String get clientCountLabel => currentClientCount == 1
+      ? '1 current client'
+      : '$currentClientCount current clients';
+}
+
+final activeDietitiansProvider =
+    FutureProvider.autoDispose<List<DietitianAssignmentOption>>((ref) async {
+      final user = await ref.watch(authenticationStateProvider.future);
+      if (user == null) {
+        throw const StaffAccountFailure('Sign in to load dietitians.');
+      }
+      final countsFuture = ref
+          .watch(clientAssignmentRepositoryProvider)
+          .dietitianClientCounts();
+      final repository = ref.watch(staffAccountRepositoryProvider(user.uid));
+      final dietitians = <StaffAccount>[];
+      String? cursor;
+      final seen = <String?>{null};
+      do {
+        final page = await repository.list(cursor);
+        dietitians.addAll(
+          page.items.where(
+            (account) =>
+                account.role == StaffRole.dietitian && account.isActive,
+          ),
+        );
+        cursor = page.nextCursor;
+      } while (cursor != null && seen.add(cursor));
+      dietitians.sort(
+        (left, right) => left.displayName.compareTo(right.displayName),
       );
-      cursor = page.nextCursor;
-    } while (cursor != null && seen.add(cursor));
-    dietitians.sort(
-      (left, right) => left.displayName.compareTo(right.displayName),
-    );
-    return dietitians;
-  },
-);
+      final counts = await countsFuture;
+      return dietitians
+          .map(
+            (dietitian) => DietitianAssignmentOption(
+              dietitian: dietitian,
+              currentClientCount: counts[dietitian.uid] ?? 0,
+            ),
+          )
+          .toList(growable: false);
+    });
 
 // ── State ──────────────────────────────────────────────────────────────────
 
@@ -186,6 +211,7 @@ class ClientProfileController extends Notifier<ClientProfileState> {
         successMessage: 'Client assigned successfully.',
       );
       ref.read(clientListControllerProvider.notifier).refreshClient(updated);
+      ref.invalidate(activeDietitiansProvider);
       return true;
     } on ClientAssignmentFailure catch (error) {
       await _loadAssignmentEligibility();

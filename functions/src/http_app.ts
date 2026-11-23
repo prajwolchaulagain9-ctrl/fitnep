@@ -224,6 +224,15 @@ export function createNotificationApp(
     return dependencies.clientAssignmentService;
   };
   app.get(
+    "/admin/client-assignments/dietitian-counts",
+    asyncRoute(async (_request, response) => {
+      const counts = await clientAssignments().dietitianClientCounts(
+        currentUser(response),
+      );
+      response.json({ data: { counts } });
+    }),
+  );
+  app.get(
     "/admin/client-assignments/:clientId/eligibility",
     asyncRoute(async (request, response) => {
       const eligibility = await clientAssignments().eligibility(
