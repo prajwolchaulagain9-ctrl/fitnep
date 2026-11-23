@@ -24,7 +24,7 @@ class AuditLogPage extends ConsumerWidget {
           children: [
             const Text('Audit Log'),
             Text(
-              '${state.logs.length} admin actions recorded',
+              '${state.logs.length} authorization and admin events recorded',
               style: const TextStyle(
                 fontSize: 11,
                 color: AppColors.textSecondary,
@@ -48,6 +48,13 @@ class AuditLogPage extends ConsumerWidget {
       ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
+          : state.errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(state.errorMessage!),
+              ),
+            )
           : state.logs.isEmpty
           ? EmptyStateWidget(
               icon: Icons.history_rounded,

@@ -3,6 +3,8 @@ import { promisify } from "node:util";
 import { Auth, UserRecord } from "firebase-admin/auth";
 import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
 
+import { FirestoreAccountService } from "./account_service";
+import { hasPermission } from "./authorization_policy";
 import { staffSessionMatches } from "./auth";
 import { AuthenticatedUser, StaffAccount, normalizeUserRole } from "./domain";
 import {
@@ -48,6 +50,8 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
     private readonly accountsPerPage = 100,
   ) {}
 
+  private get accounts() { return new FirestoreAccountService(this.database, this.auth); }
+
   async list(cursor?: string): Promise<StaffAccountPage> {
     const page = await this.auth.listUsers(this.accountsPerPage, cursor).catch(
       (error: unknown) => {
@@ -58,10 +62,11 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       },
     );
     return {
-      accounts: page.users.flatMap((user) => {
-        const account = staffAccount(user);
-        return account ? [account] : [];
-      }),
+      accounts: (await Promise.all(page.users.map(async user => {
+        const account = await this.accounts.current(user.uid);
+        return account.role === "client" ? [] : [{ uid: user.uid, name: user.displayName ?? null,
+          email: user.email ?? null, role: account.role, isActive: !user.disabled && account.account_status === "active" }];
+      }))).flat(),
       nextCursor: page.pageToken ?? null,
     };
   }
@@ -158,6 +163,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
         // Audit and password setup are durable before anyone can sign in.
         await this.auth.updateUser(uid, { disabled: false });
       }
+      await this.accounts.provision(await this.auth.getUser(uid));
       await eventRef.update({ status: "completed", completed_at: FieldValue.serverTimestamp() });
       return this.getStaffAccount(uid);
     });
@@ -204,7 +210,7 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
       await this.requireCurrentAdmin(actor);
       await this.finishPendingStatusChange(uid);
       const user = await this.findUser(uid);
-      const current = user && staffAccount(user);
+      const current = user && await this.getStaffAccount(uid);
       if (!user || !current) throw new StaffAccountError(404, "Staff account not found.");
 
       const creation = (await this.history(`create-${key(uid)}`).get()).data();
@@ -254,6 +260,9 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
           ...(after.email !== current.email && after.email !== null
             ? { email: after.email, emailVerified: false } : {}),
         });
+      }
+      if (after.role !== (await this.accounts.current(uid)).role) {
+        await this.accounts.change(actor, uid, { role: after.role });
       }
       if (event.requiresNewSession && currentRoleVersion !== event.roleVersion) {
         await this.auth.revokeRefreshTokens(uid);
@@ -332,9 +341,12 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
     uid: string, eventRef: FirebaseFirestore.DocumentReference, event: StaffAccountStatusEvent,
   ): Promise<void> {
     const user = await this.findUser(uid);
-    if (!user || !staffAccount(user)) throw new StaffAccountError(404, "Staff account not found.");
+    if (!user || (await this.accounts.current(uid)).role === "client") throw new StaffAccountError(404, "Staff account not found.");
     const active = event.after.isActive;
     if (!active && !user.disabled) await this.auth.updateUser(uid, { disabled: true });
+    const actorUid = (await eventRef.get()).get("actor_uid") as string;
+    const actorAccount = await this.accounts.current(actorUid);
+    await this.accounts.change({ uid: actorUid, role: actorAccount.role }, uid, { account_status: active ? "active" : "inactive" });
     if (user.customClaims?.staffRoleVersion !== event.roleVersion) {
       await this.auth.revokeRefreshTokens(uid);
       await this.auth.setCustomUserClaims(uid, {
@@ -353,18 +365,19 @@ export class FirebaseStaffAccountRepository implements StaffAccountRepository {
 
   private async requireCurrentAdmin(actor: AuthenticatedUser) {
     const user = await this.findUser(actor.uid);
-    if (!user || actor.role !== "admin" || actor.mustChangePassword ||
-        !staffSessionMatches(user, actor) ||
-        (user.customClaims?.role_version ?? 0) !== (actor.roleVersion ?? 0)) {
+    const account = user && await this.accounts.current(actor.uid);
+    if (!user || !account || account.account_status !== "active" || !hasPermission(account.role, "manage_staff_accounts") || actor.mustChangePassword ||
+        (user.customClaims?.staffRoleVersion !== undefined && user.customClaims.staffRoleVersion !== actor.staffRoleVersion)) {
       throw new StaffAccountError(403, "Administrator access is required.");
     }
   }
 
   private async getStaffAccount(uid: string): Promise<StaffAccount> {
     const user = await this.findUser(uid);
-    const account = user && staffAccount(user);
-    if (!account) throw new StaffAccountError(404, "Staff account not found.");
-    return account;
+    const account = user && await this.accounts.current(uid);
+    if (!user || !account || account.role === "client") throw new StaffAccountError(404, "Staff account not found.");
+    return { uid, name: user.displayName ?? null, email: user.email ?? null, role: account.role,
+      isActive: !user.disabled && account.account_status === "active" };
   }
 
   private async findUser(uid: string): Promise<UserRecord | null> {

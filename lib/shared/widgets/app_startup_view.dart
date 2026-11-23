@@ -4,9 +4,10 @@ import 'app_page.dart';
 import 'fitnep_wordmark.dart';
 
 class AppStartupView extends StatelessWidget {
-  const AppStartupView({super.key, this.onRetry});
+  const AppStartupView({super.key, this.onRetry, this.recoveryAction});
 
   final VoidCallback? onRetry;
+  final Widget? recoveryAction;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +44,10 @@ class AppStartupView extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             FilledButton(onPressed: onRetry, child: const Text('Try again')),
+          ],
+          if (recoveryAction case final action?) ...[
+            const SizedBox(height: 12),
+            action,
           ],
         ],
       ),

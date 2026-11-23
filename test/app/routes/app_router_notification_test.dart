@@ -12,6 +12,9 @@ import 'package:fitnep/features/notifications/presentation/controllers/notificat
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fitnep/features/authorization/data/authorization_repository.dart';
+
+import '../../support/denied_permission_repository.dart';
 
 void main() {
   final cases = <(String, NotificationType, String)>[
@@ -63,10 +66,26 @@ void main() {
     final auth = _RouteAuth();
     addTearDown(auth.users.close);
     final repository = _FakeDestinationRepository();
+    final sessions = StreamProvider<RouteSession?>(
+      (ref) => auth.users.stream.map(
+        (user) => user == null
+            ? null
+            : (uid: user.uid, role: parseRole((user as _RouteUser).role)),
+      ),
+    );
     final container = ProviderContainer(
       overrides: [
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        authorizationRepositoryProvider.overrideWithValue(
+          DeniedPermissionRepository(),
+        ),
+        routeSessionProvider.overrideWith((ref) async {
+          final state = ref.watch(sessions);
+          return state.isLoading
+              ? await ref.watch(sessions.future)
+              : state.requireValue;
+        }),
         notificationDestinationRepositoryProvider.overrideWithValue(repository),
       ],
     );
@@ -85,12 +104,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sign in required'), findsOneWidget);
 
-    auth.users.add(_RouteUser('staff'));
+    auth.users.add(_RouteUser('unassigned'));
     await tester.pumpAndSettle();
     expect(find.text('Access denied'), findsOneWidget);
     expect(repository.lastReferenceId, isNull);
 
-    auth.users.add(_RouteUser(' Dietitian '));
+    auth.users.add(_RouteUser('dietitian'));
     await tester.pumpAndSettle();
     expect(find.text('Loaded record'), findsOneWidget);
 

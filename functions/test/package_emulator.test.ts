@@ -28,7 +28,7 @@ suite("US 9 package catalog, selection and verified activation", () => {
   let admin: string;
   before(async () => {
     for (const [uid, role] of [["package-a", "client"], ["package-b", "client"], ["package-admin", "admin"]] as const) {
-      await auth.createUser({ uid, email: `${uid}@example.test`, password: "Password123!" });
+      await auth.createUser({ uid, email: `${uid}@example.test`, password: "Password123!", emailVerified: true });
       await auth.setCustomUserClaims(uid, { role });
     }
     [a, b, admin] = await Promise.all([token("package-a"), token("package-b"), token("package-admin")]);

@@ -90,7 +90,8 @@ class ClientProfilePage extends ConsumerWidget {
                       const SizedBox(height: 16),
                       _PackageSection(client: state.client!),
                       const SizedBox(height: 16),
-                      _PaymentSummarySection(client: state.client!),
+                      if (state.client!.hasFinancialSummary)
+                        _PaymentSummarySection(client: state.client!),
                       const SizedBox(height: 16),
                       _PaymentHistorySection(client: state.client!),
                       const SizedBox(height: 16),
@@ -350,7 +351,9 @@ class _PersonalInfoSection extends StatelessWidget {
         ),
         _InfoRow(
           'Date of Birth',
-          '${DateFormat('dd MMM yyyy').format(client.dateOfBirth)} (${client.age} yrs)',
+          client.dateOfBirth == null
+              ? 'Not provided'
+              : '${DateFormat('dd MMM yyyy').format(client.dateOfBirth!)} (${client.age} yrs)',
           Icons.cake_outlined,
         ),
         _InfoRow('Address', client.address, Icons.location_on_outlined),

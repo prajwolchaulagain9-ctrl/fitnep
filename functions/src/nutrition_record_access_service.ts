@@ -1,5 +1,6 @@
 import { AuthenticatedUser } from "./domain";
 import { PrivacyPreferencesRepository, SharingChoice } from "./privacy_preferences_repository";
+import { PermissionDeniedError } from "./authorization_policy";
 
 export interface CurrentAssignedTeam {
   dietitianId: string;
@@ -15,14 +16,14 @@ export function currentAssignedTeam(data: Record<string, unknown> | undefined): 
   const validUid = (value: unknown): value is string => typeof value === "string" &&
     value.length > 0 && value.length <= 128 && !/[\u0000-\u0020\u007f]/.test(value);
   if (data?.active !== true || !validUid(data.dietitian_id)) return null;
-  const members = data.team_member_ids === undefined ? [] : data.team_member_ids;
+  const members = data.team_member_ids === undefined ? (data.staff_ids ?? []) : data.team_member_ids;
   if (!Array.isArray(members) || !members.every(validUid)) return null;
   return { dietitianId: data.dietitian_id, teamMemberIds: [...new Set(members)] };
 }
 
-export class PrivateRecordAuthorizationError extends Error {
-  constructor() {
-    super("This account cannot access these records.");
+export class PrivateRecordAuthorizationError extends PermissionDeniedError {
+  constructor(reason = "The account cannot access these records.") {
+    super(reason);
   }
 }
 
@@ -54,7 +55,7 @@ export class PrivateRecordAccessService {
 
     const preference = await this.preferences.getForClient(clientId);
     if (!preference[choice]) {
-      throw new PrivateRecordAuthorizationError();
+      throw new PrivateRecordAuthorizationError("The client has not enabled sharing for this category.");
     }
     return team;
   }

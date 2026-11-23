@@ -5,9 +5,11 @@ import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/config/app_config.dart';
 import '../../data/authentication_service.dart';
 import '../../data/google_credential_provider.dart';
-import '../../data/registration_privacy.dart';
 import '../../data/session_preference_store.dart';
+import '../../data/hosted_session_service.dart';
+import '../../data/registration_privacy.dart';
 import '../../domain/entities/privacy_policy.dart';
+import '../../../../core/network/api_client_provider.dart';
 
 final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
@@ -25,24 +27,38 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
     auth: ref.read(firebaseAuthProvider),
     sessionPreferences: ref.read(sessionPreferenceStoreProvider),
     googleCredentials: ref.read(googleCredentialProvider),
+    beforeSignOut: ref.read(hostedSessionServiceProvider).end,
   );
   // The named emulator app has its own session; live Remember Me preferences
   // must not sign out a seeded local-demo account during startup.
   if (!AppConfig.useFirebaseEmulators) await service.restoreSession();
+  if (AppConfig.hostedSessionsEnabled) {
+    // Network failure keeps pending logout encrypted for a later retry.
+    try {
+      await ref.read(hostedSessionServiceProvider).reconcileLogout();
+    } catch (_) {}
+  }
   return service;
-}, retry: (retryCount, error) => null);
-
-final authenticationStateProvider = StreamProvider<User?>((ref) async* {
-  final service = await ref.watch(authenticationBootstrapProvider.future);
-  yield* service.authStateChanges();
 }, retry: (retryCount, error) => null);
 
 final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
   final user = await ref.watch(authenticationStateProvider.future);
   if (user == null) return false;
+  if (AppConfig.hostedSessionsEnabled) {
+    final response = await ref
+        .watch(apiClientProvider)
+        .dio
+        .get<Map<String, dynamic>>('session');
+    return (response.data?['data'] as Map?)?['must_change_password'] == true;
+  }
   final token = await user.getIdTokenResult();
   return token.claims?['mustChangePassword'] == true ||
       token.claims?['must_change_password'] == true;
+}, retry: (count, error) => null);
+
+final authenticationStateProvider = StreamProvider<User?>((ref) async* {
+  final service = await ref.watch(authenticationBootstrapProvider.future);
+  yield* service.authStateChanges();
 }, retry: (retryCount, error) => null);
 
 class AuthenticationActionState {
@@ -96,11 +112,8 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     try {
       final service = await ref.read(authenticationBootstrapProvider.future);
       await service.signOut();
-      // Refresh from Firebase if the stream still has the old session.
-      if (ref.read(authenticationStateProvider).value != null) {
-        ref.invalidate(authenticationStateProvider);
-        await ref.read(authenticationStateProvider.future);
-      }
+      ref.invalidate(authenticationStateProvider);
+      await ref.read(authenticationStateProvider.future);
       state = const AuthenticationActionState();
       return true;
     } on AuthenticationFailure catch (error) {
@@ -118,22 +131,21 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     required String name,
     required String email,
     required String password,
-    required RegistrationConsent consent,
+    RegistrationConsent? consent,
   }) async {
     return _run(() async {
-      final store = ref.read(pendingRegistrationConsentStoreProvider);
       final service = await ref.read(authenticationBootstrapProvider.future);
       final uid = await service.signUp(
         name: name,
         email: email,
         password: password,
       );
-      if (uid != null) {
+      if (uid != null && consent != null && ref.mounted) {
         try {
-          await store.write(uid, consent);
-        } on Exception {
-          // The account exists. The privacy gate can recover after verification.
-        }
+          await ref
+              .read(pendingRegistrationConsentStoreProvider)
+              .write(uid, consent);
+        } catch (_) {}
       }
       return true;
     });

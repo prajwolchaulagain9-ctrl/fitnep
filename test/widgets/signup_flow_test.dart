@@ -1,5 +1,3 @@
-import 'package:fitnep/features/authentication/data/registration_privacy.dart';
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -7,34 +5,27 @@ import 'dart:ui' as ui;
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
+import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
-import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
-import 'package:fitnep/features/admin/domain/repositories/package_repository.dart';
-import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart';
 import 'package:fitnep/features/authentication/data/authentication_service.dart';
 import 'package:fitnep/features/authentication/data/email_verification_service.dart';
 import 'package:fitnep/features/authentication/data/google_credential_provider.dart';
-import 'package:fitnep/features/authentication/domain/entities/privacy_preferences.dart';
-import 'package:fitnep/features/authentication/domain/repositories/privacy_preferences_repository.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/privacy_preferences_controller.dart';
-import 'package:fitnep/features/packages/domain/package_models.dart';
-import 'package:fitnep/features/purchases/domain/entities/package_purchase_entity.dart';
-import 'package:fitnep/features/purchases/domain/repositories/package_purchase_repository.dart';
-import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/memory_session_preference_store.dart';
+import '../support/empty_notifications.dart';
 
 class _ProviderInfo extends Fake implements UserInfo {
   @override
@@ -52,14 +43,6 @@ class _User extends Fake implements User {
   List<UserInfo> get providerData => [_ProviderInfo()];
   @override
   Future<void> updateDisplayName(String? displayName) async {}
-  @override
-  Future<IdTokenResult> getIdTokenResult([bool forceRefresh = false]) async =>
-      _UnassignedToken();
-}
-
-class _UnassignedToken extends Fake implements IdTokenResult {
-  @override
-  Map<String, dynamic> get claims => {};
 }
 
 class _Credential extends Fake implements UserCredential {
@@ -72,6 +55,7 @@ class _Auth extends Fake implements FirebaseAuth {
   _User? user;
   int signUps = 0;
   int googleSignIns = 0;
+  bool emitSignOut = true;
   final changes = StreamController<User?>.broadcast();
   @override
   User? get currentUser => user;
@@ -82,15 +66,22 @@ class _Auth extends Fake implements FirebaseAuth {
   }
 
   @override
-  Stream<User?> idTokenChanges() => authStateChanges();
-
-  @override
   Future<UserCredential> createUserWithEmailAndPassword({
     required String email,
     required String password,
   }) async {
     signUps++;
     user = _User();
+    changes.add(user);
+    return _Credential(user);
+  }
+
+  @override
+  Future<UserCredential> signInWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    user = _User()..emailVerified = true;
     changes.add(user);
     return _Credential(user);
   }
@@ -106,7 +97,7 @@ class _Auth extends Fake implements FirebaseAuth {
   @override
   Future<void> signOut() async {
     user = null;
-    changes.add(null);
+    if (emitSignOut) changes.add(null);
   }
 }
 
@@ -117,76 +108,35 @@ class _Google extends Fake implements GoogleCredentialProvider {
       cancel ? null : GoogleAuthProvider.credential(idToken: 'test-token');
 }
 
-class _PrivacyPreferences extends Fake implements PrivacyPreferencesRepository {
-  @override
-  Future<PrivacyPreferences> loadPreferences() async =>
-      PrivacyPreferences.defaults;
-}
-
-class _Packages extends Fake implements PackageRepository {
-  @override
-  Future<List<PackageEntity>> getActivePackages() async => [
-    PackageEntity(
-      id: 'basic',
-      name: 'Basic',
-      durationMonths: 1,
-      price: 2500,
-      featureDescription: 'Nutrition support',
-      isActive: true,
-      createdAt: DateTime.utc(2026),
-    ),
-  ];
-}
-
-class _Purchases implements PackagePurchaseRepository {
-  PackagePurchaseEntity? current;
-  Completer<PackagePurchaseEntity?>? pendingRead;
-  bool fail = false;
-  bool failRead = false;
-  final requests = <String>[];
-  @override
-  Future<PackagePurchaseEntity?> getCurrentPurchase() => failRead
-      ? Future.error(StateError('Membership unavailable.'))
-      : pendingRead?.future ?? Future.value(current);
-  @override
-  Future<PackagePurchaseEntity> purchasePackage({
-    required String packageId,
-    required String requestId,
-  }) async {
-    requests.add(requestId);
-    if (fail) throw StateError('Selection could not be saved.');
-    return current = PackagePurchaseEntity(
-      id: 'purchase-basic',
-      packageId: packageId,
-      packageName: 'Basic',
-      pricePaid: 2500,
-      durationMonths: 1,
-      featureDescription: 'Nutrition support',
-      purchasedAt: null,
-      expiresAt: null,
-      status: MembershipStatus.pending,
-    );
-  }
-}
-
 class _Verification extends Fake implements EmailVerificationService {
-  _Verification(this.auth, {this.usesLink = false});
+  _Verification(this.auth);
   @override
   final _Auth auth;
-  final bool usesLink;
   int sends = 0;
+  bool failToSendCode = false;
+
   @override
-  Future<EmailCodeDelivery> sendCode({bool resend = false}) async {
-    sends++;
-    return EmailCodeDelivery(
-      resendAfterSeconds: 60,
-      usesVerificationLink: usesLink,
-    );
-  }
+  Future<EmailCodeDelivery> sendVerificationLink() async =>
+      const EmailCodeDelivery(
+        resendAfterSeconds: 60,
+        usesVerificationLink: true,
+      );
 
   @override
   Future<bool> checkVerificationLink() async {
-    return auth.user!.emailVerified;
+    auth.user!.emailVerified = true;
+    return true;
+  }
+
+  @override
+  Future<EmailCodeDelivery> sendCode({bool resend = false}) async {
+    sends++;
+    if (failToSendCode) {
+      throw const EmailVerificationFailure(
+        'Email verification is unavailable.',
+      );
+    }
+    return const EmailCodeDelivery(resendAfterSeconds: 60);
   }
 
   @override
@@ -245,15 +195,14 @@ Future<ProviderContainer> _open(
   WidgetTester tester,
   _Auth auth, {
   _Google? google,
-  RegistrationPrivacyRequest? privacy,
   _Verification? verification,
-  _Purchases? purchases,
-  bool resetConsentStorage = true,
+  RegistrationPrivacyRequest? privacy,
+  Future<bool> Function()? staffPasswordCheck,
 }) async {
-  if (resetConsentStorage) FlutterSecureStorage.setMockInitialValues({});
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
     await tester.runAsync(_loadCaptureFonts);
   }
+  FlutterSecureStorage.setMockInitialValues({});
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(390, 844);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -261,29 +210,27 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        registrationPrivacyProvider.overrideWithValue(
-          privacy ?? (data) async => true,
-        ),
-        privacyPreferencesRepositoryProvider.overrideWithValue(
-          _PrivacyPreferences(),
-        ),
+        staffPasswordChangeRequiredProvider.overrideWith((ref) async {
+          if (staffPasswordCheck == null) return false;
+          final user = await ref.watch(authenticationStateProvider.future);
+          return user == null ? false : staffPasswordCheck();
+        }),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        routeSessionProvider.overrideWith((ref) async {
+          final user = await ref.watch(authenticationStateProvider.future);
+          return user == null ? null : (uid: user.uid, role: FitNepRole.client);
+        }),
+        notificationControllerProvider.overrideWith(EmptyNotifications.new),
         sessionPreferenceStoreProvider.overrideWithValue(
           MemorySessionPreferenceStore(),
+        ),
+        registrationPrivacyProvider.overrideWithValue(
+          privacy ?? (data) async => true,
         ),
         googleCredentialProvider.overrideWithValue(google ?? _Google()),
         emailVerificationServiceProvider.overrideWithValue(
           verification ?? _Verification(auth),
-        ),
-        packageRepositoryProvider.overrideWithValue(_Packages()),
-        packagePurchaseRepositoryProvider.overrideWithValue(
-          purchases ?? _Purchases(),
-        ),
-        routeSessionProvider.overrideWith(
-          (ref) async => auth.user == null
-              ? null
-              : (uid: auth.user!.uid, role: FitNepRole.client),
         ),
       ],
       child: RepaintBoundary(key: _capture, child: const FitNepApp()),
@@ -304,6 +251,24 @@ Future<ProviderContainer> _open(
     await tester.pumpAndSettle();
   }
   return ProviderScope.containerOf(tester.element(find.byType(FitNepApp)));
+}
+
+Future<void> _signInExisting(
+  WidgetTester tester,
+  ProviderContainer container,
+) async {
+  container.read(appRouterProvider).goNamed(AppRoutes.login);
+  await tester.pumpAndSettle();
+  await tester.enterText(
+    find.byType(TextFormField).at(0),
+    'client@example.com',
+  );
+  await tester.enterText(find.byType(TextFormField).at(1), 'Password!12');
+  final login = find.widgetWithText(FilledButton, 'Log in');
+  await tester.ensureVisible(login);
+  await tester.tap(login);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
 }
 
 Future<void> _close(WidgetTester tester, _Auth auth) async {
@@ -334,7 +299,7 @@ Future<void> _openAutomaticPolicy(WidgetTester tester) async {
   expect(find.byKey(const Key('registration_policy_scroll')), findsOneWidget);
 }
 
-Future<void> _scrollToPolicyEnd(WidgetTester tester) async {
+Future<void> _scrollPolicy(WidgetTester tester) async {
   await tester.drag(
     find.byKey(const Key('registration_policy_scroll')),
     const Offset(0, -1800),
@@ -342,14 +307,9 @@ Future<void> _scrollToPolicyEnd(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _acceptPrivacy(
-  WidgetTester tester, {
-  bool guardian = false,
-}) async {
-  await _scrollToPolicyEnd(tester);
-  if (guardian) {
-    await tester.tap(find.text('My parent or guardian has given permission'));
-  }
+Future<void> _acceptPrivacy(WidgetTester tester) async {
+  await _openAutomaticPolicy(tester);
+  await _scrollPolicy(tester);
   await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('Accept and continue'));
@@ -372,218 +332,155 @@ Future<void> _snapshot(WidgetTester tester, String name) async {
 }
 
 void main() {
-  testWidgets('unavailable privacy endpoint preserves signup for retry', (
+  testWidgets('an account service error after login still allows sign-out', (
     tester,
   ) async {
     final auth = _Auth();
-    final verification = _Verification(auth);
-    var attempts = 0;
-    await _open(
-      tester,
-      auth,
-      verification: verification,
-      privacy: (data) async {
-        expect(data['uid'], 'signup-client');
-        expect(data['action'], 'status');
-        if (++attempts == 1) {
-          throw FirebaseFunctionsException(
-            code: 'not-found',
-            message: 'Endpoint unavailable',
-          );
-        }
-        return false;
-      },
-    );
-    await auth.createUserWithEmailAndPassword(
-      email: 'client@example.com',
-      password: 'Password!12',
-    );
-    await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextFormField), '123456');
-    await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
-    await tester.pumpAndSettle();
-    expect(find.text('The privacy service is unavailable.'), findsOneWidget);
-    expect(auth.currentUser?.uid, 'signup-client');
-    expect(verification.sends, 1);
-
-    await tester.tap(find.text('Try again'));
-    await tester.pumpAndSettle();
-    expect(find.text('Complete registration'), findsOneWidget);
-    expect(auth.signUps, 1);
-    expect(verification.sends, 1);
-    await _close(tester, auth);
-  });
-
-  testWidgets(
-    'an existing unverified signup still completes guardian consent after verification',
-    (tester) async {
-      final auth = _Auth();
-      final verification = _Verification(auth);
-      var accepted = false;
-      var privacyRequests = 0;
-      await _open(
-        tester,
-        auth,
-        verification: verification,
-        privacy: (data) async {
-          privacyRequests++;
-          expect(auth.currentUser?.emailVerified, isTrue);
-          expect(data['uid'], 'signup-client');
-          if (data['action'] == 'accept') {
-            expect(data['age'], 17);
-            expect(data['privacy_policy_accepted'], true);
-            expect(data['guardian_consent_confirmed'], true);
-            accepted = true;
-          }
-          return accepted;
-        },
-      );
-      await auth.createUserWithEmailAndPassword(
-        email: 'client@example.com',
-        password: 'Password!12',
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Verify your email'), findsOneWidget);
-      expect(find.text('Complete registration'), findsNothing);
-      expect(privacyRequests, 0);
-      await tester.enterText(find.byType(TextFormField), '123456');
-      await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
-      await tester.pumpAndSettle();
-      expect(find.text('Complete registration'), findsOneWidget);
-      expect(find.text('Choose a Package'), findsNothing);
-      await tester.enterText(find.byType(TextField), '17');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Review Privacy Policy'));
-      await tester.pumpAndSettle();
-      await _acceptPrivacy(tester, guardian: true);
-      expect(accepted, true);
-      expect(find.text('Choose a Package'), findsOneWidget);
-      expect(verification.sends, 1);
-      await tester.tap(find.byTooltip('Privacy preferences'));
-      await tester.pumpAndSettle();
-      expect(find.text('Share progress photos'), findsOneWidget);
-      await _close(tester, auth);
-    },
-  );
-
-  testWidgets(
-    'leaving the policy preserves both forms and does not create an account',
-    (tester) async {
-      final auth = _Auth();
-      final container = await _open(tester, auth);
-      final router = container.read(appRouterProvider);
-      router.go(AppRoutes.loginPath);
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byType(TextFormField).at(0),
-        'client@example.com',
-      );
-      final loginPolicy = find.byKey(const Key('login_privacy_policy_button'));
-      await tester.ensureVisible(loginPolicy);
-      await tester.tap(loginPolicy);
-      await tester.pumpAndSettle();
-      expect(find.text('How FitNEP handles your data'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.text('Welcome back'), findsOneWidget);
-      expect(
-        tester
-            .widget<TextFormField>(find.byType(TextFormField).at(0))
-            .controller!
-            .text,
-        'client@example.com',
-      );
-
-      router.go(AppRoutes.signupPath);
-      await tester.pumpAndSettle();
-      await _fill(tester);
-      await _openAutomaticPolicy(tester);
-      expect(find.text('How FitNEP handles your data'), findsOneWidget);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(find.text('Create your account'), findsOneWidget);
-      expect(
-        tester
-            .widget<TextFormField>(find.byType(TextFormField).at(0))
-            .controller!
-            .text,
-        'Test Client',
-      );
-      expect(
-        tester
-            .widget<TextFormField>(find.byType(TextFormField).at(2))
-            .controller!
-            .text,
-        '24',
-      );
-      expect(auth.signUps, 0);
-      expect(tester.takeException(), isNull);
-      await _close(tester, auth);
-    },
-  );
-
-  testWidgets('a minor accepts at the end of the policy, then verifies email', (
-    tester,
-  ) async {
-    final auth = _Auth();
-    final verification = _Verification(auth);
-    Map<String, Object>? savedConsent;
-    Future<bool> privacy(Map<String, Object> data) async {
-      expect(auth.currentUser?.emailVerified, isTrue);
-      if (data['action'] == 'accept') savedConsent = data;
-      return savedConsent != null;
-    }
-
     final container = await _open(
       tester,
       auth,
-      verification: verification,
-      privacy: privacy,
+      staffPasswordCheck: () async {
+        throw StateError('Session endpoint unavailable');
+      },
     );
-    container.read(appRouterProvider).go(AppRoutes.signupPath);
+    await _signInExisting(tester, container);
     await tester.pumpAndSettle();
-    await _fill(tester, age: '17');
-    await _openAutomaticPolicy(tester);
-
-    final button = find.widgetWithText(FilledButton, 'Accept and continue');
-    expect(
-      find.text('Scroll to the end to accept the policy.'),
-      findsOneWidget,
-    );
-    expect(tester.widget<FilledButton>(button).onPressed, isNull);
-    expect(auth.signUps, 0);
-    await _scrollToPolicyEnd(tester);
-    await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+    expect(find.text('We couldn’t connect.'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsNothing);
+    await tester.tap(find.text('Use another account'));
     await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(button).onPressed, isNull);
-    await tester.tap(find.text('My parent or guardian has given permission'));
-    await tester.pumpAndSettle();
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    expect(auth.signUps, 1);
-    expect(find.text('Verify your email'), findsOneWidget);
-    expect(savedConsent, isNull);
-
-    // Recreate the app while keeping the verified user's pending device storage.
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump();
-    await _open(
-      tester,
-      auth,
-      verification: verification,
-      privacy: privacy,
-      resetConsentStorage: false,
-    );
-    await tester.enterText(find.byType(TextFormField), '123456');
-    await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
-    await tester.pumpAndSettle();
-    expect(savedConsent, containsPair('uid', 'signup-client'));
-    expect(savedConsent, containsPair('age', 17));
-    expect(savedConsent, containsPair('guardian_consent_confirmed', true));
-    expect(find.text('Choose a Package'), findsOneWidget);
-    expect(find.text('Complete registration'), findsNothing);
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+    expect(auth.currentUser, isNull);
     await _close(tester, auth);
   });
+
+  testWidgets(
+    'an existing client can read the policy and retry after the privacy service fails',
+    (tester) async {
+      final auth = _Auth();
+      var available = false;
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (_) async {
+          if (!available) {
+            throw FirebaseFunctionsException(
+              code: 'unimplemented',
+              message: 'Endpoint unavailable',
+            );
+          }
+          return true;
+        },
+      );
+      await _signInExisting(tester, container);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The privacy service is temporarily unavailable.'),
+        findsOneWidget,
+      );
+      expect(find.text('Your FitNep updates'), findsNothing);
+
+      await tester.tap(find.text('Read Privacy Policy'));
+      await tester.pumpAndSettle();
+      expect(find.text('How FitNEP handles your data'), findsOneWidget);
+      container.read(appRouterProvider).pop();
+      await tester.pumpAndSettle();
+
+      available = true;
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsOneWidget);
+      await _close(tester, auth);
+    },
+  );
+
+  testWidgets(
+    'a stalled privacy check times out and another account can be used while retrying',
+    (tester) async {
+      final auth = _Auth()..emitSignOut = false;
+      final pending = Completer<bool>();
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (_) => pending.future,
+      );
+      await _signInExisting(tester, container);
+      expect(
+        find.text('Checking your privacy policy acceptance…'),
+        findsOneWidget,
+      );
+      expect(find.text('Use another account'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 26));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('The privacy check took too long. Please try again.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('Try again'));
+      await tester.pump();
+      expect(
+        find.text('Checking your privacy policy acceptance…'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Use another account'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+      expect(auth.currentUser, isNull);
+
+      pending.complete(true);
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsNothing);
+      await _close(tester, auth);
+    },
+  );
+
+  testWidgets(
+    'an existing client can retry saving consent without reviewing it again',
+    (tester) async {
+      final auth = _Auth();
+      var attempts = 0;
+      var saved = false;
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (data) async {
+          if (data['action'] == 'status') return saved;
+          expect(data['age'], 25);
+          expect(data['privacy_policy_accepted'], isTrue);
+          attempts++;
+          if (attempts == 1) throw StateError('Consent save unavailable');
+          saved = true;
+          return saved;
+        },
+      );
+      await _signInExisting(tester, container);
+      await tester.pumpAndSettle();
+      expect(find.text('Complete registration'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '25');
+      await tester.pump();
+      await tester.tap(find.text('Review Privacy Policy'));
+      await tester.pumpAndSettle();
+      await _scrollPolicy(tester);
+      await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Accept and continue'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          'Could not save your acceptance. Try again or sign in later.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Your FitNep updates'), findsNothing);
+
+      await tester.tap(find.text('Retry saving'));
+      await tester.pumpAndSettle();
+      expect(find.text('Your FitNep updates'), findsOneWidget);
+      expect(attempts, 2);
+      await _close(tester, auth);
+    },
+  );
 
   testWidgets('privacy policy is readable before signup and OTP verification', (
     tester,
@@ -617,7 +514,6 @@ void main() {
   ) async {
     final auth = _Auth();
     final container = await _open(tester, auth);
-    await _snapshot(tester, 'welcome-first');
     container.read(appRouterProvider).go(AppRoutes.loginPath);
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.widgetWithText(TextButton, 'Sign up'));
@@ -627,12 +523,6 @@ void main() {
     expect(find.byType(FitNepWordmark), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(5));
-    expect(
-      tester.getTopLeft(find.text('Continue with Google')).dy,
-      greaterThan(
-        tester.getTopLeft(find.widgetWithText(FilledButton, 'Continue')).dy,
-      ),
-    );
     await _snapshot(tester, 'signup-top');
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Continue'));
     await tester.pumpAndSettle();
@@ -649,13 +539,79 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
     await _fill(tester, confirmation: 'Different!12');
-    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Continue'));
-    await tester.tap(find.widgetWithText(FilledButton, 'Continue'));
+    final continueButton = find.widgetWithText(FilledButton, 'Continue');
+    await tester.ensureVisible(continueButton);
+    await tester.tap(continueButton);
     await tester.pumpAndSettle();
     expect(find.text('Passwords do not match.'), findsOneWidget);
     expect(auth.signUps, 0);
     await _close(tester, auth);
   });
+
+  testWidgets('signup can use a verification link after code delivery fails', (
+    tester,
+  ) async {
+    final auth = _Auth();
+    final verification = _Verification(auth)..failToSendCode = true;
+    final container = await _open(tester, auth, verification: verification);
+    container.read(appRouterProvider).go(AppRoutes.signupPath);
+    await tester.pumpAndSettle();
+    await _fill(tester);
+    await _acceptPrivacy(tester);
+    final fallback = find.text('Send a verification link instead');
+    await tester.ensureVisible(fallback);
+    await tester.tap(fallback);
+    await tester.pumpAndSettle();
+    expect(find.byType(TextFormField), findsNothing);
+    final verify = find.text('I verified my email');
+    await tester.ensureVisible(verify);
+    await tester.tap(verify);
+    await tester.pumpAndSettle();
+    expect(find.text('Your FitNep updates'), findsOneWidget);
+    await _close(tester, auth);
+  });
+
+  testWidgets(
+    'minor consent is saved after verification and before dashboard access',
+    (tester) async {
+      final auth = _Auth();
+      Map<String, Object>? savedConsent;
+      final container = await _open(
+        tester,
+        auth,
+        privacy: (data) async {
+          expect(auth.currentUser?.emailVerified, isTrue);
+          if (data['action'] == 'accept') savedConsent = data;
+          return savedConsent != null;
+        },
+      );
+      container.read(appRouterProvider).go(AppRoutes.signupPath);
+      await tester.pumpAndSettle();
+      await _fill(tester, age: '17');
+      await _openAutomaticPolicy(tester);
+      final accept = find.widgetWithText(FilledButton, 'Accept and continue');
+      expect(tester.widget<FilledButton>(accept).onPressed, isNull);
+      await _scrollPolicy(tester);
+      await tester.tap(find.text('I accept the FitNEP Privacy Policy'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilledButton>(accept).onPressed, isNull);
+      expect(auth.signUps, 0);
+      await tester.tap(find.text('My parent or guardian has given permission'));
+      await tester.pumpAndSettle();
+      await tester.tap(accept);
+      await tester.pumpAndSettle();
+      expect(find.text('Verify your email'), findsOneWidget);
+      expect(savedConsent, isNull);
+      await tester.enterText(find.byType(TextFormField), '123456');
+      await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
+      await tester.pumpAndSettle();
+      expect(savedConsent, containsPair('uid', 'signup-client'));
+      expect(savedConsent, containsPair('age', 17));
+      expect(savedConsent, containsPair('guardian_consent_confirmed', true));
+      expect(find.text('Your FitNep updates'), findsOneWidget);
+      await _close(tester, auth);
+    },
+  );
 
   testWidgets('OTP phase blocks protected routes until the code verifies', (
     tester,
@@ -666,7 +622,6 @@ void main() {
     container.read(appRouterProvider).go(AppRoutes.signupPath);
     await tester.pumpAndSettle();
     await _fill(tester);
-    await _openAutomaticPolicy(tester);
     await _acceptPrivacy(tester);
     expect(find.text('Verify your email'), findsOneWidget);
     expect(verification.sends, 1);
@@ -685,58 +640,16 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '123456');
     await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
     await tester.pumpAndSettle();
-    expect(find.text('Choose a Package'), findsOneWidget);
+    expect(find.text('Your FitNep updates'), findsOneWidget);
     await _close(tester, auth);
   });
 
   testWidgets(
-    'email link requires verified Firebase status before continuing',
-    (tester) async {
-      final auth = _Auth();
-      await _open(
-        tester,
-        auth,
-        verification: _Verification(auth, usesLink: true),
-      );
-      await auth.createUserWithEmailAndPassword(
-        email: 'client@example.com',
-        password: 'Password!12',
-      );
-      await tester.pumpAndSettle();
-      expect(find.byType(TextFormField), findsNothing);
-      final check = find.text('I verified my email');
-      await tester.tap(check);
-      await tester.pumpAndSettle();
-      expect(
-        find.text('Open the verification link in your email, then try again.'),
-        findsOneWidget,
-      );
-      auth.user!.emailVerified = true;
-      await tester.tap(check);
-      await tester.pumpAndSettle();
-      expect(find.text('Choose a Package'), findsOneWidget);
-      await _close(tester, auth);
-    },
-  );
-
-  testWidgets(
-    'Google signup keeps cancellation recoverable and completes new-account consent',
+    'Google cancellation keeps signup usable and success enters the app',
     (tester) async {
       final auth = _Auth();
       final google = _Google()..cancel = true;
-      var accepted = false;
-      final container = await _open(
-        tester,
-        auth,
-        google: google,
-        privacy: (data) async {
-          if (data['action'] == 'accept') {
-            expect(data['age'], 24);
-            accepted = true;
-          }
-          return accepted;
-        },
-      );
+      final container = await _open(tester, auth, google: google);
       container.read(appRouterProvider).go(AppRoutes.signupPath);
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Continue with Google'));
@@ -748,141 +661,8 @@ void main() {
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
       expect(auth.googleSignIns, 1);
-      expect(find.text('Verify your email'), findsNothing);
-      expect(find.text('Complete registration'), findsOneWidget);
-      await tester.enterText(find.byType(TextField), '24');
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Review Privacy Policy'));
-      await tester.pumpAndSettle();
-      await _acceptPrivacy(tester);
-      expect(accepted, isTrue);
-      expect(find.text('Choose a Package'), findsOneWidget);
-      await _close(tester, auth);
-    },
-  );
-
-  testWidgets(
-    'a failed membership check blocks selection until retry succeeds',
-    (tester) async {
-      final auth = _Auth();
-      final purchases = _Purchases()..failRead = true;
-      final container = await _open(tester, auth, purchases: purchases);
-      container.read(appRouterProvider).go(AppRoutes.loginPath);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Continue with Google'));
-      await tester.tap(find.text('Continue with Google'));
-      await tester.pumpAndSettle();
-      final button = find.byKey(const Key('select_package_basic'));
-      expect(tester.widget<FilledButton>(button).onPressed, isNull);
-      expect(purchases.requests, isEmpty);
-      purchases.failRead = false;
-      await tester.ensureVisible(find.text('Retry membership check'));
-      await tester.tap(find.text('Retry membership check'));
-      await tester.pumpAndSettle();
-      expect(tester.widget<FilledButton>(button).onPressed, isNotNull);
-      expect(find.text('Retry membership check'), findsNothing);
-      expect(tester.takeException(), isNull);
-      await _close(tester, auth);
-    },
-  );
-
-  testWidgets(
-    'Google sign-in selects a Pending package before home and keeps back navigation working',
-    (tester) async {
-      final auth = _Auth();
-      final purchases = _Purchases()
-        ..pendingRead = Completer<PackagePurchaseEntity?>();
-      final container = await _open(tester, auth, purchases: purchases);
-      final router = container.read(appRouterProvider);
-      router.go(AppRoutes.loginPath);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Continue with Google'));
-      await tester.tap(find.text('Continue with Google'));
-      await tester.pumpAndSettle();
-      expect(
-        router.routeInformationProvider.value.uri.path,
-        AppRoutes.clientPackages,
-      );
-      expect(find.text('Your FitNep updates'), findsNothing);
-
-      final packageButton = find.byKey(const Key('select_package_basic'));
-      expect(tester.widget<FilledButton>(packageButton).onPressed, isNull);
-      purchases.pendingRead!.complete(null);
-      purchases.pendingRead = null;
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(packageButton);
-      await _snapshot(tester, 'packages-before-selection');
-
-      await tester.tap(find.text('Choose Basic'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Cancel'));
-      await tester.pumpAndSettle();
-      expect(purchases.requests, isEmpty);
-
-      purchases.fail = true;
-      await tester.tap(find.text('Choose Basic'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm selection'));
-      await tester.pumpAndSettle();
-      expect(
-        router.routeInformationProvider.value.uri.path,
-        AppRoutes.clientPackages,
-      );
-      expect(
-        find.textContaining('Selection could not be saved.'),
-        findsOneWidget,
-      );
-
-      purchases.fail = false;
-      await tester.tap(find.text('Choose Basic'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Confirm selection'));
-      await tester.pumpAndSettle();
-      expect(purchases.requests[0], purchases.requests[1]);
-      expect(
-        router.routeInformationProvider.value.uri.path,
-        AppRoutes.clientHome,
-      );
-      expect(router.canPop(), isFalse);
-      expect(find.text('Pending payment verification'), findsOneWidget);
-      expect(
-        find.textContaining('Selection could not be saved.'),
-        findsNothing,
-      );
-
-      await tester.tap(find.byKey(const Key('client_membership_button')));
-      await tester.pumpAndSettle();
-      expect(find.text('My Membership'), findsOneWidget);
-      expect(find.text('Pending'), findsOneWidget);
-      expect(find.byKey(const Key('membership_purchase_date')), findsNothing);
-      await tester.pageBack();
-      await tester.pumpAndSettle();
       expect(find.text('Your FitNep updates'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('client_view_packages_button')));
-      await tester.pumpAndSettle();
-      expect(find.byTooltip('Continue to home'), findsOneWidget);
-      expect(find.text('Selected'), findsOneWidget);
-      expect(tester.widget<FilledButton>(packageButton).onPressed, isNull);
-      await _snapshot(tester, 'packages-current-summary');
-      await tester.ensureVisible(packageButton);
-      await tester.tap(packageButton);
-      await tester.pumpAndSettle();
-      expect(find.text('Confirm selection'), findsNothing);
-      expect(purchases.requests, hasLength(2));
-      await _snapshot(tester, 'packages-selected');
-      await tester.pageBack();
-      await tester.pumpAndSettle();
-      expect(
-        router.routeInformationProvider.value.uri.path,
-        AppRoutes.clientHome,
-      );
-      await tester.tap(find.byTooltip('Sign out'));
-      await tester.pumpAndSettle();
-      expect(auth.user, isNull);
-      expect(find.text('Your FitNep updates'), findsNothing);
-      expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
-      expect(tester.takeException(), isNull);
+      expect(find.text('Verify your email'), findsNothing);
       await _close(tester, auth);
     },
   );

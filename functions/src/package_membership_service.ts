@@ -1,3 +1,4 @@
+import { requirePermission } from "./authorization_policy";
 import { createHash } from "node:crypto";
 import { Firestore, Timestamp } from "firebase-admin/firestore";
 import { AuthenticatedUser } from "./domain";
@@ -51,7 +52,7 @@ export class FirestorePackageService {
   }
 
   async verifyManually(actor: AuthenticatedUser, membershipId: string, reference: string) {
-    if (actor.role !== "admin") throw new PackageError(403, "Only an administrator can verify a payment.");
+    requirePermission(actor.role, "manage_business_settings");
     if (!/^[a-f0-9]{64}$/.test(membershipId) || reference.trim().length < 3 || reference.length > 200) {
       throw new PackageError(400, "A valid membership and verification reference are required.");
     }

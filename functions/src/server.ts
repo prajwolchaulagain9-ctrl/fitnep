@@ -2,6 +2,8 @@ import { applicationDefault, cert, deleteApp, initializeApp } from "firebase-adm
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
+import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { mountHostedAuth } from "./hosted_auth";
 import { FirestoreAuditWriter } from "./audit";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
@@ -25,8 +27,12 @@ function start() {
   const firestore = getFirestore(firebase);
   const audit = new FirestoreAuditWriter(firestore);
   const privacy = new FirestorePrivacyPreferencesRepository(firestore);
-  const app = createNotificationApp({
-    authVerifier: new FirebaseAuthVerifier(auth),
+  const accounts = new FirestoreAccountService(firestore, auth);
+  const verifier = new FirebaseAuthVerifier(accounts);
+  const authAdapter = mountHostedAuth(auth, firestore, verifier, process.env);
+  const api = createNotificationApp({
+    accounts, audit: new FirestoreAuditStore(firestore),
+    authVerifier: verifier,
     notificationRepository: new FirestoreNotificationRepository(firestore),
     staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore),
     packageService: new FirestorePackageService(firestore),
@@ -42,6 +48,8 @@ function start() {
       checkReady: async () => { await firestore.doc("_runtime/health").get(); },
     },
   });
+  const app = authAdapter;
+  app.use(api);
   // Render terminates HTTPS and forwards to the assigned PORT.
   const server = app.listen(config.port, "0.0.0.0", () => {
     console.log("FitNEP API listening on port " + config.port + "; build " + config.buildSha);

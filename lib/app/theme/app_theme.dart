@@ -7,7 +7,7 @@ class AppColors {
   // Brand palette inspired by the FitNep Figma design.
   static const primary = Color(0xFFFA6B09);
   static const primaryLight = Color(0xFFFF8A33);
-  static const primaryDark = Color(0xFFC24B00);
+  static const primaryDark = Color(0xFFD95700);
   static const primaryContainer = Color(0xFFFFF0E6);
 
   // Backgrounds
@@ -69,7 +69,7 @@ abstract final class AppTheme {
           seedColor: AppColors.primary,
           brightness: brightness,
         ).copyWith(
-          primary: isLight ? AppColors.primaryDark : AppColors.primaryLight,
+          primary: isLight ? AppColors.primary : AppColors.primaryLight,
           onPrimary: isLight ? Colors.white : AppColors.textPrimary,
           primaryContainer: isLight
               ? AppColors.primaryContainer
@@ -108,7 +108,7 @@ abstract final class AppTheme {
       textStyle: const WidgetStatePropertyAll(
         TextStyle(
           fontFamily: 'Inter',
-          fontSize: 16,
+          fontSize: 18,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -146,7 +146,7 @@ abstract final class AppTheme {
         bodyLarge: text.bodyLarge?.copyWith(fontSize: 16, height: 1.5),
         bodyMedium: text.bodyMedium?.copyWith(fontSize: 16, height: 1.5),
         bodySmall: text.bodySmall?.copyWith(
-          fontSize: 14,
+          fontSize: 12,
           height: 1.5,
           color: scheme.onSurfaceVariant,
         ),
@@ -217,11 +217,7 @@ abstract final class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: buttonStyle.copyWith(
-          foregroundColor: WidgetStateProperty.resolveWith(
-            (states) => states.contains(WidgetState.disabled)
-                ? scheme.onSurface.withValues(alpha: 0.38)
-                : scheme.onSurface,
-          ),
+          foregroundColor: WidgetStatePropertyAll(scheme.onSurface),
           side: WidgetStatePropertyAll(
             BorderSide(color: scheme.outlineVariant),
           ),
@@ -233,7 +229,7 @@ abstract final class AppTheme {
           minimumSize: const Size(48, 48),
           textStyle: const TextStyle(
             fontFamily: 'Inter',
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
         ),

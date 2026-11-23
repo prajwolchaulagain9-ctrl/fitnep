@@ -263,6 +263,15 @@ class _SignupPageState extends ConsumerState<SignupPage> {
                   ),
                 ],
               ),
+              TextButton(
+                onPressed: busy
+                    ? null
+                    : () {
+                        _reviewTimer?.cancel();
+                        context.pushNamed(AppRoutes.privacyPolicy);
+                      },
+                child: const Text('Read Privacy Policy'),
+              ),
               const AuthenticationDivider(),
               GoogleSignInButton(
                 isLoading: busy && action.isGoogleSignIn,

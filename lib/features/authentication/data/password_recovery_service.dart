@@ -1,10 +1,20 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/firebase_providers.dart';
+import '../../../core/config/app_config.dart';
+import 'hosted_auth_client.dart';
+import 'hosted_session_service.dart';
 
 final passwordRecoveryProvider = Provider<PasswordRecoveryService>(
-  (ref) => PasswordRecoveryService(ref.watch(firebaseAuthProvider)),
+  (ref) => PasswordRecoveryService(
+    ref.watch(firebaseAuthProvider),
+    hostedRequest: AppConfig.hostedSessionsEnabled
+        ? ref.watch(hostedAuthRequestProvider)
+        : null,
+    beforeSignOut: ref.read(hostedSessionServiceProvider).end,
+  ),
 );
 
 class RecoveryFailure implements Exception {
@@ -20,9 +30,11 @@ class RecoveryFailure implements Exception {
 }
 
 class PasswordRecoveryService {
-  PasswordRecoveryService(this.auth);
+  PasswordRecoveryService(this.auth, {this.hostedRequest, this.beforeSignOut});
 
   final FirebaseAuth auth;
+  final HostedAuthRequest? hostedRequest;
+  final Future<void> Function()? beforeSignOut;
 
   static const requestConfirmation =
       'If an account uses this email, you will receive a password reset link. '
@@ -73,7 +85,13 @@ class PasswordRecoveryService {
     final error = emailError(email);
     if (error != null) throw RecoveryFailure(error);
     try {
-      await auth.sendPasswordResetEmail(email: email.trim());
+      if (hostedRequest == null) {
+        await auth.sendPasswordResetEmail(email: email.trim());
+      } else {
+        await hostedRequest!('auth/recovery/request', {'email': email.trim()});
+      }
+    } on FirebaseFunctionsException catch (error) {
+      throw _hostedFailure(error);
     } on FirebaseAuthException catch (error) {
       // Older projects can still return these without enumeration protection.
       if (error.code == 'user-not-found' || error.code == 'user-disabled') {
@@ -85,7 +103,18 @@ class PasswordRecoveryService {
 
   Future<String> verify(String code) async {
     try {
-      return await auth.verifyPasswordResetCode(actionCode(code));
+      if (hostedRequest == null) {
+        return await auth.verifyPasswordResetCode(actionCode(code));
+      }
+      final data = await hostedRequest!('auth/recovery/verify', {
+        'code': actionCode(code),
+      });
+      if (data['email'] is! String) {
+        throw const RecoveryFailure('Could not verify your reset link.');
+      }
+      return data['email'] as String;
+    } on FirebaseFunctionsException catch (error) {
+      throw _hostedFailure(error);
     } on FirebaseAuthException catch (error) {
       throw failureFor(error);
     }
@@ -112,10 +141,22 @@ class PasswordRecoveryService {
               : 'Your password needs ${missing.join(', ')}.',
         );
       }
-      await auth.confirmPasswordReset(
-        code: actionCode(code),
-        newPassword: password,
-      );
+      if (hostedRequest == null) {
+        await auth.confirmPasswordReset(
+          code: actionCode(code),
+          newPassword: password,
+        );
+      } else {
+        final data = await hostedRequest!('auth/recovery/confirm', {
+          'code': actionCode(code),
+          'password': password,
+        });
+        if (data['confirmed'] != true) {
+          throw const RecoveryFailure('Could not confirm the password change.');
+        }
+      }
+    } on FirebaseFunctionsException catch (error) {
+      throw _hostedFailure(error);
     } on FirebaseAuthException catch (error) {
       throw failureFor(error);
     } on RecoveryFailure {
@@ -131,6 +172,7 @@ class PasswordRecoveryService {
 
   Future<void> clearLocalSession() async {
     try {
+      await beforeSignOut?.call();
       await auth.signOut();
     } catch (_) {
       // The reset code has already been consumed. Retry sign-out, not reset.
@@ -194,4 +236,16 @@ class PasswordRecoveryService {
       ),
     };
   }
+
+  static RecoveryFailure _hostedFailure(
+    FirebaseFunctionsException error,
+  ) => RecoveryFailure(switch (error.code) {
+    'not-found' =>
+      'This reset link has expired or was already used. Request a new link.',
+    'resource-exhausted' =>
+      'Too many attempts. Please wait before trying again.',
+    'invalid-argument' =>
+      'Check the email or password requirements and try again.',
+    _ => 'Password recovery is unavailable right now. Please try again later.',
+  }, invalidLink: error.code == 'not-found');
 }

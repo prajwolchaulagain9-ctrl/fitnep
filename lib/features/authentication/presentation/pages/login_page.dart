@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../../app/theme/app_theme.dart';
 import '../../data/password_recovery_service.dart';
 import '../controllers/authentication_controller.dart';
 import '../widgets/google_sign_in_button.dart';
@@ -79,7 +80,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               Text(
                 'YOUR WELLNESS, ELEVATED.',
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: AppColors.primary,
                   fontWeight: FontWeight.w700,
                   letterSpacing: 1.4,
                 ),

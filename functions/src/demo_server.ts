@@ -4,6 +4,7 @@ import { getFirestore } from "firebase-admin/firestore";
 import { FirebaseAuthVerifier } from "./auth";
 import { FirestoreAuditWriter } from "./audit";
 import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
+import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
@@ -21,14 +22,15 @@ const auth = getAuth(firebase);
 const db = getFirestore(firebase);
 
 async function main() {
-  for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"]] as const) {
-    const demoUser = await auth.getUser(uid).catch((error: unknown) => {
+  for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"],
+    ["demo-staff", "staff"], ["demo-dietitian", "dietitian"]] as const) {
+    try { await auth.getUser(uid); } catch (error) {
       if ((error as { code?: string }).code !== "auth/user-not-found") throw error;
-      return auth.createUser({ uid, email: `${uid}@fitnep.test`, emailVerified: true, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
-    });
-    if (demoUser.customClaims?.role == null) {
-      await auth.setCustomUserClaims(uid, { ...demoUser.customClaims, role });
+      await auth.createUser({ uid, email: `${uid}@fitnep.test`, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
     }
+    await auth.setCustomUserClaims(uid, { role });
+    await auth.updateUser(uid, { emailVerified: true });
+    await new FirestoreAccountService(db, auth).provision(await auth.getUser(uid));
   }
   for (const [id, name, days, price, features] of [
     ["basic", "Basic", 30, 2500, ["Personalized nutrition plan", "Weekly check-ins"]],
@@ -39,8 +41,11 @@ async function main() {
   }
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const auditWriter = new FirestoreAuditWriter(db);
+  const accounts = new FirestoreAccountService(db, auth);
   const api = createNotificationApp({
-    authVerifier: new FirebaseAuthVerifier(),
+    accounts,
+    audit: new FirestoreAuditStore(db),
+    authVerifier: new FirebaseAuthVerifier(accounts),
     staffAccountRepository: new FirebaseStaffAccountRepository(auth, db),
     notificationRepository: new FirestoreNotificationRepository(db),
     privacyPreferencesRepository,

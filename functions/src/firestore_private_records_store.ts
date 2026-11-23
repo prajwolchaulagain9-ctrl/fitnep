@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { AuditWriter, AuditUnavailableError, FirestoreAuditWriter } from "./audit";
 import { AuditedHealthReadService, HealthReadTarget } from "./audited_health_reads";
 import { AuthenticatedUser } from "./domain";
+import { accountFrom } from "./account_service";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
 import { currentAssignedTeam, PrivateRecordAccessService, PrivateRecordAuthorizationError } from "./nutrition_record_access_service";
 import { FirestorePrivacyAcceptanceStore } from "./privacy_policy_acceptance";
@@ -50,7 +51,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
     return this.firestore.runTransaction(async (transaction) => {
       // Reading consent and writing the entry in one transaction makes collection
       // and consent withdrawal serialize against the same Firestore document.
-      await this.access(transaction).assertCanCollect(actor, clientId, recordSharingChoices[category]);
+      await this.access(transaction, actor).assertCanCollect(actor, clientId, recordSharingChoices[category]);
       const record = parseRecord(category, body);
       const reference = this.records(clientId, category).doc();
       const recordedAt = Timestamp.now();
@@ -83,7 +84,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
   private auditedRead<T>(actor: AuthenticatedUser, target: HealthReadTarget, correlationId: string | undefined,
     load: (transaction: Transaction) => Promise<{ data: T; recordIds?: readonly string[] }>): Promise<T> {
     return this.firestore.runTransaction(transaction =>
-      new AuditedHealthReadService(this.access(transaction), this.audit)
+      new AuditedHealthReadService(this.access(transaction, actor), this.audit)
         .read(transaction, actor, target, correlationId ?? randomUUID(), () => load(transaction)),
     ).catch(error => {
       if (error instanceof PrivateRecordAuthorizationError || error instanceof PrivateRecordsError ||
@@ -112,12 +113,20 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
     return { id: snapshot.id, recorded_at: recordedAt.toDate().toISOString(), details: safeDetails };
   }
 
-  private access(transaction: Transaction): PrivateRecordAccessService {
+  private access(transaction: Transaction, actor: AuthenticatedUser): PrivateRecordAccessService {
     return new PrivateRecordAccessService({
       getCurrentTeam: async (clientId) => {
         const reference = this.firestore.collection("client_assignments").doc(clientId);
         const assignment = (await transaction.get(reference)).data();
-        return currentAssignedTeam(assignment);
+        const team = currentAssignedTeam(assignment);
+        if (!team) return null;
+        const client = accountFrom(clientId, (await transaction.get(this.firestore.collection("users").doc(clientId))).data());
+        if (client.role !== "client" || client.account_status !== "active" ||
+          (assignment?.client_role_revision ?? 0) !== client.role_revision) return null;
+        const expectedRevision = actor.role === "dietitian" ? assignment?.dietitian_role_revision :
+          assignment?.team_member_role_revisions?.[actor.uid] ?? assignment?.staff_role_revisions?.[actor.uid];
+        if ((expectedRevision ?? 0) !== (actor.roleRevision ?? 0)) return null;
+        return team;
       },
     }, {
       getForClient: (clientId) => this.preferences.getForClient(clientId, transaction),

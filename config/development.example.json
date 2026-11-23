@@ -1,5 +1,5 @@
 {
-  "API_BASE_URL": "",
+  "API_BASE_URL": "https://fitnep-api.onrender.com/",
   "GOOGLE_WEB_CLIENT_ID": "",
   "GOOGLE_IOS_CLIENT_ID": "",
   "SIGNUP_EMAIL_OTP_ENABLED": true,

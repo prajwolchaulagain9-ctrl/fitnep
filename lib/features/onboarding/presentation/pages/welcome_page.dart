@@ -226,6 +226,10 @@ class _WelcomePageState extends State<WelcomePage> {
                             onPressed: () => context.pushNamed(AppRoutes.login),
                             child: const Text('Log in'),
                           ),
+                          TextButton(
+                            onPressed: () => context.pushNamed(AppRoutes.about),
+                            child: const Text('Learn about FitNEP'),
+                          ),
                         ],
                       ),
                     ],
