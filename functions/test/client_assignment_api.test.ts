@@ -4,6 +4,8 @@ import request from "supertest";
 
 import { AuthVerifier, AuthenticationError } from "../src/auth";
 import {
+  AssignedClientDirectory,
+  AssignedClientProfile,
   AssignmentPackageStatus,
   ClientAssignmentRecord,
   ClientAssignmentRepository,
@@ -15,9 +17,12 @@ import {
 import { AuthenticatedUser } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
+import { NotificationWorkflowService } from "../src/notification_service";
 
 const admin: AuthenticatedUser = { uid: "admin-1", role: "admin" };
 const client: AuthenticatedUser = { uid: "client-1", role: "client" };
+const dietitian: AuthenticatedUser = { uid: "dietitian-1", role: "dietitian" };
+const otherDietitian: AuthenticatedUser = { uid: "dietitian-2", role: "dietitian" };
 
 describe("client assignment package validation", () => {
   it("allows an active-package client to be assigned", async () => {
@@ -126,21 +131,108 @@ describe("client assignment package validation", () => {
   });
 });
 
+describe("dietitian client visibility and notification (acceptance criterion)", () => {
+  it("assigned dietitian receives a notification after assignment", async () => {
+    const fixture = createFixture("active");
+
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
+
+    const dietitianNotifications = await fixture.notifications.listForRecipient("dietitian-1");
+    assert.equal(dietitianNotifications.length, 1);
+    assert.equal(dietitianNotifications[0]?.type, "assignment");
+    assert.equal(dietitianNotifications[0]?.referenceId, "client-1");
+  });
+
+  it("assigned dietitian can view the assigned client", async () => {
+    const fixture = createFixture("active");
+
+    // Assign the client
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
+
+    // Assigned dietitian can view the client
+    const response = await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-1"))
+      .expect(200);
+
+    assert.equal(response.body.data.client.id, "client-1");
+    assert.equal(response.body.data.client.assignment_status, "active");
+  });
+
+  it("unassigned dietitian cannot view the client", async () => {
+    const fixture = createFixture("active");
+
+    // Assign to dietitian-1
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
+
+    // dietitian-2 (not assigned) cannot see the client
+    const response = await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-2"))
+      .expect(403);
+
+    assert.ok(response.body.error.includes("not currently assigned"));
+  });
+
+  it("admin cannot use the dietitian client view endpoint", async () => {
+    const fixture = createFixture("active");
+    fixture.assignments.records.push(assignment("client-1", "dietitian-1"));
+
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("admin"))
+      .expect(403);
+  });
+
+  it("unassigned client returns 403 before any assignment is made", async () => {
+    const fixture = createFixture("active");
+
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-1"))
+      .expect(403);
+  });
+});
+
 function createFixture(status: AssignmentPackageStatus) {
   const assignments = new InMemoryAssignmentRepository();
   const packages = new MutablePackageStatusReader(status);
+  const notifications = new InMemoryNotificationRepository();
   const service = new ClientAssignmentService(
     assignments,
     packages,
     new ActiveDietitianDirectory(),
+    new NotificationWorkflowService(notifications, {
+      now: () => new Date("2026-11-23T12:00:00.000Z"),
+      idFactory: (() => { let n = 0; return () => `notification-${++n}`; })(),
+    }),
+    new FakeClientDirectory(),
     () => new Date("2026-11-23T12:00:00.000Z"),
   );
   return {
     assignments,
     packages,
+    notifications,
     app: createNotificationApp({
-      authVerifier: new FakeAuthVerifier({ admin, client }),
-      notificationRepository: new InMemoryNotificationRepository(),
+      authVerifier: new FakeAuthVerifier({
+        admin,
+        client,
+        "dietitian-1": dietitian,
+        "dietitian-2": otherDietitian,
+      }),
+      notificationRepository: notifications,
       clientAssignmentService: service,
     }),
   };
@@ -151,9 +243,13 @@ class InMemoryAssignmentRepository implements ClientAssignmentRepository {
 
   async assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord> {
     const index = this.records.findIndex(item => item.clientId === record.clientId);
-    if (index === -1) this.records.push(record);
-    else this.records[index] = record;
-    return record;
+    const version = index === -1
+      ? (record.version > 0 ? record.version : 1)
+      : Math.max(1, (this.records[index]?.version ?? 0) + 1);
+    const stored = { ...record, version };
+    if (index === -1) this.records.push(stored);
+    else this.records[index] = stored;
+    return stored;
   }
 
   async currentClientCounts(): Promise<Record<string, number>> {
@@ -161,6 +257,16 @@ class InMemoryAssignmentRepository implements ClientAssignmentRepository {
       counts[record.dietitianId] = (counts[record.dietitianId] ?? 0) + 1;
       return counts;
     }, {});
+  }
+
+  async getCurrent(clientId: string): Promise<ClientAssignmentRecord | null> {
+    return this.records.find(r => r.clientId === clientId && r.active) ?? null;
+  }
+}
+
+class FakeClientDirectory implements AssignedClientDirectory {
+  async getClient(clientId: string): Promise<AssignedClientProfile> {
+    return { id: clientId, name: `Client ${clientId}`, email: `${clientId}@example.com` };
   }
 }
 
@@ -196,5 +302,6 @@ function assignment(clientId: string, dietitianId: string): ClientAssignmentReco
     active: true,
     assignedAt: "2026-11-23T12:00:00.000Z",
     assignedById: "admin-1",
+    version: 1,
   };
 }

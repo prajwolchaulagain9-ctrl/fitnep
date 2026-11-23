@@ -42,6 +42,7 @@ export const notificationTypes = [
   "message",
   "task",
   "payment",
+  "assignment",
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

@@ -282,6 +282,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: AppRoutes.dietitianAssignedClient,
+        name: AppRoutes.dietitianAssignedClientName,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.dietitian},
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.assignment,
+            referenceId: state.pathParameters['id']!,
+          ),
+        ),
+      ),
+      GoRoute(
         path: AppRoutes.adminStaffAccounts,
         builder: (context, state) => RouteAccessGate(
           allowedRoles: const {FitNepRole.admin},

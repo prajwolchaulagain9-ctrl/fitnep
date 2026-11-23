@@ -1,5 +1,7 @@
+import { Auth } from "firebase-admin/auth";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePackageService } from "./package_membership_service";
+import { NotificationWorkflowService } from "./notification_service";
 import { StaffAccountRepository } from "./staff_account_repository";
 
 export const inactivePackageAssignmentMessage =
@@ -19,11 +21,23 @@ export interface ClientAssignmentRecord {
   active: true;
   assignedAt: string;
   assignedById: string;
+  version: number;
 }
 
 export interface ClientAssignmentRepository {
   assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord>;
   currentClientCounts(): Promise<Record<string, number>>;
+  getCurrent(clientId: string): Promise<ClientAssignmentRecord | null>;
+}
+
+export interface AssignedClientProfile {
+  id: string;
+  name: string;
+  email: string | null;
+}
+
+export interface AssignedClientDirectory {
+  getClient(clientId: string): Promise<AssignedClientProfile>;
 }
 
 export interface ClientPackageStatusReader {
@@ -36,7 +50,7 @@ export interface DietitianDirectory {
 
 export class ClientAssignmentError extends Error {
   constructor(
-    readonly statusCode: 400 | 403 | 409 | 503,
+    readonly statusCode: 400 | 403 | 404 | 409 | 503,
     message: string,
   ) {
     super(message);
@@ -49,6 +63,8 @@ export class ClientAssignmentService {
     private readonly repository: ClientAssignmentRepository,
     private readonly packages: ClientPackageStatusReader,
     private readonly dietitians: DietitianDirectory,
+    private readonly notifications: Pick<NotificationWorkflowService, "clientAssigned"> | null,
+    private readonly clients: AssignedClientDirectory | null,
     private readonly now = () => new Date(),
   ) {}
 
@@ -78,18 +94,57 @@ export class ClientAssignmentService {
     if (!(await this.dietitians.isActiveDietitian(dietitianId))) {
       throw new ClientAssignmentError(409, "Select an active dietitian.");
     }
-    return this.repository.assign({
+    const clientProfile = this.clients !== null
+      ? await this.clients.getClient(eligibility.clientId)
+      : null;
+    const assignment = await this.repository.assign({
       clientId: eligibility.clientId,
       dietitianId,
       active: true,
       assignedAt: this.now().toISOString(),
       assignedById: actor.uid,
+      version: 0,
     });
+    if (this.notifications !== null) {
+      await this.notifications.clientAssigned(actor, {
+        clientId: assignment.clientId,
+        dietitianId: assignment.dietitianId,
+        assignmentVersion: assignment.version,
+        clientName: clientProfile?.name ?? undefined,
+      });
+    }
+    return assignment;
   }
 
   async dietitianClientCounts(actor: AuthenticatedUser) {
     this.requireAdmin(actor);
     return this.repository.currentClientCounts();
+  }
+
+  async assignedClient(actor: AuthenticatedUser, clientIdInput: unknown) {
+    if (actor.role !== "dietitian") {
+      throw new ClientAssignmentError(
+        403,
+        "Dietitian access is required to view assigned clients.",
+      );
+    }
+    const clientId = requiredIdentifier(clientIdInput, "Client id");
+    const assignment = await this.repository.getCurrent(clientId);
+    if (assignment === null || assignment.dietitianId !== actor.uid) {
+      throw new ClientAssignmentError(
+        403,
+        "This client is not currently assigned to you.",
+      );
+    }
+    if (this.clients === null) {
+      throw new ClientAssignmentError(503, "Client directory is not configured.");
+    }
+    const client = await this.clients.getClient(clientId);
+    return {
+      ...client,
+      assignmentStatus: "active" as const,
+      assignedAt: assignment.assignedAt,
+    };
   }
 
   private requireAdmin(actor: AuthenticatedUser): void {
@@ -136,4 +191,26 @@ function requiredIdentifier(value: unknown, label: string): string {
     throw new ClientAssignmentError(400, `${label} is invalid.`);
   }
   return value;
+}
+
+/**
+ * Looks up a client profile from Firebase Auth.
+ * Used by ClientAssignmentService to resolve the client's name and email
+ * before recording an assignment and sending the dietitian notification.
+ */
+export class FirebaseClientDirectory implements AssignedClientDirectory {
+  constructor(private readonly auth: Auth) {}
+
+  async getClient(clientId: string): Promise<AssignedClientProfile> {
+    try {
+      const user = await this.auth.getUser(clientId);
+      return {
+        id: user.uid,
+        name: user.displayName ?? user.email ?? user.uid,
+        email: user.email ?? null,
+      };
+    } catch {
+      throw new ClientAssignmentError(404, "Client not found.");
+    }
+  }
 }

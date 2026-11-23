@@ -268,6 +268,24 @@ export function createNotificationApp(
     }),
   );
 
+  // ── Dietitian: view an assigned client ─────────────────────────────────────
+  app.get(
+    "/dietitian/assigned-clients/:clientId",
+    asyncRoute(async (request, response) => {
+      const profile = await clientAssignments().assignedClient(
+        currentUser(response),
+        request.params.clientId,
+      );
+      response.json({ data: { client: {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        assignment_status: profile.assignmentStatus,
+        assigned_at: profile.assignedAt,
+      } } });
+    }),
+  );
+
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
     return dependencies.packageService;

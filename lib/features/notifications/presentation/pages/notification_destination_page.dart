@@ -56,6 +56,7 @@ class NotificationDestinationPage extends ConsumerWidget {
     NotificationType.message => 'Messages',
     NotificationType.task => 'Task Details',
     NotificationType.payment => 'Payment Details',
+    NotificationType.assignment => 'Assigned Client',
     NotificationType.other => 'Details',
   };
 
@@ -64,6 +65,7 @@ class NotificationDestinationPage extends ConsumerWidget {
     NotificationType.message => 'conversation',
     NotificationType.task => 'task',
     NotificationType.payment => 'payment',
+    NotificationType.assignment => 'assigned client',
     NotificationType.other => 'record',
   };
 }
@@ -182,6 +184,7 @@ class _RecordView extends StatelessWidget {
     NotificationType.message => Icons.forum_outlined,
     NotificationType.task => Icons.task_alt_rounded,
     NotificationType.payment => Icons.receipt_long_outlined,
+    NotificationType.assignment => Icons.person_pin_outlined,
     NotificationType.other => Icons.description_outlined,
   };
 
@@ -190,6 +193,7 @@ class _RecordView extends StatelessWidget {
     NotificationType.message => AppColors.info,
     NotificationType.task => AppColors.actionPackageChange,
     NotificationType.payment => AppColors.warning,
+    NotificationType.assignment => AppColors.primary,
     NotificationType.other => AppColors.primary,
   };
 }

@@ -12,6 +12,7 @@ export const protectedActionRoles = {
   readStaffAccountHistory: ["admin"],
   createDietPlanAssignmentNotification: ["admin", "dietitian"],
   createTaskAssignmentNotification: ["admin", "dietitian"],
+  createClientAssignmentNotification: ["admin"],
 } as const satisfies Record<string, readonly UserRole[]>;
 
 export type ProtectedAction = keyof typeof protectedActionRoles;

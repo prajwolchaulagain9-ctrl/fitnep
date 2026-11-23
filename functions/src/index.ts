@@ -20,6 +20,7 @@ import {
   ClientAssignmentService,
   ExistingClientPackageStatusReader,
   ExistingStaffDietitianDirectory,
+  FirebaseClientDirectory,
 } from "./client_assignment_service";
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 
@@ -51,6 +52,8 @@ const notificationApp = createNotificationApp({
     new FirestoreClientAssignmentRepository(getFirestore()),
     new ExistingClientPackageStatusReader(packageService),
     new ExistingStaffDietitianDirectory(staffAccountRepository),
+    new NotificationWorkflowService(notificationRepository),
+    new FirebaseClientDirectory(getAuth()),
   ),
 });
 const workflowTriggers = createNotificationWorkflowTriggers(

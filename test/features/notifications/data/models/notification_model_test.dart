@@ -40,5 +40,24 @@ void main() {
       expect(model.referenceId, isNull);
       expect(model.isRead, isTrue);
     });
+
+    test('parses assignment notification for dietitians', () {
+      final model = NotificationModel.fromJson({
+        'id': 'notification-assign-1',
+        'recipient_id': 'dietitian-1',
+        'title': 'New client assigned',
+        'message': 'Jane Doe has been assigned to you.',
+        'type': 'assignment',
+        'reference_id': 'client-123',
+        'is_read': false,
+        'created_at': '2026-11-23T12:00:00Z',
+      });
+
+      expect(model.id, 'notification-assign-1');
+      expect(model.recipientId, 'dietitian-1');
+      expect(model.type, NotificationType.assignment);
+      expect(model.referenceId, 'client-123');
+      expect(model.isRead, isFalse);
+    });
   });
 }
