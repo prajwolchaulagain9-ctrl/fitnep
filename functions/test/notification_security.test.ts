@@ -346,11 +346,11 @@ it("validates the current policy and guardian confirmation before registration",
   assert.throws(() => validatePrivacyAcceptance(form), PrivacyAcceptanceError);
   assert.deepEqual(
     validatePrivacyAcceptance({ ...form, guardian_consent_confirmed: true }),
-    { guardianConsentConfirmed: true },
+    { age: 17, guardianConsentConfirmed: true },
   );
   assert.deepEqual(
     validatePrivacyAcceptance({ ...form, age: 18 }),
-    { guardianConsentConfirmed: false },
+    { age: 18, guardianConsentConfirmed: false },
   );
 });
 

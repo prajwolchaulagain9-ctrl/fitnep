@@ -1,3 +1,5 @@
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -61,6 +63,8 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
+        registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(

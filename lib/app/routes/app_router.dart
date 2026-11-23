@@ -4,15 +4,16 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
 import '../../features/authentication/presentation/pages/login_page.dart';
+import '../../features/authentication/presentation/pages/app_under_development_page.dart';
 import '../../features/authentication/presentation/pages/signup_page.dart';
 import '../../features/authentication/presentation/pages/verify_email_page.dart';
+import '../../features/authentication/presentation/pages/change_staff_password_page.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
-import '../../core/config/app_config.dart';
 import '../../features/admin/presentation/pages/client_list_page.dart';
 import '../../features/admin/presentation/pages/client_profile_page.dart';
 import '../../features/admin/presentation/pages/audit_log_page.dart';
@@ -20,6 +21,8 @@ import '../../features/admin/presentation/pages/create_package_page.dart';
 import '../../features/admin/presentation/pages/edit_package_page.dart';
 import '../../features/admin/presentation/pages/package_management_page.dart';
 import '../../features/admin/presentation/pages/package_history_page.dart';
+import '../../features/admin/presentation/pages/staff_accounts_page.dart';
+import '../../features/admin/presentation/pages/staff_account_history_page.dart';
 import '../../features/admin/domain/entities/package_entity.dart';
 import '../../features/dashboards/presentation/pages/client_home_page.dart';
 import '../../features/notifications/presentation/pages/notifications_page.dart';
@@ -46,6 +49,7 @@ final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
     notifier.refresh();
   });
   ref.listen(routeSessionProvider, (_, _) => notifier.refresh());
+  ref.listen(staffPasswordChangeRequiredProvider, (_, _) => notifier.refresh());
   ref.onDispose(notifier.dispose);
   return notifier;
 });
@@ -59,7 +63,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authentication = ref.read(authenticationStateProvider);
       if (!authentication.hasValue) return null;
 
-      final isAuthenticated = authentication.value != null;
+      final user = authentication.value;
+      final isAuthenticated = user != null;
       final path = state.uri.path;
       final isPublicRoute = const {
         AppRoutes.welcomePath,
@@ -74,34 +79,37 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (!isAuthenticated && !isPublicRoute) {
         return AppRoutes.loginPath;
       }
-      if (isAuthenticated &&
-          !AppConfig.useFirebaseEmulators &&
-          ref.read(signupEmailOtpEnabledProvider)) {
-        final user = authentication.value!;
-        if (!user.emailVerified &&
-            user.providerData.any(
-              (provider) => provider.providerId == 'password',
-            )) {
-          // Recovery and the policy stay reachable before email verification.
-          if (path != AppRoutes.verifyEmailPath &&
-              path != AppRoutes.forgotPasswordPath &&
-              path != AppRoutes.resetPasswordPath &&
-              path != AppRoutes.privacyPolicyPath) {
-            return AppRoutes.verifyEmailPath;
-          }
-          return null;
+      if (user != null) {
+        final passwordChange = ref.read(staffPasswordChangeRequiredProvider);
+        if (passwordChange.isLoading || !passwordChange.hasValue) return null;
+        if (passwordChange.value == true) {
+          return path == AppRoutes.changeStaffPasswordPath
+              ? null
+              : AppRoutes.changeStaffPasswordPath;
         }
+      }
+      if (isAuthenticated && !user.emailVerified) {
+        // Recovery and the policy stay reachable before email verification.
+        if (path != AppRoutes.verifyEmailPath &&
+            path != AppRoutes.forgotPasswordPath &&
+            path != AppRoutes.resetPasswordPath &&
+            path != AppRoutes.privacyPolicyPath) {
+          return AppRoutes.verifyEmailPath;
+        }
+        return null;
       }
       if (isAuthenticated &&
           (path == AppRoutes.welcomePath ||
               path == AppRoutes.loginPath ||
               path == AppRoutes.signupPath ||
+              path == AppRoutes.changeStaffPasswordPath ||
               path == AppRoutes.verifyEmailPath)) {
         final session = ref.read(routeSessionProvider);
         if (session.isLoading) return null;
         return switch (session.asData?.value?.role) {
           FitNepRole.admin => AppRoutes.adminClients,
           FitNepRole.dietitian => AppRoutes.notifications,
+          FitNepRole.staff => AppRoutes.appUnderDevelopmentPath,
           _ => AppRoutes.clientPackages,
         };
       }
@@ -142,9 +150,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SignupPage(),
       ),
       GoRoute(
+        name: AppRoutes.changeStaffPassword,
+        path: AppRoutes.changeStaffPasswordPath,
+        builder: (context, state) => const ChangeStaffPasswordPage(),
+      ),
+      GoRoute(
         name: AppRoutes.verifyEmail,
         path: AppRoutes.verifyEmailPath,
         builder: (context, state) => const VerifyEmailPage(),
+      ),
+      GoRoute(
+        name: AppRoutes.appUnderDevelopment,
+        path: AppRoutes.appUnderDevelopmentPath,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.staff},
+          builder: (_) => const AppUnderDevelopmentPage(),
+        ),
       ),
       GoRoute(
         name: AppRoutes.privacyPolicy,
@@ -203,7 +224,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPrivacyPreferences,
         name: 'client-privacy-preferences',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          allowedRoles: const {FitNepRole.client, null},
+          requirePrivacyAcceptance: true,
           builder: (_) => const PrivacyPreferencesPage(),
         ),
       ),
@@ -257,6 +279,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             type: NotificationType.payment,
             referenceId: state.pathParameters['id']!,
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffAccounts,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const StaffAccountsPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.adminStaffHistory,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.admin},
+          builder: (_) => const StaffAccountHistoryPage(),
         ),
       ),
       GoRoute(

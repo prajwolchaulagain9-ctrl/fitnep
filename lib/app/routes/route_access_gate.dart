@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/app_config.dart';
 import '../../core/services/firebase_providers.dart';
 import '../../features/authentication/presentation/controllers/authentication_controller.dart';
 import 'app_routes.dart';
+import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
 
 enum FitNepRole {
   admin,
@@ -57,11 +59,13 @@ class RouteAccessGate extends ConsumerWidget {
   const RouteAccessGate({
     required this.allowedRoles,
     required this.builder,
+    this.requirePrivacyAcceptance = false,
     super.key,
   });
 
-  final Set<FitNepRole> allowedRoles;
+  final Set<FitNepRole?> allowedRoles;
   final WidgetBuilder builder;
+  final bool requirePrivacyAcceptance;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -92,7 +96,15 @@ class RouteAccessGate extends ConsumerWidget {
             }
             return KeyedSubtree(
               key: ValueKey(session.uid),
-              child: builder(context),
+              child:
+                  requirePrivacyAcceptance ||
+                      (session.role == FitNepRole.client &&
+                          !AppConfig.useFirebaseEmulators)
+                  ? RegistrationPrivacyGate(
+                      uid: session.uid,
+                      child: Builder(builder: builder),
+                    )
+                  : builder(context),
             );
           },
         );

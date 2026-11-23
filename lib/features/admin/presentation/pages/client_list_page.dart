@@ -8,7 +8,7 @@ import '../widgets/empty_state_widget.dart';
 import '../../domain/entities/client_entity.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../../app/routes/app_routes.dart';
-import '../../../authentication/presentation/controllers/authentication_controller.dart';
+import '../../../authentication/presentation/sign_out_to_welcome.dart';
 
 class ClientListPage extends ConsumerStatefulWidget {
   const ClientListPage({super.key});
@@ -91,6 +91,8 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
               if (isCompact)
                 _ClientAppBarOverflow(
                   onPackages: () => context.push(AppRoutes.adminPackages),
+                  onStaffAccounts: () =>
+                      context.push(AppRoutes.adminStaffAccounts),
                   onNotifications: () => context.push(AppRoutes.notifications),
                   onAuditLog: () => context.push(AppRoutes.auditLog),
                 )
@@ -99,6 +101,11 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
                   icon: const Icon(Icons.inventory_2_outlined),
                   tooltip: 'Package Management',
                   onPressed: () => context.push(AppRoutes.adminPackages),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.manage_accounts_outlined),
+                  tooltip: 'Manage staff accounts',
+                  onPressed: () => context.push(AppRoutes.adminStaffAccounts),
                 ),
                 IconButton(
                   icon: const Icon(Icons.notifications_none_rounded),
@@ -113,9 +120,7 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
                 IconButton(
                   icon: const Icon(Icons.logout_rounded),
                   tooltip: 'Sign out',
-                  onPressed: () => ref
-                      .read(authenticationControllerProvider.notifier)
-                      .signOut(),
+                  onPressed: () => signOutToWelcome(context, ref),
                 ),
               ],
               const SizedBox(width: 4),
@@ -347,15 +352,23 @@ class _FilterButton extends StatelessWidget {
   }
 }
 
-enum _ClientAppBarAction { packages, notifications, auditLog, signOut }
+enum _ClientAppBarAction {
+  packages,
+  staffAccounts,
+  notifications,
+  auditLog,
+  signOut,
+}
 
 class _ClientAppBarOverflow extends ConsumerWidget {
   final VoidCallback onPackages;
+  final VoidCallback onStaffAccounts;
   final VoidCallback onNotifications;
   final VoidCallback onAuditLog;
 
   const _ClientAppBarOverflow({
     required this.onPackages,
+    required this.onStaffAccounts,
     required this.onNotifications,
     required this.onAuditLog,
   });
@@ -368,12 +381,14 @@ class _ClientAppBarOverflow extends ConsumerWidget {
       onSelected: (action) {
         if (action == _ClientAppBarAction.packages) {
           onPackages();
+        } else if (action == _ClientAppBarAction.staffAccounts) {
+          onStaffAccounts();
         } else if (action == _ClientAppBarAction.notifications) {
           onNotifications();
         } else if (action == _ClientAppBarAction.auditLog) {
           onAuditLog();
         } else if (action == _ClientAppBarAction.signOut) {
-          ref.read(authenticationControllerProvider.notifier).signOut();
+          signOutToWelcome(context, ref);
         }
       },
       itemBuilder: (context) => const [
@@ -384,6 +399,16 @@ class _ClientAppBarOverflow extends ConsumerWidget {
               Icon(Icons.inventory_2_outlined),
               SizedBox(width: 12),
               Flexible(child: Text('Package Management')),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: _ClientAppBarAction.staffAccounts,
+          child: Row(
+            children: [
+              Icon(Icons.manage_accounts_outlined),
+              SizedBox(width: 12),
+              Flexible(child: Text('Manage staff accounts')),
             ],
           ),
         ),

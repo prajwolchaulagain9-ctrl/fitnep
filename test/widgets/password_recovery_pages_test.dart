@@ -1,3 +1,5 @@
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -59,6 +61,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         passwordRecoveryProvider.overrideWithValue(recovery),
@@ -88,6 +91,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
@@ -134,6 +138,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],

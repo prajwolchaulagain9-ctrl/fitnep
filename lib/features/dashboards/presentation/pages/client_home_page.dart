@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
-import '../../../authentication/presentation/controllers/authentication_controller.dart';
+import '../../../authentication/presentation/sign_out_to_welcome.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 import '../../../purchases/presentation/controllers/membership_controller.dart';
 
@@ -33,8 +33,7 @@ class ClientHomePage extends ConsumerWidget {
           ),
           IconButton(
             tooltip: 'Sign out',
-            onPressed: () =>
-                ref.read(authenticationControllerProvider.notifier).signOut(),
+            onPressed: () => signOutToWelcome(context, ref),
             icon: const Icon(Icons.logout_rounded),
           ),
           Padding(

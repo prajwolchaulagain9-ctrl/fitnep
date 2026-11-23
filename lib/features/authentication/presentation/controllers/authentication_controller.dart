@@ -5,14 +5,12 @@ import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/config/app_config.dart';
 import '../../data/authentication_service.dart';
 import '../../data/google_credential_provider.dart';
+import '../../data/registration_privacy.dart';
 import '../../data/session_preference_store.dart';
+import '../../domain/entities/privacy_policy.dart';
 
 final sessionPreferenceStoreProvider = Provider<SessionPreferenceStore>(
   (ref) => const SecureSessionPreferenceStore(),
-);
-
-final signupEmailOtpEnabledProvider = Provider<bool>(
-  (ref) => AppConfig.signupEmailOtpEnabled,
 );
 
 final googleCredentialProvider = Provider<GoogleCredentialProvider>(
@@ -37,6 +35,14 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
 final authenticationStateProvider = StreamProvider<User?>((ref) async* {
   final service = await ref.watch(authenticationBootstrapProvider.future);
   yield* service.authStateChanges();
+}, retry: (retryCount, error) => null);
+
+final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
+  final user = await ref.watch(authenticationStateProvider.future);
+  if (user == null) return false;
+  final token = await user.getIdTokenResult();
+  return token.claims?['mustChangePassword'] == true ||
+      token.claims?['must_change_password'] == true;
 }, retry: (retryCount, error) => null);
 
 class AuthenticationActionState {
@@ -90,6 +96,11 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     try {
       final service = await ref.read(authenticationBootstrapProvider.future);
       await service.signOut();
+      // Refresh from Firebase if the stream still has the old session.
+      if (ref.read(authenticationStateProvider).value != null) {
+        ref.invalidate(authenticationStateProvider);
+        await ref.read(authenticationStateProvider.future);
+      }
       state = const AuthenticationActionState();
       return true;
     } on AuthenticationFailure catch (error) {
@@ -107,10 +118,23 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     required String name,
     required String email,
     required String password,
+    required RegistrationConsent consent,
   }) async {
     return _run(() async {
+      final store = ref.read(pendingRegistrationConsentStoreProvider);
       final service = await ref.read(authenticationBootstrapProvider.future);
-      await service.signUp(name: name, email: email, password: password);
+      final uid = await service.signUp(
+        name: name,
+        email: email,
+        password: password,
+      );
+      if (uid != null) {
+        try {
+          await store.write(uid, consent);
+        } on Exception {
+          // The account exists. The privacy gate can recover after verification.
+        }
+      }
       return true;
     });
   }

@@ -96,6 +96,8 @@ void main() {
 
     for (final path in [
       AppRoutes.adminClients,
+      AppRoutes.adminStaffAccounts,
+      AppRoutes.adminStaffHistory,
       AppRoutes.adminPackages,
       AppRoutes.adminPackageHistory,
       AppRoutes.adminCreatePackage,

@@ -4,8 +4,12 @@ import express, {
   Response,
   RequestHandler,
 } from "express";
+import { randomUUID } from "node:crypto";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
+import { AuditUnavailableError, AuditWriter } from "./audit";
+import { PlatformSessionService, platformSessionHeader } from "./platform_sessions";
+import { createSessionRouter } from "./session_routes";
 import { roleCanPerformAction } from "./authorization_policy";
 import {
   AuthenticatedUser,
@@ -13,6 +17,7 @@ import {
   PackageChangeHistoryRecord,
   PackageHistoryValues,
   PurchaseRecord,
+  StaffAccount,
 } from "./domain";
 import { FirestorePackageService, PackageError } from "./package_membership_service";
 import {
@@ -70,13 +75,12 @@ import {
   PurchaseService,
 } from "./purchase_service";
 import {
-  InvalidStaffAccountCursorError,
+  StaffAccountError,
   StaffAccountRepository,
 } from "./staff_account_repository";
-import {
-  StaffAccountService,
-  StaffDirectoryUnavailableError,
-} from "./staff_account_service";
+import { StaffAccountService } from "./staff_account_service";
+
+const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
 export interface NotificationAppDependencies {
   authVerifier: AuthVerifier;
@@ -87,6 +91,13 @@ export interface NotificationAppDependencies {
   packageRepository?: PackageRepository;
   purchaseRepository?: PurchaseRepository;
   staffAccountRepository?: StaffAccountRepository;
+  platformSessions?: PlatformSessionService;
+  auditWriter?: AuditWriter;
+  manualVerificationEnabled?: boolean;
+  health?: {
+    buildSha: string;
+    checkReady(): Promise<void>;
+  };
 }
 
 export function createNotificationApp(
@@ -109,13 +120,30 @@ export function createNotificationApp(
   const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
 
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "32kb" }));
   app.use((_request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
+    response.locals.correlationId = randomUUID();
+    response.setHeader("X-Request-Id", response.locals.correlationId);
     next();
   });
+  if (dependencies.health) {
+    const health = dependencies.health;
+    app.get("/healthz", asyncRoute(async (_request, response) => {
+      try {
+        if (!/^[a-f0-9]{40}$/i.test(health.buildSha)) throw new Error("Unknown backend build.");
+        await health.checkReady();
+        response.json({ data: { ready: true, build_sha: health.buildSha, node_version: process.version } });
+      } catch {
+        response.status(503).json({ data: { ready: false, build_sha: health.buildSha, node_version: process.version } });
+      }
+    }));
+  }
+  app.use(express.json({ limit: "32kb" }));
+  if (dependencies.platformSessions) {
+    app.use("/sessions", createSessionRouter(dependencies.authVerifier, dependencies.platformSessions));
+  }
 
-  app.use(authenticate(dependencies.authVerifier));
+  app.use(authenticate(dependencies.authVerifier, dependencies.platformSessions));
   app.use(rejectRecipientOverrides);
 
   app.get(
@@ -124,18 +152,62 @@ export function createNotificationApp(
       const page = await staffAccounts.list(currentUser(response), request.query.cursor);
       response.json({
         data: {
-          accounts: page.accounts.map((account) => ({
-            uid: account.uid,
-            name: account.name,
-            email: account.email,
-            role: account.role,
-            is_active: account.isActive,
-          })),
+          accounts: page.accounts.map(toApiStaffAccount),
           next_cursor: page.nextCursor,
         },
       });
     }),
   );
+
+  app.post("/admin/staff-accounts", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.create(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(201).json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.get("/admin/staff-accounts/history", asyncRoute(async (request, response) => {
+    const page = await staffAccounts.listHistory(currentUser(response), request.query.cursor);
+    response.json({ data: {
+      entries: page.entries.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        actor_uid: entry.actorUid,
+        actor_name: entry.actorName,
+        before: entry.before && toApiStaffAccount(entry.before),
+        after: toApiStaffAccount(entry.after),
+        completed_at: entry.completedAt,
+      })),
+      next_cursor: page.nextCursor,
+    } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid/active", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.setActive(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.patch("/admin/staff-accounts/:uid", asyncRoute(async (request, response) => {
+    const account = await staffAccounts.update(
+      currentUser(response),
+      request.params.uid ?? "",
+      isObject(request.body) ? request.body : {},
+    );
+    response.json({ data: { account: toApiStaffAccount(account) } });
+  }));
+
+  app.post(temporaryPasswordPath, asyncRoute(async (request, response) => {
+    await staffAccounts.changeTemporaryPassword(
+      currentUser(response),
+      isObject(request.body) ? request.body : {},
+    );
+    response.status(204).end();
+  }));
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -155,7 +227,7 @@ export function createNotificationApp(
     admin(response);
     response.json({ data: { memberships: await packages().pendingMemberships() } });
   }));
-  app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
+  if (dependencies.manualVerificationEnabled !== false) app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
     const actor = admin(response);
     const body = isObject(request.body) ? request.body : {};
     if (Object.keys(body).some(key => key !== "reference") || typeof body.reference !== "string") {
@@ -413,6 +485,22 @@ export function createNotificationApp(
     response.status(404).json({ error: "Endpoint not found." });
   });
 
+  app.use((error: unknown, request: Request, response: Response, next: NextFunction) => {
+    const denied = error instanceof PrivacyPreferencesAuthorizationError ||
+      error instanceof PrivateRecordAuthorizationError || error instanceof PackageAuthorizationError ||
+      error instanceof PurchaseAuthorizationError ||
+      (error instanceof AuthenticationError && (error.statusCode === 401 || error.statusCode === 403)) ||
+      (error instanceof PackageError && error.statusCode === 403);
+    if (!denied || !dependencies.auditWriter || !response.locals.user) { next(error); return; }
+    // Route templates contain no query values, tokens, proof bytes or medical answers.
+    const route = typeof request.route?.path === "string" ? request.route.path : "protected-api";
+    void dependencies.auditWriter.append({
+      actor: currentUser(response), action: "access.denied",
+      targetType: "api", targetId: request.method + " " + route,
+      outcome: "denied", correlationId: response.locals.correlationId,
+    }).then(() => next(error), () => next(new AuditUnavailableError()));
+  });
+
   app.use(
     (
       error: unknown,
@@ -420,16 +508,16 @@ export function createNotificationApp(
       response: Response,
       _next: NextFunction,
     ) => {
+      if (error instanceof AuditUnavailableError) {
+        response.status(503).json({ error: error.message });
+        return;
+      }
       if (error instanceof AuthenticationError) {
         response.status(error.statusCode).json({ error: error.message });
         return;
       }
-      if (error instanceof InvalidStaffAccountCursorError) {
-        response.status(400).json({ error: error.message });
-        return;
-      }
-      if (error instanceof StaffDirectoryUnavailableError) {
-        response.status(503).json({ error: error.message });
+      if (error instanceof StaffAccountError) {
+        response.status(error.status).json({ error: error.message });
         return;
       }
       if (error instanceof PackageError) {
@@ -525,7 +613,10 @@ export function createNotificationApp(
         return;
       }
 
-      console.error("Unhandled FitNEP API error", error);
+      console.error("Unhandled FitNEP API error", {
+        correlation_id: response.locals.correlationId,
+        error_type: error instanceof Error ? error.name : "UnknownError",
+      });
       response.status(500).json({ error: "Internal server error." });
     },
   );
@@ -593,14 +684,33 @@ function toApiPurchase(purchase: PurchaseRecord) {
   };
 }
 
-function authenticate(authVerifier: AuthVerifier): RequestHandler {
+function toApiStaffAccount(account: StaffAccount) {
+  return {
+    uid: account.uid,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    is_active: account.isActive,
+  };
+}
+
+function authenticate(authVerifier: AuthVerifier, sessions?: PlatformSessionService): RequestHandler {
   return asyncRoute(async (request, response, next) => {
     const authorization = request.header("authorization")?.trim();
     const match = authorization?.match(/^Bearer\s+(.+)$/i);
     if (match?.[1] === undefined || match[1].trim().length === 0) {
       throw new AuthenticationError("A Firebase ID token is required.");
     }
-    response.locals.user = await authVerifier.verifyIdToken(match[1].trim());
+    const user = await authVerifier.verifyIdToken(match[1].trim());
+    response.locals.user = user;
+    const changingTemporaryPassword = user.mustChangePassword === true &&
+      request.method === "POST" && request.path === temporaryPasswordPath;
+    if (user.mustChangePassword && !changingTemporaryPassword) {
+      throw new AuthenticationError("Change your temporary password before continuing.", 403);
+    }
+    if (sessions && !changingTemporaryPassword) {
+      await sessions.verify(user, request.header(platformSessionHeader));
+    }
     next();
   });
 }

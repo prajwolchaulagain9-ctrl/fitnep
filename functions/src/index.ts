@@ -21,6 +21,7 @@ if (getApps().length === 0) initializeApp();
 
 // Both entry points share the same Admin app and revocation-aware verifier.
 export const checkSession = require("../src/index.cjs").checkSession;
+export { registrationPrivacy } from "./registration_privacy";
 export { sendSignupEmailCode, verifySignupEmailCode } from "./signup_email_codes";
 
 const notificationRepository = new FirestoreNotificationRepository(
@@ -32,7 +33,7 @@ const packageRepository = new FirestorePackageRepository(getFirestore());
 const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
-  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth()),
+  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), getFirestore()),
   notificationRepository,
   privacyPreferencesRepository,
   privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository),

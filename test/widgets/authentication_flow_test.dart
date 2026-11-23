@@ -1,3 +1,5 @@
+import 'package:fitnep/features/authentication/data/registration_privacy.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -7,6 +9,7 @@ import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/authentication/presentation/pages/change_staff_password_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -14,18 +17,35 @@ import 'package:flutter_test/flutter_test.dart';
 import '../support/memory_session_preference_store.dart';
 
 class _User extends Fake implements User {
+  _User({this.mustChangePassword = false});
+
+  final bool mustChangePassword;
+
   @override
   bool get emailVerified => true;
   @override
   String get uid => 'client-1';
+
+  @override
+  Future<IdTokenResult> getIdTokenResult([bool forceRefresh = false]) async =>
+      _Token(mustChangePassword);
+}
+
+class _Token extends Fake implements IdTokenResult {
+  _Token(this.mustChangePassword);
+  final bool mustChangePassword;
+
+  @override
+  Map<String, dynamic> get claims => {'mustChangePassword': mustChangePassword};
 }
 
 class _Credential extends Fake implements UserCredential {}
 
 class _Auth extends Fake implements FirebaseAuth {
-  _Auth({this.user});
+  _Auth({this.user, this.emitSignOut = true});
 
   User? user;
+  final bool emitSignOut;
   FirebaseAuthException? signInError;
   String? email;
   String? password;
@@ -58,7 +78,7 @@ class _Auth extends Fake implements FirebaseAuth {
   Future<void> signOut() async {
     signOuts++;
     user = null;
-    changes.add(null);
+    if (emitSignOut) changes.add(null);
   }
 }
 
@@ -66,11 +86,15 @@ Future<ProviderContainer> _open(
   WidgetTester tester,
   _Auth auth,
   MemorySessionPreferenceStore preferences, {
+  Future<void> Function(String)? changePassword,
   FitNepRole? role = FitNepRole.client,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        registrationAcceptedProvider.overrideWith((ref, uid) async => true),
+        if (changePassword != null)
+          changeTemporaryPasswordProvider.overrideWithValue(changePassword),
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         sessionPreferenceStoreProvider.overrideWithValue(preferences),
@@ -94,6 +118,50 @@ Future<void> _close(WidgetTester tester, _Auth auth) async {
 }
 
 void main() {
+  testWidgets(
+    'temporary-password session must change password before opening a protected page',
+    (tester) async {
+      final auth = _Auth(user: _User(mustChangePassword: true));
+      String? submitted;
+      final container = await _open(
+        tester,
+        auth,
+        MemorySessionPreferenceStore(rememberSession: true),
+        changePassword: (password) async => submitted = password,
+      );
+      final router = container.read(appRouterProvider);
+      router.go(AppRoutes.adminPackages);
+      await tester.pumpAndSettle();
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        AppRoutes.changeStaffPasswordPath,
+      );
+      expect(find.text('Change your temporary password'), findsOneWidget);
+      await tester.enterText(
+        find.byType(TextFormField).first,
+        'NewPassword!23',
+      );
+      await tester.enterText(find.byType(TextFormField).last, 'Mismatch!34');
+      final button = find.widgetWithText(FilledButton, 'Change password');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('Passwords must match.'), findsOneWidget);
+      expect(submitted, isNull);
+      await tester.enterText(find.byType(TextFormField).last, 'NewPassword!23');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(submitted, 'NewPassword!23');
+      expect(auth.signOuts, 1);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        AppRoutes.welcomePath,
+      );
+      await _close(tester, auth);
+    },
+  );
+
   testWidgets('signed-out users are redirected away from protected routes', (
     tester,
   ) async {
@@ -108,12 +176,15 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('Firebase login reaches package selection and logs out', (
+  testWidgets('logout returns to welcome even without a sign-out event', (
     tester,
   ) async {
-    final auth = _Auth();
+    final auth = _Auth(emitSignOut: false);
     final preferences = MemorySessionPreferenceStore();
-    await _open(tester, auth, preferences);
+    final container = await _open(tester, auth, preferences);
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.welcome);
+    await tester.pumpAndSettle();
 
     await tester.tap(find.byKey(const Key('welcome_login_button')));
     await tester.pumpAndSettle();
@@ -141,7 +212,11 @@ void main() {
 
     expect(auth.signOuts, 1);
     expect(preferences.rememberSession, isNull);
-    expect(find.text('Welcome back'), findsOneWidget);
+    expect(
+      router.routeInformationProvider.value.uri.path,
+      AppRoutes.welcomePath,
+    );
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -172,6 +247,31 @@ void main() {
           ?.text,
       isEmpty,
     );
+    await _close(tester, auth);
+  });
+
+  testWidgets('logout replaces a signed-in page opened above a public route', (
+    tester,
+  ) async {
+    final auth = _Auth(user: _User());
+    final container = await _open(
+      tester,
+      auth,
+      MemorySessionPreferenceStore(rememberSession: true),
+    );
+    final router = container.read(appRouterProvider);
+    router.goNamed(AppRoutes.about);
+    await tester.pumpAndSettle();
+    unawaited(router.pushNamed(AppRoutes.clientPackagesName));
+    await tester.pumpAndSettle();
+    expect(router.canPop(), isTrue);
+
+    final logout = find.byTooltip('Sign out');
+    await tester.ensureVisible(logout);
+    await tester.tap(logout);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
+    expect(router.canPop(), isFalse);
     await _close(tester, auth);
   });
 
@@ -228,7 +328,7 @@ void main() {
       MemorySessionPreferenceStore(rememberSession: false),
     );
 
-    expect(find.text('App Under Development'), findsNothing);
+    expect(find.text('Choose a Package'), findsNothing);
     expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
     expect(auth.signOuts, 1);
     await _close(tester, auth);

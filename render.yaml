@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: fitnep-api
+    runtime: node
+    plan: free
+    region: singapore
+    branch: development
+    rootDir: functions
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_VERSION
+        value: '22'
+      - key: NODE_ENV
+        value: production
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: SESSION_IDLE_TIMEOUT_SECONDS
+        value: '900'

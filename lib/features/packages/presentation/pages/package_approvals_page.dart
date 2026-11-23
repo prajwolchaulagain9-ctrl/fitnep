@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../core/config/app_config.dart';
 import '../../../../shared/widgets/app_page.dart';
 import '../../data/package_repository.dart';
@@ -140,6 +142,11 @@ class _PackageApprovalsPageState extends ConsumerState<PackageApprovalsPage> {
                 : 'Manually verify payments to activate a client’s package.',
           ),
           const SizedBox(height: 20),
+          OutlinedButton(
+            onPressed: () => context.push(AppRoutes.adminStaffAccounts),
+            child: const Text('Manage staff accounts'),
+          ),
+          const SizedBox(height: 16),
           if (_error != null)
             Text(
               _error!,

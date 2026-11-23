@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
-import '../../../authentication/presentation/controllers/authentication_controller.dart';
+import '../../../authentication/presentation/sign_out_to_welcome.dart';
 import '../../../admin/domain/entities/package_entity.dart';
 import '../../../admin/domain/repositories/package_repository.dart';
 import '../../../admin/presentation/controllers/package_management_controller.dart';
@@ -94,6 +94,11 @@ class PackageSelectionPage extends ConsumerWidget {
         title: const Text('Choose a Package'),
         actions: [
           IconButton(
+            tooltip: 'Privacy preferences',
+            onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
+            icon: const Icon(Icons.privacy_tip_outlined),
+          ),
+          IconButton(
             tooltip: 'Refresh',
             onPressed: state.isLoading || membership.isPurchasing
                 ? null
@@ -102,8 +107,7 @@ class PackageSelectionPage extends ConsumerWidget {
           ),
           IconButton(
             tooltip: 'Sign out',
-            onPressed: () =>
-                ref.read(authenticationControllerProvider.notifier).signOut(),
+            onPressed: () => signOutToWelcome(context, ref),
             icon: const Icon(Icons.logout_rounded),
           ),
         ],

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../shared/widgets/password_form_field.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../shared/widgets/app_page.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
@@ -131,6 +132,8 @@ class RecoveryMessage extends StatelessWidget {
     ),
   );
 }
+
+typedef RecoveryPasswordField = PasswordFormField;
 
 class ForgotPasswordPage extends ConsumerStatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -428,7 +431,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                RecoveryPasswordField(
+                PasswordFormField(
                   controller: _password,
                   label: 'New password',
                   enabled: !_busy,
@@ -437,7 +440,7 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
                       : null,
                 ),
                 const SizedBox(height: 16),
-                RecoveryPasswordField(
+                PasswordFormField(
                   controller: _confirmation,
                   label: 'Confirm new password',
                   enabled: !_busy,
@@ -456,57 +459,5 @@ class _ResetPasswordPageState extends ConsumerState<ResetPasswordPage> {
           ),
       ],
     ),
-  );
-}
-
-class RecoveryPasswordField extends StatefulWidget {
-  const RecoveryPasswordField({
-    super.key,
-    required this.controller,
-    required this.label,
-    required this.validator,
-    required this.enabled,
-    this.onSubmitted,
-  });
-  final TextEditingController controller;
-  final String label;
-  final FormFieldValidator<String> validator;
-  final bool enabled;
-  final ValueChanged<String>? onSubmitted;
-
-  @override
-  State<RecoveryPasswordField> createState() => _RecoveryPasswordFieldState();
-}
-
-class _RecoveryPasswordFieldState extends State<RecoveryPasswordField> {
-  bool _hidden = true;
-
-  @override
-  Widget build(BuildContext context) => TextFormField(
-    controller: widget.controller,
-    readOnly: !widget.enabled,
-    obscureText: _hidden,
-    autocorrect: false,
-    enableSuggestions: false,
-    textInputAction: widget.onSubmitted == null
-        ? TextInputAction.next
-        : TextInputAction.done,
-    decoration: InputDecoration(
-      labelText: widget.label,
-      prefixIcon: const Icon(Icons.lock_outline),
-      suffixIcon: IconButton(
-        tooltip: _hidden
-            ? 'Show ${widget.label.toLowerCase()}'
-            : 'Hide ${widget.label.toLowerCase()}',
-        onPressed: widget.enabled
-            ? () => setState(() => _hidden = !_hidden)
-            : null,
-        icon: Icon(
-          _hidden ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-        ),
-      ),
-    ),
-    validator: widget.validator,
-    onFieldSubmitted: widget.onSubmitted,
   );
 }
