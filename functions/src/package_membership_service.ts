@@ -28,6 +28,14 @@ export interface MembershipRecord {
   payment_id?: string;
 }
 
+export type EffectiveMembershipStatus =
+  | "active"
+  | "pending"
+  | "scheduled"
+  | "expired"
+  | "inactive"
+  | "none";
+
 // Every selection/activation touches the same client guard. Firestore retries
 // conflicting transactions, including concurrent activations of different IDs.
 export class FirestorePackageService {
@@ -42,6 +50,37 @@ export class FirestorePackageService {
     const snapshot = await this.db.collection("package_memberships").where("client_id", "==", uid).get();
     return snapshot.docs.map(doc => this.toApi(doc.data() as MembershipRecord))
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  /** Effective status used by assignment, including retained legacy purchases. */
+  async assignmentStatus(uid: string): Promise<EffectiveMembershipStatus> {
+    const memberships = await this.memberships(uid);
+    if (memberships.some(member => member.status === "active")) return "active";
+
+    const historical = await this.db.collection("customer_purchases").doc(uid)
+      .collection("purchases").get();
+    let historicalStatus: EffectiveMembershipStatus = "none";
+    for (const document of historical.docs) {
+      if (document.get("is_active") === false) {
+        if (historicalStatus === "none") historicalStatus = "inactive";
+        continue;
+      }
+      const startsAt = document.get("purchased_at");
+      const endsAt = document.get("expires_at");
+      if (!(startsAt instanceof Timestamp) || !(endsAt instanceof Timestamp) ||
+          endsAt.toMillis() <= startsAt.toMillis()) {
+        throw new PackageError(503, "An existing membership needs attention before assignment.");
+      }
+      const now = this.now().getTime();
+      if (startsAt.toMillis() <= now && now < endsAt.toMillis()) return "active";
+      if (now < startsAt.toMillis()) historicalStatus = "scheduled";
+      else if (historicalStatus === "none") historicalStatus = "expired";
+    }
+
+    if (memberships.some(member => member.status === "scheduled")) return "scheduled";
+    if (memberships.some(member => member.status === "pending")) return "pending";
+    if (memberships.length > 0) return "expired";
+    return historicalStatus;
   }
 
   async pendingMemberships() {

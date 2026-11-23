@@ -16,6 +16,12 @@ import { createNotificationWorkflowTriggers } from "./workflow_triggers";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import { FirestorePackageService, PackageError } from "./package_membership_service";
+import {
+  ClientAssignmentService,
+  ExistingClientPackageStatusReader,
+  ExistingStaffDietitianDirectory,
+} from "./client_assignment_service";
+import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 
 if (getApps().length === 0) initializeApp();
 
@@ -31,15 +37,21 @@ const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(g
 const packageService = new FirestorePackageService(getFirestore());
 const packageRepository = new FirestorePackageRepository(getFirestore());
 const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
+const staffAccountRepository = new FirebaseStaffAccountRepository(getAuth(), getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
-  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), getFirestore()),
+  staffAccountRepository,
   notificationRepository,
   privacyPreferencesRepository,
   privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository),
   packageService,
   packageRepository,
   purchaseRepository,
+  clientAssignmentService: new ClientAssignmentService(
+    new FirestoreClientAssignmentRepository(getFirestore()),
+    new ExistingClientPackageStatusReader(packageService),
+    new ExistingStaffDietitianDirectory(staffAccountRepository),
+  ),
 });
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(notificationRepository),

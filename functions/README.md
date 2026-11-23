@@ -72,8 +72,8 @@ server derives the client ID from the verified token. Preferences are stored in
 record read handlers must call `NutritionRecordAccessService.assertCanRead`
 before returning records. The gate permits the client to read their own records;
 a dietitian must be the current assignee and sharing must be enabled. Assignment
-storage is not implemented in this backend yet, so the gate fails closed until a
-trusted assignment reader is configured.
+storage is server-owned in `client_assignments/{clientId}`; direct mobile
+Firestore access remains denied.
 
 ## Notification APIs
 
@@ -110,6 +110,17 @@ UID and token-derived display name/email, action, changed timestamp, and the
 previous/new values that changed. Repeated idempotent creates and no-op edits or
 status requests do not create duplicate history. Direct mobile history reads
 and writes are denied; administrators read history through the API.
+
+## Client assignment APIs
+
+- `GET /admin/client-assignments/:clientId/eligibility` returns the client's
+  effective package status and whether assignment is allowed.
+- `PUT /admin/client-assignments/:clientId` accepts `{ "dietitian_id": "..." }`.
+
+Both endpoints require an administrator. The write re-checks the existing
+membership status and rejects pending, scheduled, expired, inactive, or missing
+packages; only a client with an active package can be assigned to an active
+dietitian.
 
 ## Customer purchase APIs
 
@@ -270,8 +281,8 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
 - Optional collection must go through this API. Read authorization uses the
   current trusted `client_assignments/{clientId}` document with
   `active: true` and `dietitian_id`. Clients keep owner access after
-  withdrawal. The tracker and assignment features can use this contract when
-  their screens are implemented.
+  withdrawal. The admin assignment screen writes this contract through the
+  protected API; future tracker screens can read it through server checks.
 
 ## US7 staff accounts
 

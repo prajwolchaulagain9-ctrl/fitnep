@@ -8,6 +8,12 @@ import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_prefe
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
 import { createNotificationApp } from "./http_app";
 import { FirestorePackageService } from "./package_membership_service";
+import {
+  ClientAssignmentService,
+  ExistingClientPackageStatusReader,
+  ExistingStaffDietitianDirectory,
+} from "./client_assignment_service";
+import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {
@@ -37,13 +43,20 @@ async function main() {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
   }
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
+  const packageService = new FirestorePackageService(db);
+  const staffAccountRepository = new FirebaseStaffAccountRepository(auth, db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
-    staffAccountRepository: new FirebaseStaffAccountRepository(auth, db),
+    staffAccountRepository,
     notificationRepository: new FirestoreNotificationRepository(db),
     privacyPreferencesRepository,
     privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),
-    packageService: new FirestorePackageService(db),
+    packageService,
+    clientAssignmentService: new ClientAssignmentService(
+      new FirestoreClientAssignmentRepository(db),
+      new ExistingClientPackageStatusReader(packageService),
+      new ExistingStaffDietitianDirectory(staffAccountRepository),
+    ),
   });
   const server = api.listen(3000, "127.0.0.1", () => {
     console.log("Free FitNEP demo ready at http://127.0.0.1:3000. No real money is processed.");

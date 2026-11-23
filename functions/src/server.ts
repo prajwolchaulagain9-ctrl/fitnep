@@ -14,6 +14,12 @@ import { HostedConfigurationError, readHostedConfig } from "./hosted_config";
 import { createNotificationApp } from "./http_app";
 import { FirestorePackageService } from "./package_membership_service";
 import { FirestorePlatformSessionService } from "./platform_sessions";
+import {
+  ClientAssignmentService,
+  ExistingClientPackageStatusReader,
+  ExistingStaffDietitianDirectory,
+} from "./client_assignment_service";
+import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 
 function start() {
   const config = readHostedConfig(process.env);
@@ -25,13 +31,21 @@ function start() {
   const firestore = getFirestore(firebase);
   const audit = new FirestoreAuditWriter(firestore);
   const privacy = new FirestorePrivacyPreferencesRepository(firestore);
+  const packageMemberships = new FirestorePackageService(firestore);
+  const purchases = new FirestorePurchaseRepository(firestore);
+  const staffAccounts = new FirebaseStaffAccountRepository(auth, firestore);
   const app = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(auth),
     notificationRepository: new FirestoreNotificationRepository(firestore),
-    staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore),
-    packageService: new FirestorePackageService(firestore),
+    staffAccountRepository: staffAccounts,
+    packageService: packageMemberships,
     packageRepository: new FirestorePackageRepository(firestore),
-    purchaseRepository: new FirestorePurchaseRepository(firestore),
+    purchaseRepository: purchases,
+    clientAssignmentService: new ClientAssignmentService(
+      new FirestoreClientAssignmentRepository(firestore),
+      new ExistingClientPackageStatusReader(packageMemberships),
+      new ExistingStaffDietitianDirectory(staffAccounts),
+    ),
     privacyPreferencesRepository: privacy,
     privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy),
     platformSessions: new FirestorePlatformSessionService(firestore, audit, config.idleTimeoutSeconds),

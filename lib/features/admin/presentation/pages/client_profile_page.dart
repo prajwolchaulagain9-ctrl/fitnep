@@ -10,6 +10,8 @@ import '../widgets/payment_history_tile.dart';
 import '../widgets/audit_log_tile.dart';
 import '../widgets/empty_state_widget.dart';
 import '../../domain/entities/client_entity.dart';
+import '../../domain/entities/staff_account_entity.dart';
+import '../../data/repositories/staff_account_repository.dart';
 import '../../../../app/theme/app_theme.dart';
 
 class ClientProfilePage extends ConsumerWidget {
@@ -90,6 +92,11 @@ class ClientProfilePage extends ConsumerWidget {
                       const SizedBox(height: 16),
                       _PackageSection(client: state.client!),
                       const SizedBox(height: 16),
+                      _AssignmentSection(
+                        state: state,
+                        onAssign: () => _handleAssign(context, ref, controller),
+                      ),
+                      const SizedBox(height: 16),
                       _PaymentSummarySection(client: state.client!),
                       const SizedBox(height: 16),
                       _PaymentHistorySection(client: state.client!),
@@ -113,6 +120,42 @@ class ClientProfilePage extends ConsumerWidget {
               ],
             ),
     );
+  }
+
+  Future<void> _handleAssign(
+    BuildContext context,
+    WidgetRef ref,
+    ClientProfileController controller,
+  ) async {
+    try {
+      final dietitians = await ref.read(activeDietitiansProvider.future);
+      if (!context.mounted) return;
+      if (dietitians.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No active dietitians are available.')),
+        );
+        return;
+      }
+      final selected = await showDialog<StaffAccount>(
+        context: context,
+        builder: (dialogContext) => SimpleDialog(
+          title: const Text('Assign dietitian'),
+          children: dietitians
+              .map(
+                (dietitian) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(dialogContext, dietitian),
+                  child: Text(dietitian.displayName),
+                ),
+              )
+              .toList(),
+        ),
+      );
+      if (selected != null) await controller.assignDietitian(selected);
+    } on StaffAccountFailure catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error.message)));
+    }
   }
 
   Widget _buildSliverAppBar(
@@ -390,6 +433,84 @@ class _PackageSection extends StatelessWidget {
           'Dietitian',
           client.assignedDietitianName,
           Icons.medical_services_outlined,
+        ),
+      ],
+    );
+  }
+}
+
+class _AssignmentSection extends StatelessWidget {
+  const _AssignmentSection({required this.state, required this.onAssign});
+
+  final ClientProfileState state;
+  final VoidCallback onAssign;
+
+  @override
+  Widget build(BuildContext context) {
+    final client = state.client!;
+    final blocked =
+        !state.isCheckingAssignmentEligibility && !state.canAssignClient;
+    return _SectionCard(
+      title: 'Dietitian Assignment',
+      icon: Icons.medical_services_outlined,
+      children: [
+        _InfoRow(
+          'Dietitian',
+          client.assignedDietitianName.isEmpty
+              ? 'Not assigned'
+              : client.assignedDietitianName,
+          Icons.person_outline_rounded,
+        ),
+        if (state.isCheckingAssignmentEligibility)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Text('Checking package status…'),
+              ],
+            ),
+          ),
+        if (blocked)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.statusInactiveContainer,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              state.assignmentMessage ??
+                  'Only clients with an active package can be assigned.',
+              style: const TextStyle(color: AppColors.statusInactive),
+            ),
+          ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: state.canAssignClient && !state.isAssigning
+                ? onAssign
+                : null,
+            icon: state.isAssigning
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.assignment_ind_outlined),
+            label: Text(
+              client.assignedDietitianId.isEmpty
+                  ? 'Assign Dietitian'
+                  : 'Change Dietitian',
+            ),
+          ),
         ),
       ],
     );

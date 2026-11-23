@@ -79,6 +79,10 @@ import {
   StaffAccountRepository,
 } from "./staff_account_repository";
 import { StaffAccountService } from "./staff_account_service";
+import {
+  ClientAssignmentError,
+  ClientAssignmentService,
+} from "./client_assignment_service";
 
 const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
@@ -94,6 +98,7 @@ export interface NotificationAppDependencies {
   platformSessions?: PlatformSessionService;
   auditWriter?: AuditWriter;
   manualVerificationEnabled?: boolean;
+  clientAssignmentService?: ClientAssignmentService;
   health?: {
     buildSha: string;
     checkReady(): Promise<void>;
@@ -208,6 +213,51 @@ export function createNotificationApp(
     );
     response.status(204).end();
   }));
+
+  const clientAssignments = () => {
+    if (!dependencies.clientAssignmentService) {
+      throw new ClientAssignmentError(
+        503,
+        "Client assignment storage has not been configured yet.",
+      );
+    }
+    return dependencies.clientAssignmentService;
+  };
+  app.get(
+    "/admin/client-assignments/:clientId/eligibility",
+    asyncRoute(async (request, response) => {
+      const eligibility = await clientAssignments().eligibility(
+        currentUser(response),
+        request.params.clientId,
+      );
+      response.json({ data: { eligibility: {
+        client_id: eligibility.clientId,
+        package_status: eligibility.packageStatus,
+        can_assign: eligibility.canAssign,
+        message: eligibility.message,
+      } } });
+    }),
+  );
+  app.put(
+    "/admin/client-assignments/:clientId",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      if (Object.keys(body).some(key => key !== "dietitian_id")) {
+        throw new ClientAssignmentError(400, "Only dietitian_id may be supplied.");
+      }
+      const assignment = await clientAssignments().assign(
+        currentUser(response),
+        request.params.clientId,
+        body.dietitian_id,
+      );
+      response.json({ data: { assignment: {
+        client_id: assignment.clientId,
+        dietitian_id: assignment.dietitianId,
+        active: assignment.active,
+        assigned_at: assignment.assignedAt,
+      } } });
+    }),
+  );
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -518,6 +568,10 @@ export function createNotificationApp(
       }
       if (error instanceof StaffAccountError) {
         response.status(error.status).json({ error: error.message });
+        return;
+      }
+      if (error instanceof ClientAssignmentError) {
+        response.status(error.statusCode).json({ error: error.message });
         return;
       }
       if (error instanceof PackageError) {
