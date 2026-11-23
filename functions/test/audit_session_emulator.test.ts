@@ -14,7 +14,7 @@ import { FirestorePurchaseRepository } from "../src/firestore_purchase_repositor
 import { createNotificationApp } from "../src/http_app";
 import { FirestorePackageService } from "../src/package_membership_service";
 import { FirestorePlatformSessionService, platformSessionHeader } from "../src/platform_sessions";
-import { FirestorePrivacyAcceptanceStore } from "../src/privacy_policy_acceptance";
+import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
 
 const projectId = "demo-fitnep";
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -68,7 +68,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       await auth.setCustomUserClaims(uid!, { role, role_version: 1 });
       if (role === "client") {
         await new FirestorePrivacyAcceptanceStore(firestore).recordForClient(uid!, {
-          age: 21, privacy_policy_accepted: true, privacy_policy_version: "1",
+          age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
         });
       }
     }
@@ -197,7 +197,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     const acceptance = firestore.doc("privacy_acceptances/day1-client-a");
     await acceptance.delete();
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + token).send({}).expect(403);
-    await acceptance.set({ policy_version: "1", accepted_at: Timestamp.now(),
+    await acceptance.set({ policy_version: privacyPolicyVersion, accepted_at: Timestamp.now(),
       guardian_consent_confirmed: true });
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + token).send({}).expect(403);
     await acceptance.update({ guardian_consent_confirmed_at: Timestamp.now() });

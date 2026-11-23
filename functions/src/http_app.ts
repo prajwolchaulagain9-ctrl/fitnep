@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 
 import { AuthVerifier, AuthenticationError } from "./auth";
 import { AuditUnavailableError, AuditWriter } from "./audit";
+import { healthAuditTarget } from "./audited_health_reads";
 import { PlatformSessionService, platformSessionHeader } from "./platform_sessions";
 import { createSessionRouter } from "./session_routes";
 import { roleCanPerformAction } from "./authorization_policy";
@@ -281,37 +282,58 @@ export function createNotificationApp(
     return dependencies.privateRecordsStore;
   };
   const recordPath = "/clients/:clientId/records/:category";
+  const recordTarget = (request: Request, response: Response) => {
+    const target = {
+      clientId: parseRecordId(request.params.clientId),
+      category: parseRecordCategory(request.params.category),
+      recordId: request.params.recordId === undefined ? undefined : parseRecordId(request.params.recordId),
+    };
+    // Express restores route params before its error middleware runs.
+    response.locals.healthAuditTarget = healthAuditTarget(target);
+    return target;
+  };
   app.get(recordPath, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const after = request.query.after;
     if (after !== undefined && typeof after !== "string") {
       throw new PrivateRecordsError(400, "Invalid record cursor.");
     }
     const records = await privateRecords().list(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
+      target.clientId,
+      target.category,
       after === undefined ? undefined : parseRecordId(after),
+      response.locals.correlationId,
     );
     response.json({ data: { records, next_cursor: records.length === 50 ? records.at(-1)?.id : null } });
   }));
   app.post(recordPath, express.raw(photoUploadOptions), asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const record = await privateRecords().collect(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
+      target.clientId,
+      target.category,
       request.body,
     );
     response.status(201).json({ data: { record } });
   }));
   app.get(`${recordPath}/:recordId/photo`, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const photo = await privateRecords().readPhoto(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
-      parseRecordId(request.params.recordId),
+      target.clientId,
+      target.category,
+      target.recordId!,
+      response.locals.correlationId,
     );
     response.set("X-Content-Type-Options", "nosniff");
     response.type(photo.contentType).send(photo.bytes);
+  }));
+  app.get(`${recordPath}/:recordId`, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
+    const record = await privateRecords().read(currentUser(response),
+      target.clientId, target.category, target.recordId!, response.locals.correlationId);
+    response.json({ data: { record } });
   }));
 
   app.get(
@@ -494,9 +516,12 @@ export function createNotificationApp(
     if (!denied || !dependencies.auditWriter || !response.locals.user) { next(error); return; }
     // Route templates contain no query values, tokens, proof bytes or medical answers.
     const route = typeof request.route?.path === "string" ? request.route.path : "protected-api";
+    const target = error instanceof PrivateRecordAuthorizationError && response.locals.healthAuditTarget
+      ? response.locals.healthAuditTarget
+      : { targetType: "api" as const, targetId: request.method + " " + route };
     void dependencies.auditWriter.append({
       actor: currentUser(response), action: "access.denied",
-      targetType: "api", targetId: request.method + " " + route,
+      ...target,
       outcome: "denied", correlationId: response.locals.correlationId,
     }).then(() => next(error), () => next(new AuditUnavailableError()));
   });

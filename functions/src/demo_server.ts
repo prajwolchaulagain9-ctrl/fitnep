@@ -2,6 +2,7 @@ import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { FirebaseAuthVerifier } from "./auth";
+import { FirestoreAuditWriter } from "./audit";
 import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
@@ -37,12 +38,14 @@ async function main() {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
   }
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
+  const auditWriter = new FirestoreAuditWriter(db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
     staffAccountRepository: new FirebaseStaffAccountRepository(auth, db),
     notificationRepository: new FirestoreNotificationRepository(db),
     privacyPreferencesRepository,
-    privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),
+    privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository, auditWriter),
+    auditWriter,
     packageService: new FirestorePackageService(db),
   });
   const server = api.listen(3000, "127.0.0.1", () => {

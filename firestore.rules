@@ -81,7 +81,7 @@ service cloud.firestore {
           request.auth.token.get('mustChangePassword', false) == false &&
           request.auth.token.get('role', 'client') == 'client' &&
           exists(acceptance) &&
-          get(acceptance).data.policy_version == '1' &&
+          get(acceptance).data.policy_version == '2' &&
           get(acceptance).data.accepted_at is timestamp;
       }
 
@@ -115,7 +115,7 @@ service cloud.firestore {
           'policy_version', 'accepted_at', 'age_at_acceptance',
           'guardian_consent_confirmed', 'guardian_consent_confirmed_at'
         ]) &&
-          consent.policy_version == '1' &&
+          consent.policy_version == '2' &&
           consent.accepted_at == request.time &&
           consent.age_at_acceptance is int &&
           consent.age_at_acceptance >= 1 && consent.age_at_acceptance <= 120 &&
@@ -130,7 +130,7 @@ service cloud.firestore {
       allow get: if ownsAcceptance();
       allow create: if ownsAcceptance() && validAcceptance();
       allow update: if ownsAcceptance() && validAcceptance() &&
-        (resource.data.get('policy_version', '') != '1' ||
+        (resource.data.get('policy_version', '') != '2' ||
          !(resource.data.get('accepted_at', null) is timestamp));
     }
     match /client_assignments/{clientId} {

@@ -1,7 +1,14 @@
-import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
+import { FieldValue, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { normalizeUserRole } from "./domain";
 
-export const privacyPolicyVersion = "1";
+// Version 2 makes the explicitly assigned support team's access visible to clients.
+export const privacyPolicyVersion = "2";
+
+export function hasValidPrivacyAcceptance(data: Record<string, unknown> | undefined): boolean {
+  return data?.policy_version === privacyPolicyVersion && data.accepted_at instanceof Timestamp &&
+    typeof data.guardian_consent_confirmed === "boolean" &&
+    (!data.guardian_consent_confirmed || data.guardian_consent_confirmed_at instanceof Timestamp);
+}
 
 export function requiresClientPrivacyAcceptance(roleClaim: unknown): boolean {
   const role = normalizeUserRole(roleClaim);
@@ -45,9 +52,10 @@ export function validatePrivacyAcceptance(input: RegistrationPrivacyInput) {
 export class FirestorePrivacyAcceptanceStore {
   constructor(private readonly firestore: Firestore) {}
 
-  async hasCurrentAcceptance(uid: string): Promise<boolean> {
-    const record = await this.firestore.collection("privacy_acceptances").doc(uid).get();
-    return record.get("policy_version") === privacyPolicyVersion && record.get("accepted_at") instanceof Timestamp;
+  async hasCurrentAcceptance(uid: string, transaction?: Transaction): Promise<boolean> {
+    const reference = this.firestore.collection("privacy_acceptances").doc(uid);
+    const record = transaction ? await transaction.get(reference) : await reference.get();
+    return hasValidPrivacyAcceptance(record.data());
   }
 
   /** Use the UID from the registration backend before activating the account. */
@@ -56,8 +64,7 @@ export class FirestorePrivacyAcceptanceStore {
     const consent = this.firestore.collection("privacy_acceptances").doc(uid);
     await this.firestore.runTransaction(async (transaction) => {
       const current = await transaction.get(consent);
-      const alreadyAccepted = current.get("policy_version") === privacyPolicyVersion &&
-        current.get("accepted_at") instanceof Timestamp;
+      const alreadyAccepted = hasValidPrivacyAcceptance(current.data());
       if (alreadyAccepted) return;
 
       transaction.set(consent, {

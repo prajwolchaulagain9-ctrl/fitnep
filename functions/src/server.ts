@@ -33,7 +33,7 @@ function start() {
     packageRepository: new FirestorePackageRepository(firestore),
     purchaseRepository: new FirestorePurchaseRepository(firestore),
     privacyPreferencesRepository: privacy,
-    privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy),
+    privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy, audit),
     platformSessions: new FirestorePlatformSessionService(firestore, audit, config.idleTimeoutSeconds),
     auditWriter: audit,
     manualVerificationEnabled: false,

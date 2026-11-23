@@ -4,7 +4,7 @@ import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuditWriter } from "./audit";
 import { AuthenticationError } from "./auth";
 import { AuthenticatedUser } from "./domain";
-import { privacyPolicyVersion } from "./privacy_policy_acceptance";
+import { hasValidPrivacyAcceptance } from "./privacy_policy_acceptance";
 
 export const platformSessionHeader = "X-FitNEP-Session";
 export const defaultIdleTimeoutSeconds = 15 * 60;
@@ -134,10 +134,7 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
     }
     if (actor.role !== "client") return;
     const acceptance = (await transaction.get(this.firestore.collection("privacy_acceptances").doc(actor.uid))).data();
-    if (acceptance?.policy_version !== privacyPolicyVersion ||
-      !(acceptance.accepted_at instanceof Timestamp) ||
-      typeof acceptance.guardian_consent_confirmed !== "boolean" ||
-      (acceptance.guardian_consent_confirmed && !(acceptance.guardian_consent_confirmed_at instanceof Timestamp))) {
+    if (!hasValidPrivacyAcceptance(acceptance)) {
       throw new AuthenticationError("Complete the current privacy onboarding before continuing.", 403);
     }
   }

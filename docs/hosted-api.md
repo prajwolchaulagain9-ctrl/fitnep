@@ -113,9 +113,10 @@ remain Barsha's US 10/11 work.
 
 Standalone Node does not execute undeployed Firestore Functions triggers.
 Day 1 provides the transaction/outbox writer contract; the delivery/recovery
-worker and actual business-event producers are Day 3 integrations. Existing
-health reads retain their original owner/consenting-dietitian policy until the
-Day 2 assigned-team/audited-read change.
+worker and actual business-event producers are Day 3 integrations. The
+[Day 2 implementation](sprint2-day2.md) adds assigned-team/audited health reads
+and policy version 2. Its deployment and online acceptance are pending; the
+recorded live Day 1 build does not establish those new behaviors.
 
 Render Free sleeps after inactivity. Barsha must connect the planned bounded
 cold-start retry/loading behavior before phone acceptance. Confirm current free

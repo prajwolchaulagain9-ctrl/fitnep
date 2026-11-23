@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/privacy_policy.dart' show PrivacyPolicyText;
+
 import '../../../../shared/widgets/app_page.dart';
 import '../../domain/entities/privacy_policy.dart';
 
@@ -173,24 +175,12 @@ const _sections = [
         'guardian. We save the age you enter, the date and version of your policy acceptance, '
         'and record your guardian consent confirmation if you are under 18.',
   ),
-  (
-    'Who can see your records',
-    'You can view the records saved to your account. Your current assigned '
-        'dietitian can view only the categories you choose to share. Other '
-        'clients, unassigned dietitians, staff and admins do not have access '
-        'to those private records through the app.',
-  ),
+  ('Who can see your records', PrivacyPolicyText.recordAccess),
   (
     'Photos and device activity',
     'Meal photos, progress photos and device activity are optional. FitNEP '
         'does not collect them unless you enable the matching choice in '
         'Privacy preferences.',
   ),
-  (
-    'Changing your choices',
-    'You can change your choices in Privacy preferences. Turning off a '
-        'photo or activity setting stops new collection and removes your '
-        'dietitian’s access. Your saved records remain available to you. '
-        'Turning off nutrition sharing keeps your manually entered logs private.',
-  ),
+  ('Changing your choices', PrivacyPolicyText.withdrawal),
 ];

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_assets.dart';
+
 class GoogleSignInButton extends StatelessWidget {
   const GoogleSignInButton({
     super.key,
@@ -26,7 +28,7 @@ class GoogleSignInButton extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           )
         : Image.asset(
-            'assets/icons/google_g.png',
+            AppAssets.googleLogo,
             width: 20,
             height: 20,
             excludeFromSemantics: true,

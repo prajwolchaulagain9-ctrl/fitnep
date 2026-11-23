@@ -1,4 +1,5 @@
-const privacyPolicyVersion = '1';
+export '../../../../core/constants/privacy_policy.dart'
+    show privacyPolicyVersion;
 
 typedef RegistrationConsent = ({int age, bool guardianConfirmed});
 

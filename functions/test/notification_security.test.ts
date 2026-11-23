@@ -358,9 +358,11 @@ it("withdrawing optional consent blocks collection and dietitian access while pr
   let assignedDietitian = dietitian.uid;
   let shareActivityData = false;
   const access = new PrivateRecordAccessService({
-    async getCurrentDietitianId() { return assignedDietitian; },
+    async getCurrentTeam() { return { dietitianId: assignedDietitian, teamMemberIds: [] }; },
   }, {
     async getForClient() { return { ...defaultSharingChoices, shareActivityData, updatedAt: null }; },
+  }, {
+    async hasCurrentAcceptance() { return true; },
   });
   const choice = "shareActivityData";
   await assert.rejects(access.assertCanCollect(clientA, clientA.uid, choice), PrivateRecordAuthorizationError);

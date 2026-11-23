@@ -246,6 +246,8 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
 
 - After Firebase verifies their email, clients complete the privacy step before
   continuing. The default app writes its own `privacy_acceptances/{uid}` record.
+  The current policy is version 2 and covers the explicitly assigned FitNEP
+  team. Version 1 acceptance must be renewed before team access is granted.
   Firestore rules validate the entered age, server timestamp and guardian
   confirmation for minors. The optional `registrationPrivacy` callable writes
   the same age and consent fields. Returning clients with current acceptance
@@ -266,12 +268,16 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
   `next_cursor` as `after`. POST accepts a nutrition JSON record
   (`food_name`, `calories`), an activity JSON record (`steps`,
   `active_minutes`), or raw JPEG, PNG, or WebP photo bytes up to 512 KiB.
-  GET `/:recordId/photo` serves photo bytes under the same access check.
+  GET `/:recordId` returns one projected record. GET `/:recordId/photo` serves
+  photo bytes. All three reads share the current assignment/consent guard and
+  commit their metadata audit before returning content.
 - Optional collection must go through this API. Read authorization uses the
   current trusted `client_assignments/{clientId}` document with
-  `active: true` and `dietitian_id`. Clients keep owner access after
-  withdrawal. The tracker and assignment features can use this contract when
-  their screens are implemented.
+  `active: true`, `dietitian_id` and optional `team_member_ids` for explicitly
+  assigned staff/admin. The target client's current policy and category sharing
+  must both permit internal access. Clients keep owner access after withdrawal.
+  The [Day 2 handoff](../docs/sprint2-day2.md) describes the shared reader,
+  private-file and future resource contracts and remaining hosted proof.
 
 ## US7 staff accounts
 

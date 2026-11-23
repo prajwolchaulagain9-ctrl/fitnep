@@ -152,7 +152,9 @@ host's secret store. Provider and project details are needed before deployment.
 The default app saves the entered age, policy version and server timestamp in
 the signed-in user's Firestore consent record. Set up the default Firestore
 database and publish the project's Firestore rules before distributing the
-build. For an independently hosted privacy callable, set `SIGNUP_PRIVACY_URL`
+build. The current policy version is 2, covering the explicitly assigned team;
+version 1 clients must accept the updated policy. Deploy the matching rules,
+API and app together. For an independently hosted privacy callable, set `SIGNUP_PRIVACY_URL`
 to its HTTPS URL. The app and any email-code backend must use the same Firebase
 Auth project and Firestore database.
 
