@@ -7,6 +7,7 @@ import {
   AssignedClientDirectory,
   AssignedClientProfile,
   AssignmentPackageStatus,
+  ClientAssignmentAuditContext,
   ClientAssignmentRecord,
   ClientAssignmentRepository,
   ClientAssignmentService,
@@ -19,7 +20,11 @@ import { createNotificationApp } from "../src/http_app";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
 import { NotificationWorkflowService } from "../src/notification_service";
 
-const admin: AuthenticatedUser = { uid: "admin-1", role: "admin" };
+const admin: AuthenticatedUser = {
+  uid: "admin-1",
+  role: "admin",
+  displayName: "Admin One",
+};
 const client: AuthenticatedUser = { uid: "client-1", role: "client" };
 const dietitian: AuthenticatedUser = { uid: "dietitian-1", role: "dietitian" };
 const otherDietitian: AuthenticatedUser = { uid: "dietitian-2", role: "dietitian" };
@@ -69,6 +74,7 @@ describe("client assignment package validation", () => {
         .expect(409);
       assert.equal(response.body.error, inactivePackageAssignmentMessage);
       assert.equal(fixture.assignments.records.length, 0);
+      assert.equal(fixture.assignments.audits.length, 0);
     });
   }
 
@@ -88,6 +94,7 @@ describe("client assignment package validation", () => {
       .expect(409);
     assert.equal(response.body.error, inactivePackageAssignmentMessage);
     assert.equal(fixture.assignments.records.length, 0);
+    assert.equal(fixture.assignments.audits.length, 0);
   });
 
   it("returns current counts and updates them after reassignment", async () => {
@@ -128,11 +135,12 @@ describe("client assignment package validation", () => {
       .send({ dietitian_id: "dietitian-1" })
       .expect(403);
     assert.equal(fixture.assignments.records.length, 0);
+    assert.equal(fixture.assignments.audits.length, 0);
   });
 });
 
 describe("dietitian client visibility and notification (acceptance criterion)", () => {
-  it("preserves history and switches access when a client is reassigned", async () => {
+  it("audits assignment and reassignment once while switching access", async () => {
     const fixture = createFixture("active");
 
     await request(fixture.app)
@@ -148,6 +156,15 @@ describe("dietitian client visibility and notification (acceptance criterion)", 
       .get("/dietitian/assigned-clients/client-1")
       .set(bearer("dietitian-2"))
       .expect(403);
+    assert.deepEqual(fixture.assignments.audits, [{
+      action: "client.assigned",
+      clientId: "client-1",
+      previousDietitianId: null,
+      dietitianId: "dietitian-1",
+      actorId: "admin-1",
+      actorName: "Admin One",
+      occurredAt: "2026-11-23T12:00:00.000Z",
+    }]);
 
     const reassigned = await request(fixture.app)
       .put("/admin/client-assignments/client-1")
@@ -161,6 +178,26 @@ describe("dietitian client visibility and notification (acceptance criterion)", 
       fixture.assignments.history.map(item => [item.version, item.dietitianId]),
       [[1, "dietitian-1"], [2, "dietitian-2"]],
     );
+    assert.deepEqual(fixture.assignments.audits, [
+      {
+        action: "client.assigned",
+        clientId: "client-1",
+        previousDietitianId: null,
+        dietitianId: "dietitian-1",
+        actorId: "admin-1",
+        actorName: "Admin One",
+        occurredAt: "2026-11-23T12:00:00.000Z",
+      },
+      {
+        action: "client.reassigned",
+        clientId: "client-1",
+        previousDietitianId: "dietitian-1",
+        dietitianId: "dietitian-2",
+        actorId: "admin-1",
+        actorName: "Admin One",
+        occurredAt: "2026-11-23T12:00:00.000Z",
+      },
+    ]);
     await request(fixture.app)
       .put("/admin/client-assignments/client-1")
       .set(bearer("admin"))
@@ -170,6 +207,7 @@ describe("dietitian client visibility and notification (acceptance criterion)", 
       fixture.assignments.history.map(item => [item.version, item.dietitianId]),
       [[1, "dietitian-1"], [2, "dietitian-2"]],
     );
+    assert.equal(fixture.assignments.audits.length, 2);
     await request(fixture.app)
       .get("/dietitian/assigned-clients/client-1")
       .set(bearer("dietitian-1"))
@@ -289,8 +327,20 @@ function createFixture(status: AssignmentPackageStatus) {
 class InMemoryAssignmentRepository implements ClientAssignmentRepository {
   readonly records: ClientAssignmentRecord[] = [];
   readonly history: ClientAssignmentRecord[] = [];
+  readonly audits: Array<{
+    action: "client.assigned" | "client.reassigned";
+    clientId: string;
+    previousDietitianId: string | null;
+    dietitianId: string;
+    actorId: string;
+    actorName: string;
+    occurredAt: string;
+  }> = [];
 
-  async assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord> {
+  async assign(
+    record: ClientAssignmentRecord,
+    audit: ClientAssignmentAuditContext,
+  ): Promise<ClientAssignmentRecord> {
     const index = this.records.findIndex(item => item.clientId === record.clientId);
     const previous = index === -1 ? null : this.records[index] ?? null;
     const sameDietitian = previous?.dietitianId === record.dietitianId;
@@ -308,6 +358,17 @@ class InMemoryAssignmentRepository implements ClientAssignmentRepository {
       item.clientId === stored.clientId && item.version === stored.version
     )) {
       this.history.push(stored);
+    }
+    if (!sameDietitian) {
+      this.audits.push({
+        action: previous === null ? "client.assigned" : "client.reassigned",
+        clientId: stored.clientId,
+        previousDietitianId: previous?.dietitianId ?? null,
+        dietitianId: stored.dietitianId,
+        actorId: audit.actor.uid,
+        actorName: audit.actor.displayName ?? audit.actor.uid,
+        occurredAt: stored.assignedAt,
+      });
     }
     return stored;
   }

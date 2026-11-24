@@ -122,6 +122,9 @@ and writes are denied; administrators read history through the API.
   document and append immutable versioned records to
   `client_assignment_history`. Authorization reads only the current assignment,
   so the previous dietitian loses access as soon as the transaction commits.
+  The same transaction appends one immutable `audit_events` record with action
+  `client.assigned` or `client.reassigned`, the client, previous and new
+  dietitians, trusted admin identity, assignment version, and server timestamp.
 
 Both endpoints require an administrator. The write re-checks the existing
 membership status and rejects pending, scheduled, expired, inactive, or missing

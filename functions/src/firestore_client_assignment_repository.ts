@@ -5,7 +5,9 @@ import {
   Firestore,
   Transaction,
 } from "firebase-admin/firestore";
+import { AuditWriter } from "./audit";
 import {
+  ClientAssignmentAuditContext,
   ClientAssignmentError,
   ClientAssignmentRecord,
   ClientAssignmentRepository,
@@ -13,9 +15,15 @@ import {
 
 export class FirestoreClientAssignmentRepository
 implements ClientAssignmentRepository {
-  constructor(private readonly firestore: Firestore) {}
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly audit: AuditWriter,
+  ) {}
 
-  async assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord> {
+  async assign(
+    record: ClientAssignmentRecord,
+    auditContext: ClientAssignmentAuditContext,
+  ): Promise<ClientAssignmentRecord> {
     const reference = this.firestore.collection("client_assignments")
       .doc(record.clientId);
     return this.firestore.runTransaction(async transaction => {
@@ -108,6 +116,20 @@ implements ClientAssignmentRepository {
         );
       }
       transaction.set(reference, currentAssignmentValues(assigned));
+      this.audit.appendInTransaction(transaction, {
+        actor: auditContext.actor,
+        action: snapshot.exists ? "client.reassigned" : "client.assigned",
+        targetType: "assignment",
+        targetId: assigned.clientId,
+        outcome: "succeeded",
+        correlationId: auditContext.correlationId,
+        clientId: assigned.clientId,
+        dietitianId: assigned.dietitianId,
+        ...(snapshot.exists
+          ? { previousDietitianId: snapshot.get("dietitian_id") as string }
+          : {}),
+        version: assigned.version,
+      });
       return assigned;
     });
   }

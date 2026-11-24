@@ -543,14 +543,17 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.deepEqual(own.body.data.records.map((record: { details: unknown }) => record.details), [sample]);
   });
 
-  it("reassigns a client, preserves both assignment versions, and switches backend access", async () => {
+  it("persists assignment and reassignment audits without duplicates", async () => {
     await createAccount(
       auth,
       "dietitian-2",
       "dietitian-2@fitnep.test",
       "dietitian",
     );
-    const assignmentRepository = new FirestoreClientAssignmentRepository(firestore);
+    const assignmentRepository = new FirestoreClientAssignmentRepository(
+      firestore,
+      new FirestoreAuditWriter(firestore),
+    );
     const assignmentApi = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(),
       notificationRepository: repository,
@@ -587,6 +590,11 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     });
     assert.equal((await firestore.collection("client_assignment_history")
       .where("client_id", "==", "client-a").get()).empty, true);
+    await request(assignmentApi)
+      .put("/admin/client-assignments/client-b")
+      .set(bearer(adminToken))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
     await request(assignmentApi).get(clientPath)
       .set(bearer(dietitianAToken)).expect(200);
     await request(assignmentApi).get(clientPath)
@@ -621,6 +629,35 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
         .sort((left, right) => Number(left[0]) - Number(right[0])),
       [[1, "dietitian-1"], [2, "dietitian-2"]],
     );
+    const assignmentAudits = await firestore.collection("audit_events")
+      .where("target_type", "==", "assignment").get();
+    assert.equal(assignmentAudits.size, 2);
+    const assignmentAudit = assignmentAudits.docs
+      .map(document => document.data())
+      .find(event => event.action === "client.assigned");
+    assert(assignmentAudit);
+    assert.equal(assignmentAudit.client_id, "client-b");
+    assert.equal(assignmentAudit.dietitian_id, "dietitian-1");
+    assert.equal("previous_dietitian_id" in assignmentAudit, false);
+    assert.equal(assignmentAudit.actor_id, "admin-1");
+    assert.equal(assignmentAudit.actor_name, "FitNep CEO");
+    assert.equal(assignmentAudit.target_id, "client-b");
+    assert.equal(assignmentAudit.outcome, "succeeded");
+    assert.equal(assignmentAudit.version, 1);
+    assert(assignmentAudit.occurred_at instanceof Timestamp);
+    const reassignmentAudit = assignmentAudits.docs
+      .map(document => document.data())
+      .find(event => event.action === "client.reassigned");
+    assert(reassignmentAudit);
+    assert.equal(reassignmentAudit.client_id, "client-a");
+    assert.equal(reassignmentAudit.previous_dietitian_id, "dietitian-1");
+    assert.equal(reassignmentAudit.dietitian_id, "dietitian-2");
+    assert.equal(reassignmentAudit.actor_id, "admin-1");
+    assert.equal(reassignmentAudit.actor_name, "FitNep CEO");
+    assert.equal(reassignmentAudit.target_id, "client-a");
+    assert.equal(reassignmentAudit.outcome, "succeeded");
+    assert.equal(reassignmentAudit.version, 2);
+    assert(reassignmentAudit.occurred_at instanceof Timestamp);
 
     const historyUrl = `http://${firestoreEmulatorHost}/v1/projects/${projectId}` +
       "/databases/(default)/documents/client_assignment_history/client-a_v1";

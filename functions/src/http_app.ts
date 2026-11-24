@@ -258,6 +258,7 @@ export function createNotificationApp(
         currentUser(response),
         request.params.clientId,
         body.dietitian_id,
+        response.locals.correlationId,
       );
       response.json({ data: { assignment: {
         client_id: assignment.clientId,

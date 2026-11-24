@@ -23,6 +23,7 @@ import {
   FirebaseClientDirectory,
 } from "./client_assignment_service";
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
+import { FirestoreAuditWriter } from "./audit";
 
 if (getApps().length === 0) initializeApp();
 
@@ -39,6 +40,7 @@ const packageService = new FirestorePackageService(getFirestore());
 const packageRepository = new FirestorePackageRepository(getFirestore());
 const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
 const staffAccountRepository = new FirebaseStaffAccountRepository(getAuth(), getFirestore());
+const auditWriter = new FirestoreAuditWriter(getFirestore());
 const notificationApp = createNotificationApp({
   authVerifier: new FirebaseAuthVerifier(),
   staffAccountRepository,
@@ -49,7 +51,7 @@ const notificationApp = createNotificationApp({
   packageRepository,
   purchaseRepository,
   clientAssignmentService: new ClientAssignmentService(
-    new FirestoreClientAssignmentRepository(getFirestore()),
+    new FirestoreClientAssignmentRepository(getFirestore(), auditWriter),
     new ExistingClientPackageStatusReader(packageService),
     new ExistingStaffDietitianDirectory(staffAccountRepository),
     new NotificationWorkflowService(notificationRepository),

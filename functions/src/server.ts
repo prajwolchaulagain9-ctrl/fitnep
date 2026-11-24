@@ -44,7 +44,7 @@ function start() {
     packageRepository: new FirestorePackageRepository(firestore),
     purchaseRepository: purchases,
     clientAssignmentService: new ClientAssignmentService(
-      new FirestoreClientAssignmentRepository(firestore),
+      new FirestoreClientAssignmentRepository(firestore, audit),
       new ExistingClientPackageStatusReader(packageMemberships),
       new ExistingStaffDietitianDirectory(staffAccounts),
       new NotificationWorkflowService(new FirestoreNotificationRepository(firestore)),

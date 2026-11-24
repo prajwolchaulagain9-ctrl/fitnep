@@ -24,8 +24,16 @@ export interface ClientAssignmentRecord {
   version: number;
 }
 
+export interface ClientAssignmentAuditContext {
+  actor: AuthenticatedUser;
+  correlationId: string;
+}
+
 export interface ClientAssignmentRepository {
-  assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord>;
+  assign(
+    record: ClientAssignmentRecord,
+    audit: ClientAssignmentAuditContext,
+  ): Promise<ClientAssignmentRecord>;
   currentClientCounts(): Promise<Record<string, number>>;
   getCurrent(clientId: string): Promise<ClientAssignmentRecord | null>;
 }
@@ -85,6 +93,7 @@ export class ClientAssignmentService {
     actor: AuthenticatedUser,
     clientIdInput: unknown,
     dietitianIdInput: unknown,
+    correlationId: string,
   ): Promise<ClientAssignmentRecord> {
     const eligibility = await this.eligibility(actor, clientIdInput);
     if (!eligibility.canAssign) {
@@ -97,14 +106,17 @@ export class ClientAssignmentService {
     const clientProfile = this.clients !== null
       ? await this.clients.getClient(eligibility.clientId)
       : null;
-    const assignment = await this.repository.assign({
-      clientId: eligibility.clientId,
-      dietitianId,
-      active: true,
-      assignedAt: this.now().toISOString(),
-      assignedById: actor.uid,
-      version: 0,
-    });
+    const assignment = await this.repository.assign(
+      {
+        clientId: eligibility.clientId,
+        dietitianId,
+        active: true,
+        assignedAt: this.now().toISOString(),
+        assignedById: actor.uid,
+        version: 0,
+      },
+      { actor, correlationId },
+    );
     if (this.notifications !== null) {
       await this.notifications.clientAssigned(actor, {
         clientId: assignment.clientId,

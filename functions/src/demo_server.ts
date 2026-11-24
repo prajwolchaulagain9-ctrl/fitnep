@@ -15,6 +15,7 @@ import {
   FirebaseClientDirectory,
 } from "./client_assignment_service";
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
+import { FirestoreAuditWriter } from "./audit";
 import { NotificationWorkflowService } from "./notification_service";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
@@ -47,6 +48,7 @@ async function main() {
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const packageService = new FirestorePackageService(db);
   const staffAccountRepository = new FirebaseStaffAccountRepository(auth, db);
+  const auditWriter = new FirestoreAuditWriter(db);
   const api = createNotificationApp({
     authVerifier: new FirebaseAuthVerifier(),
     staffAccountRepository,
@@ -55,7 +57,7 @@ async function main() {
     privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository),
     packageService,
     clientAssignmentService: new ClientAssignmentService(
-      new FirestoreClientAssignmentRepository(db),
+      new FirestoreClientAssignmentRepository(db, auditWriter),
       new ExistingClientPackageStatusReader(packageService),
       new ExistingStaffDietitianDirectory(staffAccountRepository),
       new NotificationWorkflowService(new FirestoreNotificationRepository(db)),

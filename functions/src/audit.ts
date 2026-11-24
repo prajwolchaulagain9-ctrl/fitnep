@@ -34,6 +34,7 @@ export interface AuditEventInput {
   operationId?: string;
   clientId?: string;
   dietitianId?: string;
+  previousDietitianId?: string;
   status?: string;
   version?: number;
   recordIds?: readonly string[];
@@ -104,7 +105,8 @@ export class FirestoreAuditWriter implements AuditWriter {
 
 function auditData(input: AuditEventInput): Record<string, unknown> {
   const allowed = ["actor", "action", "targetType", "targetId", "outcome", "correlationId",
-    "operationId", "clientId", "dietitianId", "status", "version", "recordIds"];
+    "operationId", "clientId", "dietitianId", "previousDietitianId", "status",
+    "version", "recordIds"];
   if (Object.keys(input).some(key => !allowed.includes(key)) ||
     !auditActions.includes(input.action) || !isUserRole(input.actor?.role) ||
     !["succeeded", "denied", "failed"].includes(input.outcome) ||
@@ -126,6 +128,7 @@ function auditData(input: AuditEventInput): Record<string, unknown> {
   for (const [key, value] of [
     ["operation_id", input.operationId], ["client_id", input.clientId],
     ["dietitian_id", input.dietitianId],
+    ["previous_dietitian_id", input.previousDietitianId],
   ] as const) {
     if (value !== undefined) data[key] = boundedString(value, 128);
   }
