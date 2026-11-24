@@ -1,4 +1,4 @@
-enum NotificationType { dietPlan, message, task, payment, other }
+enum NotificationType { dietPlan, message, task, payment, assignment, other }
 
 class NotificationEntity {
   final String id;

@@ -1,3 +1,6 @@
+import '../support/empty_package_catalog.dart';
+import '../support/offline_hosted_session.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -73,6 +76,9 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        emptyPackageCatalogOverride,
+        emptyMembershipOverride,
+        offlineHostedSessionOverride,
         registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
         firebaseInitializationProvider.overrideWith((ref) async {}),
@@ -134,7 +140,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('Firebase login reaches the client dashboard and logs out', (
+  testWidgets('Firebase login reaches package selection and logs out', (
     tester,
   ) async {
     final auth = _Auth();
@@ -159,7 +165,7 @@ void main() {
     expect(auth.email, 'client@example.com');
     expect(auth.password, 'Password!12');
     expect(preferences.rememberSession, isTrue);
-    expect(find.text('Your FitNep updates'), findsOneWidget);
+    expect(find.text('Choose a package'), findsOneWidget);
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
@@ -211,7 +217,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('remembered sessions open the client dashboard on startup', (
+  testWidgets('remembered sessions open package selection on startup', (
     tester,
   ) async {
     final auth = _Auth(user: _User());
@@ -221,7 +227,7 @@ void main() {
       MemorySessionPreferenceStore(rememberSession: true),
     );
 
-    expect(find.text('Your FitNep updates'), findsOneWidget);
+    expect(find.text('Choose a package'), findsOneWidget);
     expect(auth.signOuts, 0);
     await _close(tester, auth);
   });

@@ -1,23 +1,15 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
-import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { createFitnepDependencies } from "./api_factory";
 import { onRequest } from "firebase-functions/v2/https";
 
-import { FirebaseAuthVerifier } from "./auth";
-import { FirestoreAuditWriter } from "./audit";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
-import { FirestorePackageRepository } from "./firestore_package_repository";
-import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
-import { FirestorePackageService, PackageError } from "./package_membership_service";
+import { PackageError } from "./package_membership_service";
 
 if (getApps().length === 0) initializeApp();
 
@@ -26,29 +18,11 @@ export const checkSession = require("../src/index.cjs").checkSession;
 export { registrationPrivacy } from "./registration_privacy";
 export { sendSignupEmailCode, verifySignupEmailCode } from "./signup_email_codes";
 
-const notificationRepository = new FirestoreNotificationRepository(
-  getFirestore(),
-);
-const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(getFirestore());
-const auditWriter = new FirestoreAuditWriter(getFirestore());
-const packageService = new FirestorePackageService(getFirestore());
-const packageRepository = new FirestorePackageRepository(getFirestore());
-const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
-const notificationApp = createNotificationApp({
-  accounts: new FirestoreAccountService(getFirestore(), getAuth()),
-  audit: new FirestoreAuditStore(getFirestore()),
-  authVerifier: new FirebaseAuthVerifier(new FirestoreAccountService(getFirestore(), getAuth())),
-  notificationRepository,
-  staffAccountRepository: new FirebaseStaffAccountRepository(getAuth(), getFirestore()),
-  privacyPreferencesRepository,
-  privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository, auditWriter),
-  auditWriter,
-  packageService,
-  packageRepository,
-  purchaseRepository,
-});
+const dependencies = createFitnepDependencies(getAuth(), getFirestore());
+const packageService = dependencies.packageService;
+const notificationApp = createNotificationApp(dependencies);
 const workflowTriggers = createNotificationWorkflowTriggers(
-  new NotificationWorkflowService(notificationRepository),
+  new NotificationWorkflowService(dependencies.notificationRepository),
 );
 
 export const api = onRequest(

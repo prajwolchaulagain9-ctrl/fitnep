@@ -1,8 +1,13 @@
 # Signup, Google sign-in and Brevo email verification
 
+For the current OTP delivery fixes, Google temporary-password behavior, and
+confirmed inbox delivery, see [signup email fixes](signup-email-fixes.md).
+
 `/signup` uses the same `RecoveryPage` layout and `FitNepWordmark` as Login and
-Forgot Password: white background, orange buttons, rounded fields and the shared
-footer. It collects name, email, age, password and confirmation. Firebase creates the
+Forgot Password: a compact brand header, orange buttons and rounded fields.
+It collects name, email, password, confirmation and explicit agreement to the
+linked Terms and Conditions and Privacy Policy. Age and goals are deferred to
+later onboarding; see [the current flow](auth-flow-fixes.md). Firebase creates the
 email/password account and owns its credentials. The display name is saved on
 the Firebase user; profile completion can recover a failed name update later.
 Firebase enforces its configured server password policy in addition to the
@@ -12,16 +17,17 @@ Both Login and Signup offer **Continue with Google**. Android/iOS use
 `google_sign_in` to obtain an ID token, then Firebase `signInWithCredential`.
 Cancellation leaves the form available. A Google account's first login also
 creates its Firebase account. Existing accounts retain their existing sign-in
-method; accounts are never linked automatically. The Google option follows
+method. Google-only accounts receive a temporary email-login password through
+the configured backend; an existing password is preserved. The Google option follows
 Login's Remember Me choice and remembers the session from Signup.
 
-Verified accounts without a `role` claim enter as clients. Existing signed
-admin and dietitian claims retain their access. Unsupported assigned roles are
-rejected; no setup callable or client-written role is needed. The API verifies
-the Firebase token with revocation checks and applies the same client default.
+Current Firestore account records determine roles. New accounts are provisioned
+as clients; existing canonical admin, staff and dietitian roles retain their
+access. The API verifies Firebase tokens with revocation checks and never trusts
+a role chosen by the client. Unsupported canonical roles are rejected.
 
-Clients enter `/client/home` after sign-in and use **Packages** to choose a
-plan. A successfully saved selection returns them home, where they can see its
+Clients enter `/client/packages` after sign-in to choose a plan. A successfully
+saved selection opens `/client/home`, where they can see its
 pending payment status. Home links to membership, packages, notifications and
 privacy preferences. Failed saves keep the client on package selection and
 reuse the request ID on retry.
@@ -183,7 +189,8 @@ The host is used exactly, with automatic Android emulator mapping disabled.
 Use `10.0.2.2` explicitly for an Android emulator. The override and cleartext
 allowance apply to debug builds only. Keep the runtime and USB connection active
 during local OTP testing. Permanent delivery requires the serverless host.
-Google sign-in uses Firebase directly and does not depend on the local runtime.
+Google authentication uses Firebase directly. The temporary-password email
+uses the selected backend; see [current email setup](signup-email-fixes.md).
 
 Verification:
 

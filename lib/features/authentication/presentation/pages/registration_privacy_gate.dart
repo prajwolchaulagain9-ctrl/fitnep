@@ -3,15 +3,13 @@ import 'dart:async';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../data/registration_privacy.dart';
-import '../../domain/entities/privacy_policy.dart';
 import '../controllers/authentication_controller.dart';
 import '../sign_out_to_welcome.dart';
-import 'privacy_policy_page.dart';
+import '../../../../shared/widgets/legal_links.dart';
 
 class RegistrationPrivacyGate extends ConsumerWidget {
   const RegistrationPrivacyGate({required this.child, this.uid, super.key});
@@ -128,36 +126,27 @@ class _ConsentForm extends ConsumerStatefulWidget {
 }
 
 class _ConsentFormState extends ConsumerState<_ConsentForm> {
-  int? _age;
-  RegistrationConsent? _reviewedConsent;
+  bool _agreed = false;
   bool _busy = false;
   String? _error;
 
-  Future<void> _reviewAndSave() async {
-    final age = _age;
-    if (_busy || age == null) return;
-    FocusScope.of(context).unfocus();
+  Future<void> _save() async {
+    if (_busy || !_agreed) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      if (_reviewedConsent == null) {
-        final accepted = await PrivacyPolicyPage.review(context, age: age);
-        if (!mounted || accepted != true) return;
-        _reviewedConsent = (age: age, guardianConfirmed: age < 18);
-      }
       await acceptRegistrationPrivacy(
         ref.read(registrationPrivacyProvider),
         widget.uid,
-        _reviewedConsent!,
+        (age: null, guardianConfirmed: false),
       );
       if (mounted) ref.invalidate(registrationAcceptedProvider(widget.uid));
     } catch (_) {
       if (mounted) {
         setState(
-          () => _error =
-              'Could not save your acceptance. Try again or sign in later.',
+          () => _error = 'Could not save your agreement. Please try again.',
         );
       }
     } finally {
@@ -170,35 +159,34 @@ class _ConsentFormState extends ConsumerState<_ConsentForm> {
     appBar: AppBar(title: const Text('Complete registration')),
     body: SafeArea(
       child: ListView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         children: [
-          TextField(
-            enabled: !_busy,
-            keyboardType: TextInputType.number,
-            textInputAction: TextInputAction.done,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Age in years',
-              helperText: 'Enter your age from 1 to 120.',
-            ),
-            onChanged: (value) => setState(() {
-              _age = parseRegistrationAge(value);
-              _reviewedConsent = null;
-              _error = null;
-            }),
-            onSubmitted: (_) => _reviewAndSave(),
+          Text(
+            'Before you continue',
+            style: Theme.of(context).textTheme.headlineSmall,
           ),
-          const SizedBox(height: 16),
-          if (_error case final message?) Text(message),
-          FilledButton(
-            onPressed: !_busy && _age != null ? _reviewAndSave : null,
-            child: Text(
-              _busy
-                  ? 'Saving…'
-                  : _reviewedConsent == null
-                  ? 'Review Privacy Policy'
-                  : 'Retry saving',
+          const SizedBox(height: 12),
+          const Text('Review our terms and how FitNEP handles your data.'),
+          const LegalLinks(),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text(
+              'I agree to the Terms and Conditions and Privacy Policy',
             ),
+            value: _agreed,
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _agreed = value == true),
+          ),
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          FilledButton(
+            onPressed: _agreed && !_busy ? _save : null,
+            child: Text(_busy ? 'Saving…' : 'Agree and continue'),
           ),
           const _SwitchAccount(),
         ],

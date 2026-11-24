@@ -3,16 +3,12 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/firebase_providers.dart';
-import '../../../core/config/app_config.dart';
 import 'hosted_auth_client.dart';
 import 'hosted_session_service.dart';
 
 final passwordRecoveryProvider = Provider<PasswordRecoveryService>(
   (ref) => PasswordRecoveryService(
     ref.watch(firebaseAuthProvider),
-    hostedRequest: AppConfig.hostedSessionsEnabled
-        ? ref.watch(hostedAuthRequestProvider)
-        : null,
     beforeSignOut: ref.read(hostedSessionServiceProvider).end,
   ),
 );

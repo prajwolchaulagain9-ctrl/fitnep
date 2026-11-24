@@ -10,11 +10,23 @@ import '../shared/widgets/app_startup_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
 
+final _messengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class FitNepApp extends ConsumerWidget {
   const FitNepApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    ref.listen(authenticationControllerProvider, (previous, next) {
+      if (next.noticeMessage != null &&
+          next.noticeMessage != previous?.noticeMessage) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _messengerKey.currentState?.showSnackBar(
+            SnackBar(content: Text(next.noticeMessage!)),
+          );
+        });
+      }
+    });
     final authenticationBootstrap = ref.watch(authenticationBootstrapProvider);
     final authenticationState = ref.watch(authenticationStateProvider);
     final passwordChange = ref.watch(staffPasswordChangeRequiredProvider);
@@ -24,6 +36,7 @@ class FitNepApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'FitNEP',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: _messengerKey,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       // The supplied Figma screens define the app's light appearance.
@@ -58,13 +71,10 @@ class FitNepApp extends ConsumerWidget {
               )
             : null;
         if (authenticationBootstrap.isLoading ||
-            authenticationState.isLoading ||
-            (signedIn && passwordChange.isLoading)) {
+            authenticationState.isLoading) {
           return AppStartupView(recoveryAction: switchAccount);
         }
-        if (authenticationBootstrap.hasError ||
-            authenticationState.hasError ||
-            (signedIn && passwordChange.hasError)) {
+        if (authenticationBootstrap.hasError || authenticationState.hasError) {
           return AppStartupView(
             recoveryAction: switchAccount,
             onRetry: () {
@@ -76,7 +86,42 @@ class FitNepApp extends ConsumerWidget {
           );
         }
         return PasswordResetSessionObserver(
-          child: HostedSessionObserver(child: child ?? const SizedBox.shrink()),
+          child: HostedSessionObserver(
+            child:
+                signedIn &&
+                    (passwordChange.isLoading || passwordChange.hasError)
+                ? Scaffold(
+                    body: SafeArea(
+                      child: Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (passwordChange.isLoading)
+                                const CircularProgressIndicator(),
+                              const SizedBox(height: 16),
+                              Text(
+                                passwordChange.hasError
+                                    ? 'We couldn’t connect.'
+                                    : 'Checking your account…',
+                              ),
+                              if (passwordChange.hasError)
+                                TextButton(
+                                  onPressed: () => ref.invalidate(
+                                    staffPasswordChangeRequiredProvider,
+                                  ),
+                                  child: const Text('Try again'),
+                                ),
+                              ?switchAccount,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                : child ?? const SizedBox.shrink(),
+          ),
         );
       },
     );

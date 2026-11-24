@@ -45,3 +45,41 @@ it("missing recovery configuration rejects requests without contacting any servi
   const app = mountHostedAuth(auth, firestore, verifier, {}, async () => assert.fail("must not contact live services"));
   await request(app).post("/auth/recovery/request").send({ email: "synthetic@fitnep.test" }).expect(503);
 });
+
+it("hosted signup sends a Brevo OTP for the authenticated email and verifies the received code", async () => {
+  let record: Record<string, unknown> | undefined;
+  let deliveredCode = "";
+  let emailVerified = false;
+  const database = {
+    collection: () => ({ doc: () => ({}) }),
+    runTransaction: async (change: (transaction: unknown) => unknown) => change({
+      get: async () => ({ data: () => record }),
+      set: (_reference: unknown, data: Record<string, unknown>) => { record = { ...data }; },
+    }),
+  } as unknown as Firestore;
+  const identity = { uid: "otp-client", email: "signup@fitnep.test", disabled: false,
+    providerData: [{ providerId: "password" }] };
+  const nativeAuth = {
+    getUser: async () => ({ ...identity, emailVerified }),
+    updateUser: async (_uid: string, input: { email: string; emailVerified: boolean }) => {
+      assert.equal(input.email, identity.email);
+      emailVerified = input.emailVerified;
+    },
+  } as unknown as Auth;
+  const verifier = { verifyIdToken: async () => ({ uid: identity.uid, role: "client" as const, emailVerified }) };
+  const settings = { BREVO_API_KEY: "synthetic-key", BREVO_SENDER_EMAIL: "sender@fitnep.test", SIGNUP_OTP_HASH_SECRET: "synthetic".repeat(8) };
+  const app = mountHostedAuth(nativeAuth, database, verifier, settings, async (_url, options) => {
+    const mail = JSON.parse(options!.body as string);
+    assert.equal(mail.to[0].email, identity.email);
+    deliveredCode = mail.textContent.match(/\b\d{6}\b/)[0];
+    return new Response(JSON.stringify({ messageId: "accepted-otp-mail" }), { status: 201 });
+  });
+  const sent = await request(app).post("/auth/signup/otp/send").set("Authorization", "Bearer synthetic-token").send({}).expect(200);
+  assert.equal(sent.body.data.resendAfterSeconds, 60);
+  assert.equal(record!.messageId, "accepted-otp-mail");
+  assert(!JSON.stringify(sent.body).includes(deliveredCode));
+  assert(!JSON.stringify(record).includes(deliveredCode));
+  await request(app).post("/auth/signup/otp/verify").set("Authorization", "Bearer synthetic-token").send({ code: deliveredCode }).expect(200);
+  assert.equal(emailVerified, true);
+  assert.equal(record!.status, "consumed");
+});

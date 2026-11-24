@@ -68,10 +68,11 @@ Future<void> acceptRegistrationPrivacy(
   final result = await request({
     'action': 'accept',
     'uid': uid,
-    'age': consent.age,
+    if (consent.age != null) 'age': consent.age!,
     'privacy_policy_version': privacyPolicyVersion,
     'privacy_policy_accepted': true,
     'guardian_consent_confirmed': consent.guardianConfirmed,
+    if (consent.age == null) ...{'terms_accepted': true, 'terms_version': '1'},
   }).timeout(_privacyRequestTimeout);
   if (!result) {
     throw StateError('Consent was not saved.');
@@ -94,7 +95,8 @@ class PendingRegistrationConsentStore {
 
   Future<void> write(String uid, RegistrationConsent consent) => _storage.write(
     key: _key(uid),
-    value: '$privacyPolicyVersion:${consent.age}:${consent.guardianConfirmed}',
+    value:
+        '$privacyPolicyVersion:${consent.age ?? ''}:${consent.guardianConfirmed}',
   );
 
   Future<RegistrationConsent?> read(String uid) async {
@@ -111,6 +113,9 @@ class PendingRegistrationConsentStore {
       final guardian,
     ]) {
       final age = parseRegistrationAge(years);
+      if (years.isEmpty && guardian == 'false') {
+        return (age: null, guardianConfirmed: false);
+      }
       if (age != null && (age >= 18 || guardian == 'true')) {
         return (age: age, guardianConfirmed: age < 18);
       }

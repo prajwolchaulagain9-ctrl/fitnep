@@ -20,6 +20,7 @@ abstract final class AppRoutes {
   static const forgotPasswordPath = '/forgot-password';
   static const resetPasswordPath = '/reset-password';
   static const privacyPolicyPath = '/privacy-policy';
+  static const termsPath = '/terms-and-conditions';
   static const demoEntry = '/demo';
   static const dashboard = '/dashboard';
   static const staffHome = '/staff/home';
@@ -40,6 +41,7 @@ abstract final class AppRoutes {
   static const messageThread = '/messages/:id';
   static const taskDetails = '/tasks/:id';
   static const paymentDetails = '/payments/:id';
+  static const dietitianAssignedClient = '/dietitian/assigned-clients/:id';
 
   // Client
   static const clientHome = '/client/home';
@@ -52,6 +54,7 @@ abstract final class AppRoutes {
   static const messageThreadName = 'message-thread';
   static const taskDetailsName = 'task-details';
   static const paymentDetailsName = 'payment-details';
+  static const dietitianAssignedClientName = 'dietitian-assigned-client';
   static const clientHomeName = 'client-home';
   static const clientNotificationsName = 'client-notifications';
   static const clientPackagesName = 'client-packages';

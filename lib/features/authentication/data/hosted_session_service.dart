@@ -8,6 +8,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/services/firebase_providers.dart';
+import '../../../core/network/backend_resolver.dart';
 
 typedef HostedIdentity = ({String uid, String token, int authTime});
 typedef HostedIdentityReader = Future<HostedIdentity?> Function();
@@ -28,6 +29,10 @@ class SecureHostedSessionStore implements HostedSessionStore {
       : storage.write(key: key, value: value);
 }
 
+final hostedSessionStoreProvider = Provider<HostedSessionStore>(
+  (ref) => const SecureHostedSessionStore(),
+);
+
 final hostedSessionServiceProvider = Provider<HostedSessionService>((ref) {
   final auth = ref.watch(firebaseAuthProvider);
   final service = HostedSessionService(
@@ -44,8 +49,10 @@ final hostedSessionServiceProvider = Provider<HostedSessionService>((ref) {
         authTime: (result.authTime!.millisecondsSinceEpoch / 1000).floor(),
       );
     },
-    store: const SecureHostedSessionStore(),
+    store: ref.watch(hostedSessionStoreProvider),
     enabled: AppConfig.hostedSessionsEnabled,
+    resolveBackend: ref.watch(backendResolverProvider).resolve,
+    backendUnavailable: ref.watch(backendResolverProvider).unavailable,
     onEnded: () => auth.signOut(),
   );
   ref.onDispose(service.close);
@@ -58,6 +65,8 @@ class HostedSessionService {
     required this.store,
     required this.enabled,
     this.onEnded,
+    this.resolveBackend,
+    this.backendUnavailable,
     Dio? dio,
     DateTime Function()? now,
   }) : dio =
@@ -76,6 +85,8 @@ class HostedSessionService {
   final HostedSessionStore store;
   final bool enabled;
   final Future<void> Function()? onEnded;
+  final Future<String> Function()? resolveBackend;
+  final void Function(String)? backendUnavailable;
   final Dio dio;
   final DateTime Function() now;
   static const sessionKey = 'fitnep_hosted_session';
@@ -196,6 +207,8 @@ class HostedSessionService {
     // Only idempotent session operations are retried for a sleeping free host.
     for (var attempt = 0; ; attempt++) {
       try {
+        final baseUrl = await resolveBackend?.call();
+        if (baseUrl != null) dio.options.baseUrl = baseUrl;
         final response = await dio.request<Map<String, dynamic>>(
           path,
           data: method == 'POST' ? <String, Object>{} : null,
@@ -207,9 +220,13 @@ class HostedSessionService {
               'X-FitNEP-Session': ?sessionId,
             },
           ),
+          // The same resolver also routes ApiClient's protected requests.
         );
         return Map<String, dynamic>.from(response.data?['data'] as Map? ?? {});
       } on DioException catch (error) {
+        if (isBackendConnectionFailure(error)) {
+          backendUnavailable?.call(error.requestOptions.baseUrl);
+        }
         if (cancelToken != null ||
             attempt >= 1 ||
             error.response != null ||

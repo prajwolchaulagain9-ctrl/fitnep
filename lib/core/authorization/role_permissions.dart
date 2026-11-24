@@ -38,7 +38,13 @@ abstract final class FitNepPermissions {
       'collect_own_records',
       'view_own_diet_plans',
     },
-    FitNepRole.staff: {...own, 'view_staff_dashboard', 'view_assigned_clients'},
+    FitNepRole.staff: {
+      ...own,
+      'view_staff_dashboard',
+      'view_assigned_clients',
+      'view_client_records',
+      'view_own_diet_plans',
+    },
     FitNepRole.dietitian: {
       ...own,
       'view_dietitian_dashboard',
@@ -60,6 +66,8 @@ abstract final class FitNepPermissions {
       'manage_business_settings',
       'view_audit_logs',
       'manage_client_assignments',
+      'view_client_records',
+      'view_own_diet_plans',
     },
   };
 }
@@ -90,6 +98,9 @@ String? permissionForRoute(String path) {
   if (path.startsWith('/admin/clients')) return 'manage_client_accounts';
   if (path.startsWith('/admin/')) return 'manage_business_settings';
   if (path == '/care/clients') return 'view_assigned_clients';
+  if (path.startsWith('/dietitian/assigned-clients/')) {
+    return 'view_assigned_client_records';
+  }
   if (path.startsWith('/care/clients/')) return 'view_assigned_client_records';
   if (path == '/client/records') return 'view_own_client_records';
   if (path == '/client/packages') return 'manage_own_membership';

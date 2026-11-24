@@ -21,7 +21,7 @@ it("each of the four roles has a distinct dashboard and least-privilege permissi
     assert.equal(hasPermission(role, "manage_diet_plans"), role === "dietitian");
     assert.equal(hasPermission(role, "unknown_permission"), false);
   }
-  assert.equal(hasPermission("staff", "view_client_records"), false);
+  assert.equal(hasPermission("staff", "view_client_records"), true);
 });
 it("Flutter and backend permission maps agree", () => {
   const dart = readFileSync("../lib/core/authorization/role_permissions.dart", "utf8");

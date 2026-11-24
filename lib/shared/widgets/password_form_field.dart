@@ -9,6 +9,8 @@ class PasswordFormField extends StatefulWidget {
     required this.enabled,
     this.onSubmitted,
     this.autofillHints,
+    this.onChanged,
+    this.helperText,
   });
   final TextEditingController controller;
   final String label;
@@ -16,6 +18,8 @@ class PasswordFormField extends StatefulWidget {
   final bool enabled;
   final ValueChanged<String>? onSubmitted;
   final Iterable<String>? autofillHints;
+  final ValueChanged<String>? onChanged;
+  final String? helperText;
 
   @override
   State<PasswordFormField> createState() => _PasswordFormFieldState();
@@ -37,6 +41,7 @@ class _PasswordFormFieldState extends State<PasswordFormField> {
         : TextInputAction.done,
     decoration: InputDecoration(
       labelText: widget.label,
+      helperText: widget.helperText,
       prefixIcon: const Icon(Icons.lock_outline),
       suffixIcon: IconButton(
         tooltip: _hidden
@@ -52,5 +57,6 @@ class _PasswordFormFieldState extends State<PasswordFormField> {
     ),
     validator: widget.validator,
     onFieldSubmitted: widget.onSubmitted,
+    onChanged: widget.onChanged,
   );
 }

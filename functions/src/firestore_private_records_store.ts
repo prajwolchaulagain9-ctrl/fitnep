@@ -4,9 +4,10 @@ import { randomUUID } from "node:crypto";
 import { AuditWriter, AuditUnavailableError, FirestoreAuditWriter } from "./audit";
 import { AuditedHealthReadService, HealthReadTarget } from "./audited_health_reads";
 import { AuthenticatedUser } from "./domain";
-import { accountFrom } from "./account_service";
+import { accountFrom, accountMatchesActor, assignmentIncludesActor, getCurrentAssignment } from "./account_service";
+import { PermissionDeniedError } from "./authorization_policy";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { currentAssignedTeam, PrivateRecordAccessService, PrivateRecordAuthorizationError } from "./nutrition_record_access_service";
+import { PrivateRecordAccessService, PrivateRecordAuthorizationError } from "./nutrition_record_access_service";
 import { FirestorePrivacyAcceptanceStore } from "./privacy_policy_acceptance";
 import {
   PrivatePhoto,
@@ -49,6 +50,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
 
   collect(actor: AuthenticatedUser, clientId: string, category: RecordCategory, body: unknown): Promise<PrivateRecord> {
     return this.firestore.runTransaction(async (transaction) => {
+      await this.assertCurrentActor(transaction, actor);
       // Reading consent and writing the entry in one transaction makes collection
       // and consent withdrawal serialize against the same Firestore document.
       await this.access(transaction, actor).assertCanCollect(actor, clientId, recordSharingChoices[category]);
@@ -81,16 +83,29 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
     return this.firestore.collection("client_records").doc(clientId).collection(category);
   }
 
+  readResource<T>(actor: AuthenticatedUser, target: HealthReadTarget,
+    load: (transaction: Transaction) => Promise<{ data: T; recordIds?: readonly string[] }>, correlationId?: string): Promise<T> {
+    return this.auditedRead(actor, target, correlationId, load);
+  }
+
   private auditedRead<T>(actor: AuthenticatedUser, target: HealthReadTarget, correlationId: string | undefined,
     load: (transaction: Transaction) => Promise<{ data: T; recordIds?: readonly string[] }>): Promise<T> {
-    return this.firestore.runTransaction(transaction =>
-      new AuditedHealthReadService(this.access(transaction, actor), this.audit)
-        .read(transaction, actor, target, correlationId ?? randomUUID(), () => load(transaction)),
-    ).catch(error => {
+    return this.firestore.runTransaction(async transaction => {
+      await this.assertCurrentActor(transaction, actor);
+      return new AuditedHealthReadService(this.access(transaction, actor), this.audit)
+        .read(transaction, actor, target, correlationId ?? randomUUID(), () => load(transaction));
+    }).catch(error => {
       if (error instanceof PrivateRecordAuthorizationError || error instanceof PrivateRecordsError ||
         error instanceof AuditUnavailableError) throw error;
+      if (error instanceof PermissionDeniedError) throw new PrivateRecordAuthorizationError(error.reason);
       throw new PrivateRecordsError(503, "Private record storage is temporarily unavailable.");
     });
+  }
+
+  private async assertCurrentActor(transaction: Transaction, actor: AuthenticatedUser) {
+    const current = accountFrom(actor.uid,
+      (await transaction.get(this.firestore.collection("users").doc(actor.uid))).data());
+    if (!accountMatchesActor(current, actor)) throw new PrivateRecordAuthorizationError();
   }
 
   private toRecord(snapshot: DocumentSnapshot, category: RecordCategory): PrivateRecord {
@@ -116,17 +131,8 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
   private access(transaction: Transaction, actor: AuthenticatedUser): PrivateRecordAccessService {
     return new PrivateRecordAccessService({
       getCurrentTeam: async (clientId) => {
-        const reference = this.firestore.collection("client_assignments").doc(clientId);
-        const assignment = (await transaction.get(reference)).data();
-        const team = currentAssignedTeam(assignment);
-        if (!team) return null;
-        const client = accountFrom(clientId, (await transaction.get(this.firestore.collection("users").doc(clientId))).data());
-        if (client.role !== "client" || client.account_status !== "active" ||
-          (assignment?.client_role_revision ?? 0) !== client.role_revision) return null;
-        const expectedRevision = actor.role === "dietitian" ? assignment?.dietitian_role_revision :
-          assignment?.team_member_role_revisions?.[actor.uid] ?? assignment?.staff_role_revisions?.[actor.uid];
-        if ((expectedRevision ?? 0) !== (actor.roleRevision ?? 0)) return null;
-        return team;
+        const assignment = await getCurrentAssignment(this.firestore, clientId, transaction);
+        return assignment && assignmentIncludesActor(actor, assignment) ? assignment.team : null;
       },
     }, {
       getForClient: (clientId) => this.preferences.getForClient(clientId, transaction),

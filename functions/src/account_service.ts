@@ -2,6 +2,8 @@ import { Auth, UserRecord } from "firebase-admin/auth";
 import { FieldPath, FieldValue, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuthenticatedUser, isUserRole, UserRole } from "./domain";
 import { Permission, PermissionDeniedError, rolePermissions, requirePermission } from "./authorization_policy";
+import { currentAssignedTeam } from "./nutrition_record_access_service";
+import { FirestorePackageService, inactivePackageAssignmentMessage, PackageError } from "./package_membership_service";
 
 export interface Account {
   id: string; full_name: string; email: string; role: UserRole; role_revision: number;
@@ -30,6 +32,45 @@ export function accountFrom(id: string, data: Record<string, unknown> | undefine
     created_at: data.created_at.toDate().toISOString(), updated_at: data.updated_at.toDate().toISOString(),
     deactivated_at: data.deactivated_at instanceof Timestamp ? data.deactivated_at.toDate().toISOString() : null,
     deactivation_reason: typeof data.deactivation_reason === "string" ? data.deactivation_reason : null };
+}
+export function accountMatchesActor(account: Account, actor: AuthenticatedUser): boolean {
+  return account.id === actor.uid && account.role === actor.role && account.account_status === "active" &&
+    account.role_revision === (actor.roleRevision ?? 0);
+}
+
+/** Reuse current account revisions across private records, directories and counts. */
+export async function getCurrentAssignment(firestore: Firestore, clientId: string, transaction?: Transaction) {
+  const read = (reference: FirebaseFirestore.DocumentReference) => transaction ? transaction.get(reference) : reference.get();
+  const data = (await read(firestore.collection("client_assignments").doc(identifier(clientId)))).data();
+  const team = currentAssignedTeam(data);
+  if (!team || (data!.client_id !== undefined && data!.client_id !== clientId)) return null;
+  try {
+    const [client, dietitian] = await Promise.all([
+      read(firestore.collection("users").doc(clientId)),
+      read(firestore.collection("users").doc(identifier(team.dietitianId))),
+    ]);
+    const clientAccount = accountFrom(clientId, client.data());
+    const dietitianAccount = accountFrom(team.dietitianId, dietitian.data());
+    if (clientAccount.role !== "client" || clientAccount.account_status !== "active" ||
+        dietitianAccount.role !== "dietitian" || dietitianAccount.account_status !== "active" ||
+        (data!.client_role_revision ?? 0) !== clientAccount.role_revision ||
+        (data!.dietitian_role_revision ?? 0) !== dietitianAccount.role_revision) return null;
+    return { data: data!, team };
+  } catch (error) {
+    if (error instanceof PermissionDeniedError || error instanceof AccountInputError) return null;
+    throw error;
+  }
+}
+
+export function assignmentIncludesActor(actor: AuthenticatedUser,
+  assignment: NonNullable<Awaited<ReturnType<typeof getCurrentAssignment>>>): boolean {
+  const { data, team } = assignment;
+  if (actor.role === "dietitian") {
+    return team.dietitianId === actor.uid && (data.dietitian_role_revision ?? 0) === (actor.roleRevision ?? 0);
+  }
+  const revisions = data.team_member_role_revisions === undefined ? data.staff_role_revisions : data.team_member_role_revisions;
+  return (actor.role === "staff" || actor.role === "admin") && team.teamMemberIds.includes(actor.uid) &&
+    (revisions?.[actor.uid] ?? 0) === (actor.roleRevision ?? 0);
 }
 export interface DeniedAttempt {
   uid: string | null; role: UserRole | null; action: string; resource: string;
@@ -154,19 +195,14 @@ export class FirestoreAccountService {
   }
   async assertAssigned(actor: AuthenticatedUser, clientId: string, transaction?: Transaction) {
     requirePermission(actor.role, "view_assigned_clients");
-    const reference = this.firestore.collection("client_assignments").doc(identifier(clientId));
-    const data = (transaction ? await transaction.get(reference) : await reference.get()).data();
-    const revision = actor.roleRevision ?? 0;
-    const permitted = data?.active === true && (actor.role === "dietitian" ?
-      data.dietitian_id === actor.uid && (data.dietitian_role_revision ?? 0) === revision :
-      actor.role === "staff" && Array.isArray(data.staff_ids) && data.staff_ids.includes(actor.uid) &&
-        (data.staff_role_revisions?.[actor.uid] ?? 0) === revision);
-    if (!permitted) throw new PermissionDeniedError("The client is outside the current assignment.");
-    const clientRef = this.firestore.collection("users").doc(clientId);
-    const client = accountFrom(clientId, (transaction ? await transaction.get(clientRef) : await clientRef.get()).data());
-    if (client.role !== "client" || client.account_status !== "active") throw new PermissionDeniedError("The client account is not active.");
-    if ((data!.client_role_revision ?? 0) !== client.role_revision) throw new PermissionDeniedError("The care assignment must be renewed after an account change.");
-    return data!;
+    const assignment = await getCurrentAssignment(this.firestore, clientId, transaction);
+    if (!assignment || !assignmentIncludesActor(actor, assignment)) {
+      throw new PermissionDeniedError("The client is outside the current assignment.");
+    }
+    const reference = this.firestore.collection("users").doc(actor.uid);
+    const current = accountFrom(actor.uid, (transaction ? await transaction.get(reference) : await reference.get()).data());
+    if (!accountMatchesActor(current, actor)) throw new PermissionDeniedError();
+    return assignment.data;
   }
   async assigned(actor: AuthenticatedUser, after?: string) {
     requirePermission(actor.role, "view_assigned_clients");
@@ -200,7 +236,7 @@ export class FirestoreAccountService {
     await this.firestore.runTransaction(async transaction => {
       const admin = accountFrom(actor.uid, (await transaction.get(this.firestore.collection("users").doc(actor.uid))).data());
       requirePermission(admin.role, "manage_client_assignments");
-      if (admin.account_status !== "active") throw new PermissionDeniedError();
+      if (!accountMatchesActor(admin, actor)) throw new PermissionDeniedError();
       const client = accountFrom(clientId, (await transaction.get(this.firestore.collection("users").doc(identifier(clientId)))).data());
       if (client.role !== "client" || client.account_status !== "active") throw new AccountInputError("An active client is required.");
       const revisions: Record<string, number> = {};
@@ -211,10 +247,24 @@ export class FirestoreAccountService {
       }
       const ref = this.firestore.collection("client_assignments").doc(clientId);
       const before = (await transaction.get(ref)).data();
-      transaction.set(ref, { active: true, dietitian_id: dietitian, staff_ids: staff,
+      if (dietitian && await new FirestorePackageService(this.firestore).assignmentStatus(clientId, transaction) !== "active") {
+        throw new PackageError(409, inactivePackageAssignmentMessage);
+      }
+      const sameAssignment = before?.active === true && before.dietitian_id === dietitian &&
+        before.client_role_revision === client.role_revision && before.dietitian_role_revision === revisions[dietitian ?? ""] &&
+        JSON.stringify(before.team_member_ids ?? before.staff_ids ?? []) === JSON.stringify(staff) &&
+        JSON.stringify(before.team_member_role_revisions ?? before.staff_role_revisions ?? {}) ===
+          JSON.stringify(Object.fromEntries(staff.map(id => [id, revisions[id]])));
+      const previousVersion = Number.isSafeInteger(before?.version) && before!.version > 0 ? before!.version as number : 0;
+      transaction.set(ref, { active: dietitian !== null, client_id: clientId, dietitian_id: dietitian, staff_ids: staff,
+        team_member_ids: staff,
         client_role_revision: client.role_revision,
         dietitian_role_revision: dietitian ? revisions[dietitian] : null,
         staff_role_revisions: Object.fromEntries(staff.map(id => [id, revisions[id]])),
+        team_member_role_revisions: Object.fromEntries(staff.map(id => [id, revisions[id]])),
+        assigned_at: sameAssignment && typeof before?.assigned_at === "string" ? before.assigned_at : new Date().toISOString(),
+        assigned_by_id: sameAssignment && typeof before?.assigned_by_id === "string" ? before.assigned_by_id : actor.uid,
+        version: sameAssignment ? Math.max(1, previousVersion) : previousVersion + 1,
         updated_at: FieldValue.serverTimestamp() });
       transaction.create(this.firestore.collection("audit_logs").doc(), {
         user_id: actor.uid, current_role: admin.role, record_id: clientId, action: "manage_client_assignments",

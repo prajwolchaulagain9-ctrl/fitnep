@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/services/firebase_providers.dart';
@@ -8,6 +9,7 @@ import '../../data/google_credential_provider.dart';
 import '../../data/session_preference_store.dart';
 import '../../data/hosted_session_service.dart';
 import '../../data/registration_privacy.dart';
+import '../../data/hosted_auth_client.dart';
 import '../../domain/entities/privacy_policy.dart';
 import '../../../../core/network/api_client_provider.dart';
 
@@ -19,6 +21,35 @@ final googleCredentialProvider = Provider<GoogleCredentialProvider>(
   (ref) => NativeGoogleCredentialProvider(),
 );
 
+final googlePasswordSetupProvider = Provider<Future<void> Function()?>((ref) {
+  if (!ref.watch(hostedSessionServiceProvider).enabled) return null;
+  return () async {
+    try {
+      final result = await ref.read(hostedAuthRequestProvider)(
+        'auth/google/email-password',
+        {},
+      );
+      if (result['email_sent'] == true &&
+          result['already_sent'] != true &&
+          ref.mounted) {
+        ref
+            .read(authenticationControllerProvider.notifier)
+            .reportNotice(
+              'Your temporary password was emailed to you. You can use email login and choose your own password.',
+            );
+      }
+    } on FirebaseFunctionsException {
+      if (ref.mounted) {
+        ref
+            .read(authenticationControllerProvider.notifier)
+            .reportNotice(
+              'Google sign-in worked, but we couldn’t email your temporary password. Try Google sign-in again to retry delivery.',
+            );
+      }
+    }
+  };
+});
+
 final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
   ref,
 ) async {
@@ -28,6 +59,7 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
     sessionPreferences: ref.read(sessionPreferenceStoreProvider),
     googleCredentials: ref.read(googleCredentialProvider),
     beforeSignOut: ref.read(hostedSessionServiceProvider).end,
+    afterGoogleSignIn: ref.read(googlePasswordSetupProvider),
   );
   // The named emulator app has its own session; live Remember Me preferences
   // must not sign out a seeded local-demo account during startup.
@@ -48,7 +80,8 @@ final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
     final response = await ref
         .watch(apiClientProvider)
         .dio
-        .get<Map<String, dynamic>>('session');
+        .get<Map<String, dynamic>>('session')
+        .timeout(const Duration(seconds: 65));
     return (response.data?['data'] as Map?)?['must_change_password'] == true;
   }
   final token = await user.getIdTokenResult();
@@ -66,16 +99,26 @@ class AuthenticationActionState {
     this.isLoading = false,
     this.errorMessage,
     this.isGoogleSignIn = false,
+    this.noticeMessage,
   });
 
   final bool isLoading;
   final String? errorMessage;
   final bool isGoogleSignIn;
+  final String? noticeMessage;
 }
 
 class AuthenticationController extends Notifier<AuthenticationActionState> {
   @override
   AuthenticationActionState build() => const AuthenticationActionState();
+
+  void reportNotice(String message) {
+    state = AuthenticationActionState(
+      isLoading: state.isLoading,
+      isGoogleSignIn: state.isGoogleSignIn,
+      noticeMessage: message,
+    );
+  }
 
   Future<bool> signIn({
     required String email,
@@ -151,10 +194,23 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     });
   }
 
-  Future<bool> signInWithGoogle({required bool rememberSession}) async {
+  Future<bool> signInWithGoogle({
+    required bool rememberSession,
+    RegistrationConsent? consent,
+  }) async {
     return _run(() async {
       final service = await ref.read(authenticationBootstrapProvider.future);
-      return service.signInWithGoogle(rememberSession: rememberSession);
+      final signedIn = await service.signInWithGoogle(
+        rememberSession: rememberSession,
+      );
+      final uid = service.auth.currentUser?.uid;
+      if (signedIn && uid != null && consent != null && ref.mounted) {
+        await ref
+            .read(pendingRegistrationConsentStoreProvider)
+            .write(uid, consent);
+        ref.invalidate(registrationAcceptedProvider(uid));
+      }
+      return signedIn;
     }, google: true);
   }
 

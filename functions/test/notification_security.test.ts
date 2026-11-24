@@ -9,6 +9,14 @@ import { createNotificationApp } from "../src/http_app";
 import { UnconfiguredNotificationRepository } from "../src/notification_repository";
 import { PrivacyPreferences, defaultSharingChoices } from "../src/privacy_preferences_repository";
 import { PrivacyAcceptanceError, privacyPolicyVersion, validatePrivacyAcceptance } from "../src/privacy_policy_acceptance";
+
+it("defers age while requiring explicit current terms and privacy consent", () => {
+  const consent = { privacy_policy_version: privacyPolicyVersion, privacy_policy_accepted: true,
+    terms_accepted: true, terms_version: "1", guardian_consent_confirmed: false };
+  assert.deepEqual(validatePrivacyAcceptance(consent), { age: undefined, guardianConsentConfirmed: false });
+  assert.throws(() => validatePrivacyAcceptance({ ...consent, terms_accepted: false }), PrivacyAcceptanceError);
+  assert.throws(() => validatePrivacyAcceptance({ ...consent, guardian_consent_confirmed: true }), PrivacyAcceptanceError);
+});
 import { PrivateRecordAccessService, PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
 import {
   NotificationWorkflowService,

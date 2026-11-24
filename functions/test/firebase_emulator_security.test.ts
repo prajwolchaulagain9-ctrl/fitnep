@@ -664,6 +664,9 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     await request(api).get(path).set(headers.clientA).expect(200);
     await preferences.updateSharing("client-a", { shareNutritionRecords: true });
     await auth.setCustomUserClaims("dietitian-2", { role: "admin", role_version: 2 });
+    await request(api).get(path).set(headers.replacement).expect(200); // Auth claims cannot replace the canonical role
+    await new FirestoreAccountService(firestore, auth).change({ uid: "admin-1", role: "admin" },
+      "dietitian-2", { role: "admin" });
     const staleRole = await request(api).get(path).set(headers.replacement);
     assert([401, 403].includes(staleRole.status));
     assert.equal(staleRole.body.data, undefined);

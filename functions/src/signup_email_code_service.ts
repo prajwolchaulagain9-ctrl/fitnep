@@ -17,6 +17,7 @@ export interface EmailCodeRecord {
   sends: number;
   attempts: number;
   status: "sending" | "sent" | "failed" | "verifying" | "consumed";
+  messageId?: string;
 }
 
 export interface EmailCodeStore {
@@ -33,7 +34,7 @@ export interface EmailCodeStore {
 export class SignupEmailCodeService {
   constructor(
     private readonly store: EmailCodeStore,
-    private readonly mailer: (email: string, code: string) => Promise<void>,
+    private readonly mailer: (email: string, code: string) => Promise<void | string>,
     private readonly markVerified: (identity: EmailIdentity) => Promise<void>,
     private readonly hashSecret: string,
     private readonly now: () => number = Date.now,
@@ -93,18 +94,19 @@ export class SignupEmailCodeService {
     }
 
     try {
-      await this.mailer(identity.email, code);
+      const messageId = await this.mailer(identity.email, code);
       await this.store.mutate(identity.uid, (record) => ({
-        record: record?.nonce === nonce ? { ...record, status: "sent" } : record,
+        record: record?.nonce === nonce ? { ...record, status: "sent", ...(typeof messageId === "string" ? { messageId } : {}) } : record,
         value: undefined,
       }));
-    } catch (_) {
+    } catch (error) {
       await this.store.mutate(identity.uid, (record) => ({
         record: record?.nonce === nonce
           ? { ...record, digest: "", status: "failed" }
           : record,
         value: undefined,
       }));
+      if (error instanceof HttpsError) throw error;
       throw new HttpsError("unavailable", "We could not send the verification code.");
     }
     return { resendAfterSeconds: 60 };

@@ -141,6 +141,7 @@ class NotificationTile extends StatelessWidget {
     NotificationType.message => Icons.chat_bubble_outline_rounded,
     NotificationType.task => Icons.task_alt_rounded,
     NotificationType.payment => Icons.payments_outlined,
+    NotificationType.assignment => Icons.person_pin_outlined,
     NotificationType.other => Icons.notifications_none_rounded,
   };
 
@@ -149,6 +150,7 @@ class NotificationTile extends StatelessWidget {
     NotificationType.message => AppColors.info,
     NotificationType.task => AppColors.actionPackageChange,
     NotificationType.payment => AppColors.warning,
+    NotificationType.assignment => AppColors.primary,
     NotificationType.other => AppColors.primary,
   };
 }

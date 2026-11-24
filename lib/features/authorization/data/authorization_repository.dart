@@ -62,11 +62,12 @@ class AuthorizationRepository {
       .collection('account_access')
       .doc(uid)
       .snapshots(includeMetadataChanges: true)
+      .where(
+        (snapshot) =>
+            !snapshot.metadata.isFromCache &&
+            !snapshot.metadata.hasPendingWrites,
+      )
       .asyncMap((snapshot) async {
-        if (snapshot.metadata.isFromCache ||
-            snapshot.metadata.hasPendingWrites) {
-          return null;
-        }
         // The document is only a notification. Authority always comes from a
         // fresh API request that verifies revocation and the current account.
         return current();

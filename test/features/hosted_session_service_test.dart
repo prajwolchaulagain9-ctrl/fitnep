@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:fitnep/features/authentication/data/hosted_session_service.dart';
+import 'package:fitnep/core/network/backend_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _Store implements HostedSessionStore {
@@ -24,6 +25,7 @@ class _Adapter implements HttpClientAdapter {
   int meStatus = 200;
   String? meCode;
   bool offlineLogout = false;
+  bool failLocal = false;
   void Function()? beforeResponse;
   final id = 'a' * 43;
   final rotated = 'b' * 43;
@@ -34,6 +36,12 @@ class _Adapter implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(options);
+    if (failLocal && options.uri.host == 'local.test') {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+      );
+    }
     beforeResponse?.call();
     final path = options.path;
     if (path == 'sessions/end' && offlineLogout) {
@@ -106,6 +114,36 @@ void main() {
     );
   });
   tearDown(() => service.close());
+  test(
+    'hosted sessions use the same local-to-Render resolution as API requests',
+    () async {
+      final resolver = BackendResolver(
+        candidates: ['http://local.test/', 'https://render.test/'],
+        probe: (_) async => true,
+      );
+      adapter.failLocal = true;
+      final routed = HostedSessionService(
+        identity: () async => actor,
+        store: store,
+        enabled: true,
+        dio: Dio()..httpClientAdapter = adapter,
+        now: () => clock,
+        resolveBackend: resolver.resolve,
+        backendUnavailable: resolver.unavailable,
+      );
+      addTearDown(() {
+        routed.close();
+        resolver.close();
+      });
+      expect(await routed.ensure(), adapter.id);
+      expect(adapter.requests.map((request) => request.uri.host), [
+        'local.test',
+        'render.test',
+      ]);
+      expect(await resolver.resolve(), 'https://render.test/');
+    },
+  );
+
   test('start stores opaque credentials without caching authority', () async {
     expect(await service.ensure(), adapter.id);
     final saved =

@@ -1,3 +1,4 @@
+import { BrevoMailer } from "./brevo_mailer";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { defineBoolean, defineSecret, defineString } from "firebase-functions/params";
@@ -68,22 +69,10 @@ function createService(): SignupEmailCodeService {
   }
   return new SignupEmailCodeService(
     new FirestoreEmailCodeStore(),
-    async (email, code) => {
-      // Brevo credentials and verification codes stay on the server. Never log
-      // the request/response body: it may contain account data or the OTP.
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: { "api-key": brevoApiKey.value(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender: { email: senderEmail.value(), name: senderName.value() },
-          to: [{ email }],
-          subject: "Verify your FitNEP email",
-          textContent: `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error("Email delivery failed.");
-    },
+    (email, code) => new BrevoMailer({
+      BREVO_API_KEY: brevoApiKey.value(), BREVO_SENDER_EMAIL: senderEmail.value(), BREVO_SENDER_NAME: senderName.value(),
+    }).send(email, "Verify your FitNEP email",
+      `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`),
     async (identity) => {
       const latest = await getAuth().getUser(identity.uid);
       if (latest.disabled || latest.email !== identity.email) {

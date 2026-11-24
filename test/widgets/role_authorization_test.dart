@@ -1,3 +1,6 @@
+import '../support/empty_package_catalog.dart';
+import '../support/offline_hosted_session.dart';
+
 import 'dart:async';
 
 import 'package:fitnep/core/authorization/authorization_refresh.dart';
@@ -132,6 +135,9 @@ Future<ProviderContainer> _open(
 ) async {
   final container = ProviderContainer(
     overrides: [
+      staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
+      emptyPackageCatalogOverride,
+      offlineHostedSessionOverride,
       registrationAcceptedProvider.overrideWith((ref, uid) async => true),
       authenticationStateProvider.overrideWith(
         (ref) => Stream.value(_Identity()),
@@ -192,12 +198,14 @@ void main() {
               .value
               .uri
               .path,
-          dashboardForRole(role),
+          role == FitNepRole.client
+              ? AppRoutes.clientPackages
+              : dashboardForRole(role),
         );
         expect(
           find.text(
             role == FitNepRole.client
-                ? 'Your FitNep updates'
+                ? 'Choose a package'
                 : '${role.label} dashboard',
           ),
           findsOneWidget,

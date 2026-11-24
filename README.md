@@ -2,6 +2,14 @@
 
 Flutter nutrition and fitness app for Android and iOS.
 
+The current live authentication, compact forms, package refresh fixes and local
+`flutter run` setup are documented in [auth-flow-fixes](docs/auth-flow-fixes.md).
+Development automatically uses a healthy local backend and falls back to Render;
+see [team backend selection](docs/backend-selection.md). Confirmed OTP and Google
+temporary-password delivery is documented in [signup email fixes](docs/signup-email-fixes.md).
+See [the navigation audit](docs/app-navigation-audit.md) for unused UI and all
+current entry points. Age and goal onboarding are deferred.
+
 ## Current implementation
 
 The app now initializes the shared Firebase development project and opens a
@@ -32,17 +40,16 @@ Brevo server secrets, the optional email OTP flag and hosting requirements.
 
 Dilochan's contribution adds the admin client list/profile/audit screens,
 client home, notifications and routes to related diet plans, conversations,
-tasks and payments. Admin data currently comes from the local mock datasource.
+tasks and payments. Admin data uses the authenticated backend and live Firestore.
 The shared router starts at welcome, keeps recovery routes public and protects all
 feature routes behind Firebase authentication. Package, client and admin routes
 also enforce the verified user's allowed role.
 
-The notification API base URL defaults to empty because this Spark project has
-no deployed notification backend. The screens show a configuration error until
-a backend is explicitly supplied:
+The API base URL defaults to the existing `https://fitnep-api.onrender.com/`
+backend. Override it only for local development:
 
 ```powershell
-flutter run -d <android-device-id> --dart-define=API_BASE_URL=https://api.example.com/
+flutter run -d <android-device-id> --dart-define=API_BASE_URL=http://127.0.0.1:3300/
 ```
 
 Notifications use `GET /notifications`, `PATCH /notifications/{id}/read` and

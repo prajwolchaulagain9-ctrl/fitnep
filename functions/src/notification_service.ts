@@ -106,6 +106,13 @@ export interface TaskAssignedEvent {
   taskTitle?: string;
 }
 
+export interface ClientAssignedEvent {
+  clientId: string;
+  dietitianId: string;
+  assignmentVersion: number;
+  clientName?: string;
+}
+
 export type PaymentStatus =
   | "paid"
   | "confirmed"
@@ -188,6 +195,30 @@ export class NotificationWorkflowService {
       eventKey: `task:${taskId}:assigned:${assigneeId}`,
       title: event.taskTitle?.trim() || "New task assigned",
       message: "A new task has been assigned to you.",
+    });
+  }
+
+  clientAssigned(
+    actor: AuthenticatedUser,
+    event: ClientAssignedEvent,
+  ): Promise<CreateNotificationResult> {
+    requireWorkflowAction(actor, "createClientAssignmentNotification");
+    const clientId = requireIdentifier(event.clientId, "clientId");
+    const dietitianId = requireIdentifier(event.dietitianId, "dietitianId");
+    if (!Number.isSafeInteger(event.assignmentVersion) ||
+        event.assignmentVersion < 1) {
+      throw new InvalidWorkflowEventError("assignmentVersion is invalid.");
+    }
+    const clientName = event.clientName?.trim();
+    return this.create({
+      recipientId: dietitianId,
+      type: "assignment",
+      referenceId: clientId,
+      eventKey: `client:${clientId}:assigned:${dietitianId}:v${event.assignmentVersion}`,
+      title: "New client assigned",
+      message: clientName
+        ? `${clientName} has been assigned to you.`
+        : "A new client has been assigned to you.",
     });
   }
 

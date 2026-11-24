@@ -1,3 +1,5 @@
+import '../../support/offline_hosted_session.dart';
+
 import 'package:dio/dio.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
@@ -15,6 +17,7 @@ void main() {
     final api = _StaffApi();
     final container = ProviderContainer(
       overrides: [
+        offlineHostedSessionOverride,
         routeSessionProvider.overrideWith(
           (ref) async => (uid: 'admin-1', role: FitNepRole.admin),
         ),

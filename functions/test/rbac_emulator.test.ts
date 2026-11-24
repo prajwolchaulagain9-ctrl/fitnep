@@ -4,14 +4,13 @@ import { getAuth, Auth } from "firebase-admin/auth";
 import { getFirestore, Firestore, Timestamp } from "firebase-admin/firestore";
 import { initializeApp, deleteApp, App } from "firebase-admin/app";
 import request from "supertest";
-import { FirebaseAuthVerifier } from "../src/auth";
-import { FirestoreAccountService, FirestoreAuditStore } from "../src/account_service";
+import { FirestoreAccountService } from "../src/account_service";
 import { createNotificationApp } from "../src/http_app";
-import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
-import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
+import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
+import { AuditUnavailableError } from "../src/audit";
 import { UserRole } from "../src/domain";
-import { createFitnepApi } from "../src/api_factory";
+import { createFitnepApi, createFitnepDependencies } from "../src/api_factory";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -27,11 +26,9 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     assert.match(authHost!, /^(127\.0\.0\.1|localhost):\d+$/);
     assert.match(dbHost!, /^(127\.0\.0\.1|localhost):\d+$/);
     app = initializeApp({ projectId: project }); auth = getAuth(app); db = getFirestore(app);
-    accounts = new FirestoreAccountService(db, auth);
-    const preferences = new FirestorePrivacyPreferencesRepository(db);
-    api = createNotificationApp({ accounts, audit: new FirestoreAuditStore(db),
-      authVerifier: new FirebaseAuthVerifier(accounts), notificationRepository: new FirestoreNotificationRepository(db),
-      privacyPreferencesRepository: preferences, privateRecordsStore: new FirestorePrivateRecordsStore(db, preferences) });
+    const dependencies = createFitnepDependencies(auth, db);
+    accounts = dependencies.accounts;
+    api = createNotificationApp(dependencies);
   });
   beforeEach(async () => {
     await fetch("http://" + authHost + "/emulator/v1/projects/" + project + "/accounts", { method: "DELETE" });
@@ -42,13 +39,23 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
       await auth.createUser({ uid, email: uid + "@fitnep.test", password: "Password!123", emailVerified: true });
       await auth.setCustomUserClaims(uid, { role });
       await accounts.provision(await auth.getUser(uid));
+      if (role === "client") await new FirestorePrivacyAcceptanceStore(db).recordForClient(uid, {
+        age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
+      });
       const signedIn = await fetch("http://" + authHost + "/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=demo", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: uid + "@fitnep.test", password: "Password!123", returnSecureToken: true }),
       });
       tokens[uid] = (await signedIn.json() as { idToken: string }).idToken;
     }
+    await activatePackage();
   });
+  async function activatePackage() {
+    await db.collection("customer_purchases").doc("client").collection("purchases").doc("active-package").set({
+      is_active: true, purchased_at: Timestamp.fromMillis(Date.now() - 86_400_000),
+      expires_at: Timestamp.fromMillis(Date.now() + 86_400_000),
+    });
+  }
   after(async () => { await deleteApp(app); });
   const bearer = (uid: string) => ({ Authorization: "Bearer " + tokens[uid] });
   const denied = (response: { status: number; body: { code?: string } }) => {
@@ -164,6 +171,7 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     for (const uid of ["other", "staff", "ceo", "dietitian"]) denied(await request(api).get(path).set(bearer(uid)));
     await request(api).patch("/privacy/preferences").set(bearer("client")).send({ share_nutrition_records: true }).expect(200);
     await request(api).get(path).set(bearer("dietitian")).expect(200);
+    await request(api).get(path).set(bearer("staff")).expect(200);
     await request(api).patch("/admin/users/dietitian").set(bearer("ceo")).send({ role: "staff" }).expect(200);
     denied(await request(api).get(path).set(bearer("dietitian")));
     await request(api).patch("/admin/users/dietitian").set(bearer("ceo")).send({ role: "dietitian" }).expect(200);
@@ -234,12 +242,21 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     const id = created.body.data.plan.id as string;
     await request(api).patch(path + "/" + id).set(bearer("dietitian")).send({ ...fields, title: "Updated plan" }).expect(200);
     await request(api).get("/diet-plans/" + id).set(bearer("client")).expect(200);
+    denied(await request(api).get("/diet-plans/" + id).set(bearer("dietitian")));
+    await request(api).patch("/privacy/preferences").set(bearer("client"))
+      .send({ share_nutrition_records: true }).expect(200);
     await request(api).get("/DIET-PLANS/" + id + "/").set(bearer("dietitian")).expect(200);
-    for (const uid of ["other", "staff", "ceo"]) denied(await request(api).get("/diet-plans/" + id).set(bearer(uid)));
+    for (const uid of ["other", "ceo"]) denied(await request(api).get("/diet-plans/" + id).set(bearer(uid)));
     for (const path of ["/clients/client/diet-plans", "/CLIENTS/client/DIET-PLANS/", "/DIET-PLANS/" + id + "/"]) {
-      denied(await request(api).get(path).set(bearer("staff")));
-      await request(api).head(path).set(bearer("staff")).expect(403);
+      await request(api).get(path).set(bearer("staff")).expect(200);
+      await request(api).head(path).set(bearer("staff")).expect(200);
       await request(api).get(path).set(bearer("client")).expect(200);
+    }
+    await request(api).patch("/privacy/preferences").set(bearer("client"))
+      .send({ share_nutrition_records: false }).expect(200);
+    for (const uid of ["staff", "dietitian"]) {
+      denied(await request(api).get("/diet-plans/" + id).set(bearer(uid)));
+      denied(await request(api).get(path).set(bearer(uid)));
     }
   });
   it("denies direct Firestore role escalation, other-account reads and audit writes/deletes", async () => {
@@ -306,9 +323,105 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     for (const collection of ["payments", "tasks", "conversations"]) {
       denied(await request(api).get("/" + collection + "/record").set(bearer("staff")));
     }
+    denied(await request(api).get("/messages/record").set(bearer("staff")));
+    denied(await request(api).get("/conversations/record").set(bearer("client"))); // two client owners are ambiguous
+    await db.collection("messages").doc("record").update({ client_id: "client" });
+    await request(api).put("/admin/clients/client/assignment").set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian", staff_ids: ["staff"] }).expect(200);
+    await request(api).patch("/privacy/preferences").set(bearer("client"))
+      .send({ share_nutrition_records: true }).expect(200);
     await request(api).get("/messages/record").set(bearer("staff")).expect(200);
     await request(api).get("/payments/record").set(bearer("client")).expect(200);
     await request(api).get("/payments/record").set(bearer("ceo")).expect(200);
+  });
+  it("shares package eligibility and account revisions across both assignment APIs", async () => {
+    const legacy = "/admin/clients/client/assignment";
+    const current = "/admin/client-assignments/client";
+    const team = { dietitian_id: "dietitian", staff_ids: ["staff"] };
+    await db.doc("customer_purchases/client/purchases/active-package").delete();
+    const ineligible = await request(api).get(current + "/eligibility").set(bearer("ceo")).expect(200);
+    assert.equal(ineligible.body.data.eligibility.can_assign, false);
+    await request(api).put(legacy).set(bearer("ceo")).send(team).expect(409);
+    await request(api).put(current).set(bearer("ceo")).send({ dietitian_id: "dietitian" }).expect(409);
+    assert.equal((await db.doc("client_assignments/client").get()).exists, false);
+    await activatePackage();
+    await request(api).put(legacy).set(bearer("ceo")).send(team).expect(200);
+    const version = (await db.doc("client_assignments/client").get()).get("version");
+    await request(api).put(current).set(bearer("ceo")).send({ dietitian_id: "dietitian" }).expect(200);
+    assert.equal((await db.doc("client_assignments/client").get()).get("version"), version);
+    assert.deepEqual((await db.doc("client_assignments/client").get()).get("team_member_ids"), ["staff"]);
+    await request(api).get("/dietitian/assigned-clients/client").set(bearer("dietitian")).expect(200);
+    const counts = async () => (await request(api).get("/admin/client-assignments/dietitian-counts")
+      .set(bearer("ceo")).expect(200)).body.data.counts;
+    assert.deepEqual(await counts(), { dietitian: 1 });
+    await request(api).patch("/admin/users/dietitian").set(bearer("ceo"))
+      .send({ account_status: "inactive" }).expect(200);
+    assert.deepEqual(await counts(), {});
+    const inactiveProfile = await request(api).get("/admin/clients/client").set(bearer("ceo")).expect(200);
+    assert.equal(inactiveProfile.body.data.client.assignedDietitianId, "");
+    denied(await request(api).get("/clients/client/profile").set(bearer("staff")));
+    await request(api).patch("/admin/users/dietitian").set(bearer("ceo"))
+      .send({ account_status: "active" }).expect(200);
+    assert.deepEqual(await counts(), {}); // reactivation cannot revive the old grant
+    denied(await request(api).get("/dietitian/assigned-clients/client").set(bearer("dietitian")));
+    await request(api).put(current).set(bearer("ceo")).send({ dietitian_id: "dietitian" }).expect(200);
+    assert.deepEqual(await counts(), { dietitian: 1 });
+    assert.deepEqual((await db.doc("client_assignments/client").get()).get("team_member_ids"), []);
+    denied(await request(api).get("/clients/client/profile").set(bearer("staff")));
+    await request(api).put(legacy).set(bearer("ceo")).send(team).expect(200);
+    await request(api).get("/dietitian/assigned-clients/client").set(bearer("dietitian")).expect(200);
+    await request(api).get("/clients/client/profile").set(bearer("staff")).expect(200);
+    await request(api).patch("/admin/users/client").set(bearer("ceo"))
+      .send({ account_status: "inactive" }).expect(200);
+    assert.deepEqual(await counts(), {});
+    denied(await request(api).get("/dietitian/assigned-clients/client").set(bearer("dietitian")));
+  });
+  it("audits plans and conversations before returning content and revokes stale support grants", async () => {
+    await request(api).put("/admin/clients/client/assignment").set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian", staff_ids: ["staff"] }).expect(200);
+    await db.doc("client_assignments/client").update({
+      team_member_ids: ["staff", "ceo"], team_member_role_revisions: { staff: 0, ceo: 0 },
+    });
+    await request(api).patch("/privacy/preferences").set(bearer("client"))
+      .send({ share_nutrition_records: true }).expect(200);
+    await db.doc("diet_plans/plan").set({ client_id: "client", title: "Clinical plan", description: "Sensitive plan details" });
+    await db.doc("conversations/thread").set({ client_id: "client",
+      participant_ids: ["client", "dietitian", "staff", "ceo"], body: "Sensitive conversation" });
+    const paths = ["/clients/client/diet-plans", "/diet-plans/plan", "/conversations/thread"];
+    for (const uid of ["client", "dietitian", "staff", "ceo"]) {
+      for (const path of paths) {
+        const result = await request(api).get(path).set(bearer(uid)).expect(200);
+        const events = await db.collection("audit_events").where("correlation_id", "==", result.headers["x-request-id"]).get();
+        assert.equal(events.size, 1);
+        const event = events.docs[0]!;
+        assert.equal(event.get("actor_id"), uid);
+        assert.equal(event.get("action"), "health.read");
+        assert.equal(event.get("client_id"), "client");
+        assert(!JSON.stringify(event.data()).includes("Sensitive"));
+        if (path === paths[0]) assert.deepEqual(event.get("record_ids"), ["plan"]);
+      }
+    }
+    for (const path of paths) denied(await request(api).get(path).set(bearer("other")));
+    const dependencies = createFitnepDependencies(auth, db);
+    const unavailable = createNotificationApp({ ...dependencies,
+      privateRecordsStore: new FirestorePrivateRecordsStore(db, dependencies.privacyPreferencesRepository, {
+        appendInTransaction() { throw new AuditUnavailableError(); },
+      }),
+    });
+    const successfulReads = await db.collection("audit_events").where("action", "==", "health.read").get();
+    for (const path of paths) {
+      const result = await request(unavailable).get(path).set(bearer("staff")).expect(503);
+      assert(!JSON.stringify(result.body).includes("Sensitive"));
+    }
+    assert.equal((await db.collection("audit_events").where("action", "==", "health.read").get()).size, successfulReads.size);
+    await request(api).patch("/admin/users/staff").set(bearer("ceo")).send({ role: "client" }).expect(200);
+    await request(api).patch("/admin/users/staff").set(bearer("ceo")).send({ role: "staff" }).expect(200);
+    for (const path of paths) denied(await request(api).get(path).set(bearer("staff")));
+    await db.doc("privacy_acceptances/client").update({ policy_version: "1" });
+    for (const uid of ["dietitian", "ceo"]) {
+      for (const path of paths) denied(await request(api).get(path).set(bearer(uid)));
+    }
+    await request(api).get(paths[1]!).set(bearer("client")).expect(200);
   });
   it("previews and applies migration without overwriting existing roles", async () => {
     await auth.createUser({ uid: "legacy", email: "legacy@fitnep.test", password: "Password!123" });

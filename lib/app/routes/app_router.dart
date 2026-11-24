@@ -16,6 +16,7 @@ import '../../features/authorization/presentation/user_management_page.dart';
 import '../../features/authorization/presentation/assigned_clients_page.dart';
 import '../../features/authorization/presentation/client_records_page.dart';
 import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
+import '../../features/authentication/presentation/pages/terms_and_conditions_page.dart';
 import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
 import '../../features/onboarding/presentation/pages/about_page.dart';
 import '../../features/onboarding/presentation/pages/welcome_page.dart';
@@ -47,6 +48,7 @@ import '../../features/authentication/presentation/controllers/privacy_preferenc
 import '../../features/admin/presentation/controllers/client_list_controller.dart';
 import '../../features/admin/presentation/controllers/client_profile_controller.dart';
 import '../../features/admin/presentation/controllers/audit_log_controller.dart';
+import '../../features/admin/presentation/controllers/package_management_controller.dart';
 
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
@@ -72,6 +74,8 @@ final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
         ref.invalidate(notificationControllerProvider);
         ref.invalidate(notificationDestinationProvider);
         ref.invalidate(membershipControllerProvider);
+        ref.invalidate(activePackagesProvider);
+        ref.invalidate(packageManagementControllerProvider);
         ref.invalidate(privacyPreferencesControllerProvider);
         ref.invalidate(clientListControllerProvider);
         ref.invalidate(clientProfileControllerProvider);
@@ -103,6 +107,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         AppRoutes.welcomePath,
         AppRoutes.aboutPath,
         AppRoutes.privacyPolicyPath,
+        AppRoutes.termsPath,
         AppRoutes.loginPath,
         AppRoutes.signupPath,
         AppRoutes.forgotPasswordPath,
@@ -134,7 +139,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           if (path != AppRoutes.verifyEmailPath &&
               path != AppRoutes.forgotPasswordPath &&
               path != AppRoutes.resetPasswordPath &&
-              path != AppRoutes.privacyPolicyPath) {
+              path != AppRoutes.privacyPolicyPath &&
+              path != AppRoutes.termsPath) {
             return AppRoutes.verifyEmailPath;
           }
           return null;
@@ -144,7 +150,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           (path == AppRoutes.welcomePath ||
               path == AppRoutes.loginPath ||
               path == AppRoutes.signupPath ||
-              path == AppRoutes.changeStaffPasswordPath ||
+              (path == AppRoutes.changeStaffPasswordPath &&
+                  state.uri.queryParameters['recover'] != 'google') ||
               path == AppRoutes.verifyEmailPath)) {
         return AppRoutes.dashboard;
       }
@@ -161,7 +168,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (path == AppRoutes.dashboard ||
             path == AppRoutes.appUnderDevelopmentPath) {
-          return home;
+          return session.role == FitNepRole.client
+              ? AppRoutes.clientPackages
+              : home;
         }
         if (permission != null &&
             !AuthorizationService(session.role).hasPermission(permission)) {
@@ -296,7 +305,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         name: AppRoutes.privacyPolicy,
         path: AppRoutes.privacyPolicyPath,
-        builder: (context, state) => const PrivacyPolicyPage(),
+        builder: (context, state) => PrivacyPolicyPage(
+          key: ValueKey(state.uri.toString()),
+          anchor: state.uri.fragment,
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.termsPath,
+        builder: (context, state) => TermsAndConditionsPage(
+          key: ValueKey(state.uri.toString()),
+          anchor: state.uri.fragment,
+        ),
       ),
       GoRoute(
         name: AppRoutes.forgotPassword,
@@ -404,6 +423,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           requiredPermission: permissionForRoute(state.uri.path)!,
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.payment,
+            referenceId: state.pathParameters['id']!,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.dietitianAssignedClient,
+        name: AppRoutes.dietitianAssignedClientName,
+        builder: (context, state) => RouteAccessGate(
+          requiredPermission: 'view_assigned_client_records',
+          builder: (_) => NotificationDestinationPage(
+            type: NotificationType.assignment,
             referenceId: state.pathParameters['id']!,
           ),
         ),

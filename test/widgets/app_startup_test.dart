@@ -1,3 +1,5 @@
+import '../support/offline_hosted_session.dart';
+
 import 'dart:async';
 
 import 'package:fitnep/app/app.dart';
@@ -17,6 +19,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            offlineHostedSessionOverride,
             firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
             firebaseInitializationProvider.overrideWith((ref) async {
               attempts++;
@@ -42,6 +45,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          offlineHostedSessionOverride,
           firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
@@ -73,6 +77,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          offlineHostedSessionOverride,
           firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) => ready.future),
         ],
@@ -98,6 +103,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          offlineHostedSessionOverride,
           firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
           firebaseInitializationProvider.overrideWith((ref) async {}),
         ],
@@ -128,6 +134,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            offlineHostedSessionOverride,
             firebaseAuthProvider.overrideWithValue(SignedOutAuth()),
             firebaseInitializationProvider.overrideWith((ref) async {}),
           ],

@@ -7,7 +7,9 @@ website or browser UI.
 The shared project stays on **Spark**. These Functions are local emulator
 implementations; they are not deployed. Cloud Functions deployment requires a
 billing-enabled project and is outside the agreed scope. The Flutter API URL
-defaults to empty until a supported backend is supplied.
+defaults to the existing Render service. Local device testing uses the same live
+Firebase project through `node scripts/start-live-local.cjs`; see
+[current auth and navigation fixes](../docs/auth-flow-fixes.md).
 
 Sprint 2 adds a standalone Node 22 runner in src/server.ts. After building,
 npm start runs the same Express API against cloud Firebase Auth/Firestore
@@ -72,8 +74,8 @@ server derives the client ID from the verified token. Preferences are stored in
 record read handlers must call `NutritionRecordAccessService.assertCanRead`
 before returning records. The gate permits the client to read their own records;
 a dietitian must be the current assignee and sharing must be enabled. Assignment
-storage is not implemented in this backend yet, so the gate fails closed until a
-trusted assignment reader is configured.
+storage is server-owned in `client_assignments/{clientId}`; direct mobile
+Firestore access remains denied.
 
 ## Notification APIs
 
@@ -110,6 +112,19 @@ UID and token-derived display name/email, action, changed timestamp, and the
 previous/new values that changed. Repeated idempotent creates and no-op edits or
 status requests do not create duplicate history. Direct mobile history reads
 and writes are denied; administrators read history through the API.
+
+## Client assignment APIs
+
+- `GET /admin/client-assignments/:clientId/eligibility` returns the client's
+  effective package status and whether assignment is allowed.
+- `GET /admin/client-assignments/dietitian-counts` returns each dietitian's
+  current number of active client assignments.
+- `PUT /admin/client-assignments/:clientId` accepts `{ "dietitian_id": "..." }`.
+
+Both endpoints require an administrator. The write re-checks the existing
+membership status and rejects pending, scheduled, expired, inactive, or missing
+packages; only a client with an active package can be assigned to an active
+dietitian.
 
 ## Customer purchase APIs
 

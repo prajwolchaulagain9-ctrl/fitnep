@@ -58,6 +58,8 @@ class NotificationDestinationRemoteDatasourceImpl
       ),
       NotificationType.task => AppConstants.taskEndpoint(referenceId),
       NotificationType.payment => AppConstants.paymentEndpoint(referenceId),
+      NotificationType.assignment =>
+        AppConstants.dietitianAssignedClientEndpoint(referenceId),
       NotificationType.other => throw const NotificationDestinationException(
         NotificationDestinationFailure.invalidReference,
         'This notification does not have a supported destination.',
@@ -79,6 +81,7 @@ class NotificationDestinationRemoteDatasourceImpl
       NotificationType.message => 'conversation',
       NotificationType.task => 'task',
       NotificationType.payment => 'payment',
+      NotificationType.assignment => 'client',
       NotificationType.other => 'record',
     };
 
@@ -132,6 +135,7 @@ class NotificationDestinationRemoteDatasourceImpl
     NotificationType.message => 'conversation',
     NotificationType.task => 'task',
     NotificationType.payment => 'payment',
+    NotificationType.assignment => 'assigned client',
     NotificationType.other => 'record',
   };
 }

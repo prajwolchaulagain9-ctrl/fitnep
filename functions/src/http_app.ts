@@ -6,6 +6,9 @@ import express, {
 } from "express";
 
 import { randomUUID } from "node:crypto";
+import { HttpsError } from "firebase-functions/v2/https";
+import { GooglePasswordService } from "./google_password_service";
+import { ClientAssignmentError, ClientAssignmentService } from "./client_assignment_service";
 import { AuditUnavailableError, AuditWriter } from "./audit";
 import { healthAuditTarget } from "./audited_health_reads";
 import { PlatformSessionService, platformSessionHeader } from "./platform_sessions";
@@ -82,6 +85,8 @@ import {
 } from "./purchase_service";
 
 export interface NotificationAppDependencies {
+  googlePasswordService?: GooglePasswordService;
+  clientAssignmentService?: ClientAssignmentService;
   staffAccountRepository?: StaffAccountRepository;
   platformSessions?: PlatformSessionService;
   auditWriter?: AuditWriter;
@@ -167,7 +172,7 @@ export function createNotificationApp(
     }
     next();
   }));
-  app.use(createRbacRouter(dependencies.accounts, dependencies.audit));
+  app.use(createRbacRouter(dependencies.accounts, dependencies.audit, dependencies.privateRecordsStore));
   app.use(rejectRecipientOverrides);
 
   app.get(
@@ -226,12 +231,101 @@ export function createNotificationApp(
   }));
 
   app.post("/auth/staff/change-temporary-password", asyncRoute(async (request, response) => {
+    if (currentUser(response).googleTemporaryPassword === true) {
+      if (!dependencies.googlePasswordService) throw new StaffAccountError(503, "Password setup is unavailable.");
+      if (!isObject(request.body) || Object.keys(request.body).some(key => key !== "new_password")) {
+        throw new StaffAccountError(400, "Supply only a new password.");
+      }
+      try {
+        await dependencies.googlePasswordService.change(currentUser(response), request.body.new_password);
+      } catch (error) {
+        if (error instanceof HttpsError) {
+          const status = error.code === "invalid-argument" ? 400 : error.code === "permission-denied" ? 403 : error.code === "failed-precondition" ? 409 : 503;
+          throw new StaffAccountError(status, error.message);
+        }
+        throw error;
+      }
+      response.status(204).end();
+      return;
+    }
     await staffAccounts.changeTemporaryPassword(
       currentUser(response),
       isObject(request.body) ? request.body : {},
     );
     response.status(204).end();
   }));
+
+  const clientAssignments = () => {
+    if (!dependencies.clientAssignmentService) {
+      throw new ClientAssignmentError(
+        503,
+        "Client assignment storage has not been configured yet.",
+      );
+    }
+    return dependencies.clientAssignmentService;
+  };
+  app.get(
+    "/admin/client-assignments/dietitian-counts",
+    asyncRoute(async (_request, response) => {
+      const counts = await clientAssignments().dietitianClientCounts(
+        currentUser(response),
+      );
+      response.json({ data: { counts } });
+    }),
+  );
+  app.get(
+    "/admin/client-assignments/:clientId/eligibility",
+    asyncRoute(async (request, response) => {
+      const eligibility = await clientAssignments().eligibility(
+        currentUser(response),
+        request.params.clientId,
+      );
+      response.json({ data: { eligibility: {
+        client_id: eligibility.clientId,
+        package_status: eligibility.packageStatus,
+        can_assign: eligibility.canAssign,
+        message: eligibility.message,
+      } } });
+    }),
+  );
+  app.put(
+    "/admin/client-assignments/:clientId",
+    asyncRoute(async (request, response) => {
+      const body = isObject(request.body) ? request.body : {};
+      if (Object.keys(body).some(key => key !== "dietitian_id")) {
+        throw new ClientAssignmentError(400, "Only dietitian_id may be supplied.");
+      }
+      const assignment = await clientAssignments().assign(
+        currentUser(response),
+        request.params.clientId,
+        body.dietitian_id,
+      );
+      response.json({ data: { assignment: {
+        client_id: assignment.clientId,
+        dietitian_id: assignment.dietitianId,
+        active: assignment.active,
+        assigned_at: assignment.assignedAt,
+      } } });
+    }),
+  );
+
+  // ── Dietitian: view an assigned client ─────────────────────────────────────
+  app.get(
+    "/dietitian/assigned-clients/:clientId",
+    asyncRoute(async (request, response) => {
+      const profile = await clientAssignments().assignedClient(
+        currentUser(response),
+        request.params.clientId,
+      );
+      response.json({ data: { client: {
+        id: profile.id,
+        name: profile.name,
+        email: profile.email,
+        assignment_status: profile.assignmentStatus,
+        assigned_at: profile.assignedAt,
+      } } });
+    }),
+  );
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -525,25 +619,6 @@ export function createNotificationApp(
     response.status(404).json({ error: "Endpoint not found." });
   });
 
-  app.use((error: unknown, request: Request, response: Response, next: NextFunction) => {
-    const denied = error instanceof PrivacyPreferencesAuthorizationError ||
-      error instanceof PrivateRecordAuthorizationError || error instanceof PackageAuthorizationError ||
-      error instanceof PurchaseAuthorizationError ||
-      (error instanceof AuthenticationError && (error.statusCode === 401 || error.statusCode === 403)) ||
-      (error instanceof PackageError && error.statusCode === 403);
-    if (!denied || !dependencies.auditWriter || !response.locals.user) { next(error); return; }
-    // Route templates contain no query values, tokens, proof bytes or medical answers.
-    const route = typeof request.route?.path === "string" ? request.route.path : "protected-api";
-    const target = error instanceof PrivateRecordAuthorizationError && response.locals.healthAuditTarget
-      ? response.locals.healthAuditTarget
-      : { targetType: "api" as const, targetId: request.method + " " + route };
-    void dependencies.auditWriter.append({
-      actor: currentUser(response), action: "access.denied",
-      ...target,
-      outcome: "denied", correlationId: response.locals.correlationId,
-    }).then(() => next(error), () => next(new AuditUnavailableError()));
-  });
-
   app.use(
     (
       error: unknown,
@@ -564,7 +639,8 @@ export function createNotificationApp(
         error instanceof PrivacyPreferencesAuthorizationError ||
         error instanceof PrivateRecordAuthorizationError ||
         error instanceof PackageAuthorizationError || error instanceof PurchaseAuthorizationError ||
-        error instanceof StaffAccountError && error.status === 403;
+        error instanceof StaffAccountError && error.status === 403 ||
+        error instanceof ClientAssignmentError && error.statusCode === 403;
       if (denied) {
         const user = response.locals.user as AuthenticatedUser | undefined;
         const identity = error instanceof AuthenticationError ? error.identity : undefined;
@@ -573,10 +649,13 @@ export function createNotificationApp(
           action: access?.permission ?? "access_protected_feature", resource: access?.resource ?? "protected_endpoint",
           recordId: access?.recordId ?? null,
           reason: error instanceof PermissionDeniedError ? error.reason : "Authorization denied." };
+        const target = error instanceof PrivateRecordAuthorizationError && response.locals.healthAuditTarget
+          ? response.locals.healthAuditTarget
+          : { targetType: "api" as const, targetId: access?.resource ?? "protected_endpoint" };
         void Promise.all([
           dependencies.audit?.denied(attempt),
           user && dependencies.auditWriter?.append({ actor: user,
-            action: "access.denied", targetType: "api", targetId: access?.resource ?? "protected_endpoint",
+            action: "access.denied", ...target,
             outcome: "denied", correlationId: response.locals.correlationId }),
         ]).then(() => {
           response.status(403).json({ code: "permission-denied", error: "You do not have permission to access this feature." });
@@ -602,6 +681,10 @@ export function createNotificationApp(
       }
       if (error instanceof AuthenticationError) {
         response.status(error.statusCode).json({ code: error.code, error: error.message });
+        return;
+      }
+      if (error instanceof ClientAssignmentError) {
+        response.status(error.statusCode).json({ error: error.message });
         return;
       }
       if (error instanceof PackageError) {

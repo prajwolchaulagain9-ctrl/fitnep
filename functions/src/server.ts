@@ -2,19 +2,10 @@ import { applicationDefault, cert, deleteApp, initializeApp } from "firebase-adm
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { createFitnepDependencies } from "./api_factory";
 import { mountHostedAuth } from "./hosted_auth";
-import { FirestoreAuditWriter } from "./audit";
-import { FirebaseAuthVerifier } from "./auth";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePackageRepository } from "./firestore_package_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
 import { HostedConfigurationError, readHostedConfig } from "./hosted_config";
 import { createNotificationApp } from "./http_app";
-import { FirestorePackageService } from "./package_membership_service";
 import { FirestorePlatformSessionService } from "./platform_sessions";
 
 function start() {
@@ -25,23 +16,11 @@ function start() {
   });
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
-  const audit = new FirestoreAuditWriter(firestore);
-  const privacy = new FirestorePrivacyPreferencesRepository(firestore);
-  const accounts = new FirestoreAccountService(firestore, auth);
-  const verifier = new FirebaseAuthVerifier(accounts);
-  const authAdapter = mountHostedAuth(auth, firestore, verifier, process.env);
+  const dependencies = createFitnepDependencies(auth, firestore);
+  const authAdapter = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
   const api = createNotificationApp({
-    accounts, audit: new FirestoreAuditStore(firestore),
-    authVerifier: verifier,
-    notificationRepository: new FirestoreNotificationRepository(firestore),
-    staffAccountRepository: new FirebaseStaffAccountRepository(auth, firestore),
-    packageService: new FirestorePackageService(firestore),
-    packageRepository: new FirestorePackageRepository(firestore),
-    purchaseRepository: new FirestorePurchaseRepository(firestore),
-    privacyPreferencesRepository: privacy,
-    privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy, audit),
-    platformSessions: new FirestorePlatformSessionService(firestore, audit, config.idleTimeoutSeconds),
-    auditWriter: audit,
+    ...dependencies,
+    platformSessions: new FirestorePlatformSessionService(firestore, dependencies.auditWriter, config.idleTimeoutSeconds),
     manualVerificationEnabled: false,
     health: {
       buildSha: config.buildSha,

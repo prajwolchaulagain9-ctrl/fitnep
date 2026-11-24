@@ -1,3 +1,5 @@
+import '../../support/offline_hosted_session.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -35,6 +37,7 @@ void main() {
       final repository = _FakeDestinationRepository();
       final container = ProviderContainer(
         overrides: [
+          offlineHostedSessionOverride,
           routeSessionProvider.overrideWith(
             (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
           ),
@@ -75,6 +78,7 @@ void main() {
     );
     final container = ProviderContainer(
       overrides: [
+        offlineHostedSessionOverride,
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
         authorizationRepositoryProvider.overrideWithValue(

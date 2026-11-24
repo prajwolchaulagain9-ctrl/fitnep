@@ -55,6 +55,7 @@ export class FirebaseAuthVerifier implements AuthVerifier {
       const displayName = firstNonEmptyString(
         account.full_name, account.email,
       );
+      const googleTemporaryPassword = typeof identity.customClaims?.googleTemporaryPasswordUntil === "number";
       return {
         uid: decodedToken.uid,
         role: account.role,
@@ -65,7 +66,9 @@ export class FirebaseAuthVerifier implements AuthVerifier {
         roleVersion: account.role_revision,
         staffRoleVersion: typeof decodedToken.staffRoleVersion === "string" ? decodedToken.staffRoleVersion : undefined,
         passwordAuthenticatedAt: decodedToken.firebase?.sign_in_provider === "password" ? decodedToken.auth_time : undefined,
-        mustChangePassword: identity.customClaims?.mustChangePassword === true || identity.customClaims?.must_change_password === true,
+        signInProvider: decodedToken.firebase?.sign_in_provider,
+        googleTemporaryPassword,
+        mustChangePassword: (googleTemporaryPassword && decodedToken.firebase?.sign_in_provider === "password") || identity.customClaims?.mustChangePassword === true || identity.customClaims?.must_change_password === true,
         permissions: { auditRead: hasPermission(account.role, "view_audit_logs"),
           paymentsVerify: hasPermission(account.role, "manage_business_settings") },
         ...(displayName === null ? {} : { displayName }),

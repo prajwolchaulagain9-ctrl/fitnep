@@ -38,4 +38,8 @@ class AppConstants {
   /// Admin endpoint to activate/deactivate a specific package.
   static String packageActiveEndpoint(String packageId) =>
       'packages/${Uri.encodeComponent(packageId)}/active';
+
+  /// Dietitian endpoint to view an assigned client's profile.
+  static String dietitianAssignedClientEndpoint(String clientId) =>
+      'dietitian/assigned-clients/${Uri.encodeComponent(clientId)}';
 }

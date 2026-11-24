@@ -1,15 +1,8 @@
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
-import { FirebaseAuthVerifier } from "./auth";
-import { FirestoreAuditWriter } from "./audit";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
+import { createFitnepDependencies } from "./api_factory";
 import { createNotificationApp } from "./http_app";
-import { FirestorePackageService } from "./package_membership_service";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {
@@ -22,6 +15,7 @@ const auth = getAuth(firebase);
 const db = getFirestore(firebase);
 
 async function main() {
+  const dependencies = createFitnepDependencies(auth, db);
   for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"],
     ["demo-staff", "staff"], ["demo-dietitian", "dietitian"]] as const) {
     try { await auth.getUser(uid); } catch (error) {
@@ -30,7 +24,7 @@ async function main() {
     }
     await auth.setCustomUserClaims(uid, { role });
     await auth.updateUser(uid, { emailVerified: true });
-    await new FirestoreAccountService(db, auth).provision(await auth.getUser(uid));
+    await dependencies.accounts.provision(await auth.getUser(uid));
   }
   for (const [id, name, days, price, features] of [
     ["basic", "Basic", 30, 2500, ["Personalized nutrition plan", "Weekly check-ins"]],
@@ -39,20 +33,7 @@ async function main() {
   ] as const) {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
   }
-  const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
-  const auditWriter = new FirestoreAuditWriter(db);
-  const accounts = new FirestoreAccountService(db, auth);
-  const api = createNotificationApp({
-    accounts,
-    audit: new FirestoreAuditStore(db),
-    authVerifier: new FirebaseAuthVerifier(accounts),
-    staffAccountRepository: new FirebaseStaffAccountRepository(auth, db),
-    notificationRepository: new FirestoreNotificationRepository(db),
-    privacyPreferencesRepository,
-    privateRecordsStore: new FirestorePrivateRecordsStore(db, privacyPreferencesRepository, auditWriter),
-    auditWriter,
-    packageService: new FirestorePackageService(db),
-  });
+  const api = createNotificationApp(dependencies);
   const server = api.listen(3000, "127.0.0.1", () => {
     console.log("Free FitNEP demo ready at http://127.0.0.1:3000. No real money is processed.");
   });

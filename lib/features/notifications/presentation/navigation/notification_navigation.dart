@@ -25,6 +25,7 @@ class NotificationNavigationTarget {
       NotificationType.message => AppRoutes.messageThreadName,
       NotificationType.task => AppRoutes.taskDetailsName,
       NotificationType.payment => AppRoutes.paymentDetailsName,
+      NotificationType.assignment => AppRoutes.dietitianAssignedClientName,
       NotificationType.other => throw const NotificationNavigationException(
         'This notification type does not have a destination yet.',
       ),

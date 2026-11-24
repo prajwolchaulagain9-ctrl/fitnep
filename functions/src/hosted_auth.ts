@@ -6,6 +6,8 @@ import { AuthVerifier, AuthenticationError } from "./auth";
 import { FirestoreAuditStore } from "./account_service";
 import { EmailCodeRecord, EmailCodeStore, SignupEmailCodeService } from "./signup_email_code_service";
 import { FirestorePrivacyAcceptanceStore, PrivacyAcceptanceError } from "./privacy_policy_acceptance";
+import { BrevoMailer } from "./brevo_mailer";
+import { GooglePasswordService } from "./google_password_service";
 
 // The existing Firebase SDK remains the credential authority. This adapter
 // hosts the application prerequisites without requiring Firebase Functions.
@@ -16,6 +18,8 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
   app.use(express.json({ limit: "8kb" }));
   app.use((_request, response, next) => { response.set("Cache-Control", "no-store"); next(); });
   const privacy = new FirestorePrivacyAcceptanceStore(firestore);
+  const mailer = new BrevoMailer(environment, transport);
+  const googlePasswords = new GooglePasswordService(auth, firestore, mailer, environment.SIGNUP_OTP_HASH_SECRET || "");
   const protectedRoute = (path: string, action: (uid: string, body: Record<string, unknown>, response: express.Response) => Promise<void>) => {
     app.post(path, (request, response, next) => {
       void (async () => {
@@ -44,23 +48,21 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
     const sender = environment.BREVO_SENDER_EMAIL;
     if (environment.SIGNUP_EMAIL_OTP_ENABLED === "false" || !key || !secret || secret.length < 32 ||
         !sender || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender)) {
-      throw new HttpsError("failed-precondition", "Email verification is not configured.");
-    }
-    return new SignupEmailCodeService(new HostedEmailCodeStore(firestore), async (email, code) => {
-      const result = await transport("https://api.brevo.com/v3/smtp/email", {
-        method: "POST", headers: { "api-key": key, "Content-Type": "application/json" },
-        body: JSON.stringify({ sender: { email: sender, name: environment.BREVO_SENDER_NAME || "FitNEP" },
-          to: [{ email }], subject: "Verify your FitNEP email",
-          textContent: `Your FitNEP verification code is ${code}. It expires in 10 minutes.` }),
-        signal: AbortSignal.timeout(10_000),
+      throw new HttpsError("failed-precondition", "Email verification is not configured.", {
+        reason: !secret || secret.length < 32 ? "invalid-otp-secret" : "email-configuration",
       });
-      if (!result.ok) throw new Error("Email delivery failed.");
-    }, async proven => {
+    }
+    return new SignupEmailCodeService(new HostedEmailCodeStore(firestore),
+      (email, code) => mailer.send(email, "Verify your FitNEP email", `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`), async proven => {
       const latest = await auth.getUser(proven.uid);
       if (latest.disabled || latest.email !== proven.email) throw new HttpsError("failed-precondition", "Account changed.");
       await auth.updateUser(proven.uid, { email: proven.email, emailVerified: true });
     }, secret);
   };
+  protectedRoute("/auth/google/email-password", async (_uid, body, response) => {
+    if (Object.keys(body).length) throw new HttpsError("invalid-argument", "No account details are accepted.");
+    response.json({ data: await googlePasswords.send(response.locals.actor) });
+  });
   protectedRoute("/auth/signup/otp/send", async (uid, body, response) => {
     if (Object.keys(body).some(key => key !== "resend") || (body.resend !== undefined && typeof body.resend !== "boolean")) {
       throw new HttpsError("invalid-argument", "Supply only a resend flag.");
@@ -78,7 +80,7 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
     if (response.locals.actor.role !== "client") { response.json({ data: { accepted: true } }); return; }
     if (!response.locals.actor.emailVerified) throw new AuthenticationError("Verify your email before continuing.", 403);
     if (body.action === "status") { response.json({ data: { accepted: await privacy.hasCurrentAcceptance(uid) } }); return; }
-    if (body.action !== "accept" || Object.keys(body).some(key => !["action", "uid", "age", "privacy_policy_version", "privacy_policy_accepted", "guardian_consent_confirmed"].includes(key))) {
+    if (body.action !== "accept" || Object.keys(body).some(key => !["action", "uid", "age", "privacy_policy_version", "privacy_policy_accepted", "guardian_consent_confirmed", "terms_accepted", "terms_version"].includes(key))) {
       throw new HttpsError("invalid-argument", "Invalid consent request.");
     }
     await privacy.recordForClient(uid, body);

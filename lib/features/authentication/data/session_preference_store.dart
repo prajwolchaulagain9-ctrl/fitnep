@@ -9,9 +9,9 @@ abstract interface class SessionPreferenceStore {
 }
 
 class SecureSessionPreferenceStore implements SessionPreferenceStore {
-  const SecureSessionPreferenceStore({
+  const SecureSessionPreferenceStore([
     this._storage = const FlutterSecureStorage(),
-  });
+  ]);
 
   static const _rememberSessionKey = 'remember_authenticated_session';
 

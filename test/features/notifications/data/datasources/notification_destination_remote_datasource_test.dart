@@ -16,6 +16,12 @@ void main() {
     ),
     (NotificationType.task, 'task-1', 'tasks/task-1', 'task'),
     (NotificationType.payment, 'payment-1', 'payments/payment-1', 'payment'),
+    (
+      NotificationType.assignment,
+      'client-1',
+      'dietitian/assigned-clients/client-1',
+      'client',
+    ),
   ];
 
   for (final testCase in cases) {

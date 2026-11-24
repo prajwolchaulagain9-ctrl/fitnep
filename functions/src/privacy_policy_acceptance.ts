@@ -20,6 +20,8 @@ export interface RegistrationPrivacyInput {
   privacy_policy_accepted?: unknown;
   privacy_policy_version?: unknown;
   guardian_consent_confirmed?: unknown;
+  terms_accepted?: unknown;
+  terms_version?: unknown;
 }
 
 export class PrivacyAcceptanceError extends Error {
@@ -32,7 +34,7 @@ export class PrivacyAcceptanceError extends Error {
 /** Validate the client's consent before completing registration. */
 export function validatePrivacyAcceptance(input: RegistrationPrivacyInput) {
   const { age } = input;
-  if (typeof age !== "number" || !Number.isInteger(age) || age < 1 || age > 120) {
+  if (age !== undefined && (typeof age !== "number" || !Number.isInteger(age) || age < 1 || age > 120)) {
     throw new PrivacyAcceptanceError("Enter a valid age.");
   }
   if (input.privacy_policy_accepted !== true ||
@@ -41,12 +43,16 @@ export function validatePrivacyAcceptance(input: RegistrationPrivacyInput) {
       "Accept the current FitNEP Privacy Policy before registering.",
     );
   }
-  if (age < 18 && input.guardian_consent_confirmed !== true) {
+  if (age === undefined && (input.terms_accepted !== true || input.terms_version !== "1" ||
+      input.guardian_consent_confirmed !== false)) {
+    throw new PrivacyAcceptanceError("Accept the Terms and Conditions before registering.");
+  }
+  if (typeof age === "number" && age < 18 && input.guardian_consent_confirmed !== true) {
     throw new PrivacyAcceptanceError(
       "Confirm permission from a parent or guardian before registering.",
     );
   }
-  return { age, guardianConsentConfirmed: age < 18 };
+  return { age, guardianConsentConfirmed: typeof age === "number" && age < 18 };
 }
 
 export class FirestorePrivacyAcceptanceStore {
@@ -70,7 +76,10 @@ export class FirestorePrivacyAcceptanceStore {
       transaction.set(consent, {
         policy_version: privacyPolicyVersion,
         accepted_at: FieldValue.serverTimestamp(),
-        age_at_acceptance: age,
+        ...(age === undefined ? { onboarding_pending: true } : { age_at_acceptance: age }),
+        ...(input.terms_accepted === true && input.terms_version === "1" ? {
+          terms_version: "1", terms_accepted_at: FieldValue.serverTimestamp(),
+        } : {}),
         guardian_consent_confirmed: guardianConsentConfirmed,
         ...(guardianConsentConfirmed ? {
           guardian_consent_confirmed_at: FieldValue.serverTimestamp(),

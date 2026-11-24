@@ -273,7 +273,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       age: 21, privacy_policy_version: "1", privacy_policy_accepted: true }).expect(403);
     assert.equal((await firestore.doc("privacy_acceptances/day1-client-b").get()).get("age_at_acceptance"), 21);
     await request(hosted).post("/auth/privacy").set(verifiedHeader).send({ action: "accept", uid: "day1-client-a",
-      age: 21, privacy_policy_version: "1", privacy_policy_accepted: true }).expect(200);
+      age: 21, privacy_policy_version: privacyPolicyVersion, privacy_policy_accepted: true }).expect(200);
     await request(hosted).post("/sessions/start").set(verifiedHeader).send({}).expect(200);
   });
 

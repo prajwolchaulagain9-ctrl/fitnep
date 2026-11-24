@@ -6,12 +6,12 @@ const own = ["view_dashboard", "view_own_profile", "edit_own_profile",
 export const rolePermissions = {
   client: [...own, "view_client_dashboard", "view_packages", "manage_own_membership", "manage_own_privacy",
     "view_client_records", "view_own_client_records", "collect_own_records", "view_own_diet_plans"],
-  staff: [...own, "view_staff_dashboard", "view_assigned_clients"],
+  staff: [...own, "view_staff_dashboard", "view_assigned_clients", "view_client_records", "view_own_diet_plans"],
   dietitian: [...own, "view_dietitian_dashboard", "view_assigned_clients", "view_client_records",
     "view_assigned_client_records", "view_meal_records", "manage_diet_plans", "view_own_diet_plans"],
   admin: [...own, "view_admin_dashboard", "view_packages", "manage_staff_accounts", "manage_dietitian_accounts",
     "manage_client_accounts", "manage_user_roles", "manage_business_settings",
-    "view_audit_logs", "manage_client_assignments"],
+    "view_audit_logs", "manage_client_assignments", "view_client_records", "view_own_diet_plans"],
 } as const satisfies Record<UserRole, readonly string[]>;
 export type Permission = typeof rolePermissions[UserRole][number];
 export const permissions = [...new Set(Object.values(rolePermissions).flat())] as Permission[];
@@ -49,6 +49,7 @@ export const protectedActionRoles = {
   updateOwnNotifications: userRoles,
   createDietPlanAssignmentNotification: ["admin", "dietitian"],
   createTaskAssignmentNotification: ["admin", "dietitian"],
+  createClientAssignmentNotification: ["admin"],
 } as const satisfies Record<string, readonly UserRole[]>;
 
 export type ProtectedAction = keyof typeof protectedActionRoles;

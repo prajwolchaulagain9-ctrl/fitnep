@@ -109,6 +109,9 @@ service cloud.firestore {
     match /staff_password_setup/{document=**} {
       allow read, write: if false;
     }
+    match /google_password_setup/{document=**} {
+      allow read, write: if false;
+    }
     match /staff_account_locks/{document=**} {
       allow read, write: if false;
     }

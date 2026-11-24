@@ -40,7 +40,8 @@ class _PasswordResetSessionObserverState
     );
     WidgetsBinding.instance.addObserver(this);
     _subscription = _recovery.auth.authStateChanges().listen((_) {
-      ref.invalidate(tokenStorageProvider);
+      // TokenStorage reads Firebase's current token on every request. Rebuilding
+      // it here restarts the account check and remounts this observer in a loop.
       ref.invalidate(notificationControllerProvider);
       ref.invalidate(notificationDestinationProvider);
       _startChecking();

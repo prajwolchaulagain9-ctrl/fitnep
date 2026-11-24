@@ -1,4 +1,6 @@
 import { AuthenticatedUser } from "./domain";
+import type { Transaction } from "firebase-admin/firestore";
+import type { HealthReadTarget } from "./audited_health_reads";
 
 export const recordSharingChoices = {
   "nutrition-records": "shareNutritionRecords",
@@ -19,6 +21,8 @@ export class PrivateRecordsError extends Error {
 }
 
 export interface PrivateRecordsStore {
+  readResource<T>(actor: AuthenticatedUser, target: HealthReadTarget,
+    load: (transaction: Transaction) => Promise<{ data: T; recordIds?: readonly string[] }>, correlationId?: string): Promise<T>;
   list(actor: AuthenticatedUser, clientId: string, category: RecordCategory, after?: string, correlationId?: string): Promise<PrivateRecord[]>;
   read(actor: AuthenticatedUser, clientId: string, category: RecordCategory, id: string, correlationId?: string): Promise<PrivateRecord>;
   collect(actor: AuthenticatedUser, clientId: string, category: RecordCategory, body: unknown): Promise<PrivateRecord>;

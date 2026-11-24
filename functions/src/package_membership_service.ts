@@ -1,9 +1,10 @@
 import { requirePermission } from "./authorization_policy";
 import { createHash } from "node:crypto";
-import { Firestore, Timestamp } from "firebase-admin/firestore";
+import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuthenticatedUser } from "./domain";
 
 const day = 86_400_000;
+export const inactivePackageAssignmentMessage = "Only clients with an active package can be assigned.";
 
 export class PackageError extends Error {
   constructor(readonly statusCode: number, message: string) { super(message); }
@@ -29,6 +30,14 @@ export interface MembershipRecord {
   payment_id?: string;
 }
 
+export type EffectiveMembershipStatus =
+  | "active"
+  | "pending"
+  | "scheduled"
+  | "expired"
+  | "inactive"
+  | "none";
+
 // Every selection/activation touches the same client guard. Firestore retries
 // conflicting transactions, including concurrent activations of different IDs.
 export class FirestorePackageService {
@@ -39,10 +48,42 @@ export class FirestorePackageService {
     return snapshot.docs.map(doc => parsePackage(doc.id, doc.data())).sort((a, b) => a.price_npr - b.price_npr);
   }
 
-  async memberships(uid: string) {
-    const snapshot = await this.db.collection("package_memberships").where("client_id", "==", uid).get();
+  async memberships(uid: string, transaction?: Transaction) {
+    const query = this.db.collection("package_memberships").where("client_id", "==", uid);
+    const snapshot = transaction ? await transaction.get(query) : await query.get();
     return snapshot.docs.map(doc => this.toApi(doc.data() as MembershipRecord))
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  /** Effective status used by assignment, including retained legacy purchases. */
+  async assignmentStatus(uid: string, transaction?: Transaction): Promise<EffectiveMembershipStatus> {
+    const memberships = await this.memberships(uid, transaction);
+    if (memberships.some(member => member.status === "active")) return "active";
+
+    const query = this.db.collection("customer_purchases").doc(uid).collection("purchases");
+    const historical = transaction ? await transaction.get(query) : await query.get();
+    let historicalStatus: EffectiveMembershipStatus = "none";
+    for (const document of historical.docs) {
+      if (document.get("is_active") === false) {
+        if (historicalStatus === "none") historicalStatus = "inactive";
+        continue;
+      }
+      const startsAt = document.get("purchased_at");
+      const endsAt = document.get("expires_at");
+      if (!(startsAt instanceof Timestamp) || !(endsAt instanceof Timestamp) ||
+          endsAt.toMillis() <= startsAt.toMillis()) {
+        throw new PackageError(503, "An existing membership needs attention before assignment.");
+      }
+      const now = this.now().getTime();
+      if (startsAt.toMillis() <= now && now < endsAt.toMillis()) return "active";
+      if (now < startsAt.toMillis()) historicalStatus = "scheduled";
+      else if (historicalStatus === "none") historicalStatus = "expired";
+    }
+
+    if (memberships.some(member => member.status === "scheduled")) return "scheduled";
+    if (memberships.some(member => member.status === "pending")) return "pending";
+    if (memberships.length > 0) return "expired";
+    return historicalStatus;
   }
 
   async pendingMemberships() {
