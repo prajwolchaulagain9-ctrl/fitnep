@@ -16,6 +16,7 @@ import { FirestoreNotificationRepository } from "../src/firestore_notification_r
 import { FirestorePrivacyAcceptanceStore, PrivacyAcceptanceError, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
 import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
+import { FirestoreClientAssignmentRepository } from "../src/firestore_client_assignment_repository";
 import { FirestorePackageRepository } from "../src/firestore_package_repository";
 import { FirestorePackageService } from "../src/package_membership_service";
 import { FirestorePlatformSessionService } from "../src/platform_sessions";
@@ -25,6 +26,10 @@ import {
 } from "../src/firestore_purchase_repository";
 import { createNotificationApp } from "../src/http_app";
 import { NotificationWorkflowService } from "../src/notification_service";
+import {
+  ClientAssignmentService,
+  FirebaseClientDirectory,
+} from "../src/client_assignment_service";
 
 const projectId = "demo-fitnep";
 const authEmulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -536,6 +541,92 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     await request(api).get(imagePath).set(client).expect(200);
     const own = await request(api).get(activity).set(client).expect(200);
     assert.deepEqual(own.body.data.records.map((record: { details: unknown }) => record.details), [sample]);
+  });
+
+  it("reassigns a client, preserves both assignment versions, and switches backend access", async () => {
+    await createAccount(
+      auth,
+      "dietitian-2",
+      "dietitian-2@fitnep.test",
+      "dietitian",
+    );
+    const assignmentRepository = new FirestoreClientAssignmentRepository(firestore);
+    const assignmentApi = createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(),
+      notificationRepository: repository,
+      clientAssignmentService: new ClientAssignmentService(
+        assignmentRepository,
+        { getStatus: async () => "active" },
+        {
+          isActiveDietitian: async uid =>
+            uid === "dietitian-1" || uid === "dietitian-2",
+        },
+        null,
+        new FirebaseClientDirectory(auth),
+        (() => {
+          let hour = 12;
+          return () => new Date(`2026-11-24T${hour++}:00:00.000Z`);
+        })(),
+      ),
+    });
+    const [adminToken, dietitianAToken, dietitianBToken] = await Promise.all([
+      signIn("admin@fitnep.test"),
+      signIn("dietitian@fitnep.test"),
+      signIn("dietitian-2@fitnep.test"),
+    ]);
+    const path = "/admin/client-assignments/client-a";
+    const clientPath = "/dietitian/assigned-clients/client-a";
+
+    await firestore.collection("client_assignments").doc("client-a").set({
+      active: true,
+      client_id: "client-a",
+      dietitian_id: "dietitian-1",
+      assigned_at: "2026-11-23T12:00:00.000Z",
+      assigned_by_id: "admin-1",
+      version: 1,
+    });
+    assert.equal((await firestore.collection("client_assignment_history")
+      .where("client_id", "==", "client-a").get()).empty, true);
+    await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianAToken)).expect(200);
+    await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianBToken)).expect(403);
+
+    await request(assignmentApi).put(path).set(bearer(adminToken))
+      .send({ dietitian_id: "dietitian-2" }).expect(200);
+
+    await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianAToken)).expect(403);
+    await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianBToken)).expect(200);
+    const current = await firestore.collection("client_assignments")
+      .doc("client-a").get();
+    assert.equal(current.get("dietitian_id"), "dietitian-2");
+    assert.equal(current.get("version"), 2);
+    const history = await firestore.collection("client_assignment_history")
+      .where("client_id", "==", "client-a").get();
+    assert.deepEqual(
+      history.docs
+        .map(document => [document.get("version"), document.get("dietitian_id")])
+        .sort((left, right) => Number(left[0]) - Number(right[0])),
+      [[1, "dietitian-1"], [2, "dietitian-2"]],
+    );
+    await request(assignmentApi).put(path).set(bearer(adminToken))
+      .send({ dietitian_id: "dietitian-2" }).expect(200);
+    const unchangedHistory = await firestore.collection("client_assignment_history")
+      .where("client_id", "==", "client-a").get();
+    assert.deepEqual(
+      unchangedHistory.docs
+        .map(document => [document.get("version"), document.get("dietitian_id")])
+        .sort((left, right) => Number(left[0]) - Number(right[0])),
+      [[1, "dietitian-1"], [2, "dietitian-2"]],
+    );
+
+    const historyUrl = `http://${firestoreEmulatorHost}/v1/projects/${projectId}` +
+      "/databases/(default)/documents/client_assignment_history/client-a_v1";
+    assert.equal((await fetch(historyUrl, {
+      headers: bearer(dietitianAToken),
+    })).status, 403);
   });
 
   it("enforces ownership with real emulator ID tokens and persisted records", async () => {

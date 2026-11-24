@@ -132,6 +132,54 @@ describe("client assignment package validation", () => {
 });
 
 describe("dietitian client visibility and notification (acceptance criterion)", () => {
+  it("preserves history and switches access when a client is reassigned", async () => {
+    const fixture = createFixture("active");
+
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-1" })
+      .expect(200);
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-1"))
+      .expect(200);
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-2"))
+      .expect(403);
+
+    const reassigned = await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-2" })
+      .expect(200);
+
+    assert.equal(reassigned.body.data.assignment.dietitian_id, "dietitian-2");
+    assert.equal(fixture.assignments.records[0]?.dietitianId, "dietitian-2");
+    assert.deepEqual(
+      fixture.assignments.history.map(item => [item.version, item.dietitianId]),
+      [[1, "dietitian-1"], [2, "dietitian-2"]],
+    );
+    await request(fixture.app)
+      .put("/admin/client-assignments/client-1")
+      .set(bearer("admin"))
+      .send({ dietitian_id: "dietitian-2" })
+      .expect(200);
+    assert.deepEqual(
+      fixture.assignments.history.map(item => [item.version, item.dietitianId]),
+      [[1, "dietitian-1"], [2, "dietitian-2"]],
+    );
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-1"))
+      .expect(403);
+    await request(fixture.app)
+      .get("/dietitian/assigned-clients/client-1")
+      .set(bearer("dietitian-2"))
+      .expect(200);
+  });
+
   it("assigned dietitian receives a notification after assignment", async () => {
     const fixture = createFixture("active");
 
@@ -240,15 +288,27 @@ function createFixture(status: AssignmentPackageStatus) {
 
 class InMemoryAssignmentRepository implements ClientAssignmentRepository {
   readonly records: ClientAssignmentRecord[] = [];
+  readonly history: ClientAssignmentRecord[] = [];
 
   async assign(record: ClientAssignmentRecord): Promise<ClientAssignmentRecord> {
     const index = this.records.findIndex(item => item.clientId === record.clientId);
-    const version = index === -1
+    const previous = index === -1 ? null : this.records[index] ?? null;
+    const sameDietitian = previous?.dietitianId === record.dietitianId;
+    const version = previous === null
       ? (record.version > 0 ? record.version : 1)
-      : Math.max(1, (this.records[index]?.version ?? 0) + 1);
-    const stored = { ...record, version };
+      : sameDietitian
+        ? previous.version
+        : Math.max(1, previous.version + 1);
+    const stored = sameDietitian && previous !== null
+      ? previous
+      : { ...record, version };
     if (index === -1) this.records.push(stored);
     else this.records[index] = stored;
+    if (!this.history.some(item =>
+      item.clientId === stored.clientId && item.version === stored.version
+    )) {
+      this.history.push(stored);
+    }
     return stored;
   }
 
@@ -277,7 +337,7 @@ class MutablePackageStatusReader implements ClientPackageStatusReader {
 
 class ActiveDietitianDirectory implements DietitianDirectory {
   async isActiveDietitian(uid: string): Promise<boolean> {
-    return uid === "dietitian-1";
+    return uid === "dietitian-1" || uid === "dietitian-2";
   }
 }
 

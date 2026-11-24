@@ -118,6 +118,10 @@ and writes are denied; administrators read history through the API.
 - `GET /admin/client-assignments/dietitian-counts` returns each dietitian's
   current number of active client assignments.
 - `PUT /admin/client-assignments/:clientId` accepts `{ "dietitian_id": "..." }`.
+  Reassignments atomically update the current `client_assignments/{clientId}`
+  document and append immutable versioned records to
+  `client_assignment_history`. Authorization reads only the current assignment,
+  so the previous dietitian loses access as soon as the transaction commits.
 
 Both endpoints require an administrator. The write re-checks the existing
 membership status and rejects pending, scheduled, expired, inactive, or missing

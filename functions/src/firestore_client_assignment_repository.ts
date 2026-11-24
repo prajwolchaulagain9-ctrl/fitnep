@@ -1,4 +1,10 @@
-import { Firestore } from "firebase-admin/firestore";
+import {
+  DocumentData,
+  DocumentReference,
+  DocumentSnapshot,
+  Firestore,
+  Transaction,
+} from "firebase-admin/firestore";
 import {
   ClientAssignmentError,
   ClientAssignmentRecord,
@@ -14,10 +20,8 @@ implements ClientAssignmentRepository {
       .doc(record.clientId);
     return this.firestore.runTransaction(async transaction => {
       const snapshot = await transaction.get(reference);
-      const previousVersion = snapshot.exists &&
-        Number.isSafeInteger(snapshot.get("version")) &&
-        snapshot.get("version") > 0
-        ? snapshot.get("version") as number
+      const previousVersion = snapshot.exists
+        ? positiveVersion(snapshot.get("version")) ?? 1
         : 0;
       const sameDietitian = snapshot.exists &&
         snapshot.get("active") === true &&
@@ -39,14 +43,71 @@ implements ClientAssignmentRepository {
         assignedById,
         version,
       };
-      transaction.set(reference, {
-        active: true,
-        client_id: assigned.clientId,
-        dietitian_id: assigned.dietitianId,
-        assigned_at: assigned.assignedAt,
-        assigned_by_id: assigned.assignedById,
-        version: assigned.version,
-      });
+      const history = this.firestore.collection("client_assignment_history");
+      const currentHistory = history.doc(historyDocumentId(
+        assigned.clientId,
+        assigned.version,
+      ));
+
+      if (sameDietitian) {
+        const historySnapshot = await transaction.get(currentHistory);
+        ensureHistoryEntry(
+          transaction,
+          historySnapshot,
+          currentHistory,
+          historyValues(assigned),
+        );
+        transaction.set(reference, currentAssignmentValues(assigned));
+        return assigned;
+      }
+
+      if (snapshot.exists) {
+        const previousDietitianId = snapshot.get("dietitian_id");
+        if (typeof previousDietitianId !== "string" ||
+            !/^[A-Za-z0-9_-]{1,128}$/.test(previousDietitianId)) {
+          throw new ClientAssignmentError(
+            503,
+            "An existing client assignment needs attention.",
+          );
+        }
+        const previousHistory = history.doc(historyDocumentId(
+          record.clientId,
+          previousVersion,
+        ));
+        const [previousHistorySnapshot, currentHistorySnapshot] =
+          await Promise.all([
+            transaction.get(previousHistory),
+            transaction.get(currentHistory),
+          ]);
+        ensureHistoryEntry(
+          transaction,
+          previousHistorySnapshot,
+          previousHistory,
+          {
+            active: snapshot.get("active") === true,
+            client_id: record.clientId,
+            dietitian_id: previousDietitianId,
+            assigned_at: stringOrNull(snapshot.get("assigned_at")),
+            assigned_by_id: stringOrNull(snapshot.get("assigned_by_id")),
+            version: previousVersion,
+          },
+        );
+        ensureHistoryEntry(
+          transaction,
+          currentHistorySnapshot,
+          currentHistory,
+          historyValues(assigned),
+        );
+      } else {
+        const currentHistorySnapshot = await transaction.get(currentHistory);
+        ensureHistoryEntry(
+          transaction,
+          currentHistorySnapshot,
+          currentHistory,
+          historyValues(assigned),
+        );
+      }
+      transaction.set(reference, currentAssignmentValues(assigned));
       return assigned;
     });
   }
@@ -95,4 +156,80 @@ implements ClientAssignmentRepository {
       version,
     };
   }
+}
+
+type AssignmentHistoryValues = {
+  active: boolean;
+  client_id: string;
+  dietitian_id: string;
+  assigned_at: string | null;
+  assigned_by_id: string | null;
+  version: number;
+};
+
+function historyValues(record: ClientAssignmentRecord): AssignmentHistoryValues {
+  return {
+    active: record.active,
+    client_id: record.clientId,
+    dietitian_id: record.dietitianId,
+    assigned_at: record.assignedAt,
+    assigned_by_id: record.assignedById,
+    version: record.version,
+  };
+}
+
+function currentAssignmentValues(record: ClientAssignmentRecord) {
+  return {
+    active: true,
+    client_id: record.clientId,
+    dietitian_id: record.dietitianId,
+    assigned_at: record.assignedAt,
+    assigned_by_id: record.assignedById,
+    version: record.version,
+  };
+}
+
+function ensureHistoryEntry(
+  transaction: Transaction,
+  snapshot: DocumentSnapshot,
+  reference: DocumentReference,
+  values: AssignmentHistoryValues,
+): void {
+  if (!snapshot.exists) {
+    transaction.create(reference, values);
+    return;
+  }
+  if (!sameHistoryValues(snapshot.data(), values)) {
+    throw new ClientAssignmentError(
+      503,
+      "An existing client assignment history entry needs attention.",
+    );
+  }
+}
+
+function sameHistoryValues(
+  stored: DocumentData | undefined,
+  expected: AssignmentHistoryValues,
+): boolean {
+  return stored !== undefined &&
+    stored.active === expected.active &&
+    stored.client_id === expected.client_id &&
+    stored.dietitian_id === expected.dietitian_id &&
+    (stored.assigned_at ?? null) === expected.assigned_at &&
+    (stored.assigned_by_id ?? null) === expected.assigned_by_id &&
+    stored.version === expected.version;
+}
+
+function historyDocumentId(clientId: string, version: number): string {
+  return `${clientId}_v${version}`;
+}
+
+function positiveVersion(value: unknown): number | null {
+  return Number.isSafeInteger(value) && (value as number) > 0
+    ? value as number
+    : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
