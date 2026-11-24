@@ -22,6 +22,8 @@ import {
 } from "./client_assignment_service";
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 import { NotificationWorkflowService } from "./notification_service";
+import { ClientIntakeService } from "./client_intake_service";
+import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
 
 function start() {
   const config = readHostedConfig(process.env);
@@ -49,6 +51,9 @@ function start() {
       new ExistingStaffDietitianDirectory(staffAccounts),
       new NotificationWorkflowService(new FirestoreNotificationRepository(firestore)),
       new FirebaseClientDirectory(auth),
+    ),
+    clientIntakeService: new ClientIntakeService(
+      new FirestoreClientIntakeRepository(firestore),
     ),
     privacyPreferencesRepository: privacy,
     privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy),

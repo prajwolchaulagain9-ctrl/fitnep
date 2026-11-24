@@ -24,6 +24,8 @@ import {
 } from "./client_assignment_service";
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 import { FirestoreAuditWriter } from "./audit";
+import { ClientIntakeService } from "./client_intake_service";
+import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
 
 if (getApps().length === 0) initializeApp();
 
@@ -56,6 +58,9 @@ const notificationApp = createNotificationApp({
     new ExistingStaffDietitianDirectory(staffAccountRepository),
     new NotificationWorkflowService(notificationRepository),
     new FirebaseClientDirectory(getAuth()),
+  ),
+  clientIntakeService: new ClientIntakeService(
+    new FirestoreClientIntakeRepository(getFirestore()),
   ),
 });
 const workflowTriggers = createNotificationWorkflowTriggers(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../data/datasources/notification_destination_remote_datasource.dart';
 import '../../domain/entities/notification_destination_record.dart';
@@ -34,6 +36,12 @@ class NotificationDestinationPage extends ConsumerWidget {
           data: (record) => _RecordView(
             type: type,
             record: record,
+            onOpenIntake: type == NotificationType.assignment
+                ? () => context.pushNamed(
+                    AppRoutes.dietitianClientIntakeName,
+                    pathParameters: {'id': referenceId},
+                  )
+                : null,
             onRefresh: () async {
               ref.invalidate(notificationDestinationProvider(request));
               await ref.read(notificationDestinationProvider(request).future);
@@ -74,11 +82,13 @@ class _RecordView extends StatelessWidget {
   final NotificationType type;
   final NotificationDestinationRecord record;
   final Future<void> Function() onRefresh;
+  final VoidCallback? onOpenIntake;
 
   const _RecordView({
     required this.type,
     required this.record,
     required this.onRefresh,
+    required this.onOpenIntake,
   });
 
   @override
@@ -149,6 +159,14 @@ class _RecordView extends StatelessWidget {
               ],
             ),
           ),
+          if (onOpenIntake != null) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onOpenIntake,
+              icon: const Icon(Icons.assignment_outlined),
+              label: const Text('Open full intake form'),
+            ),
+          ],
           if (record.fields.isNotEmpty) ...[
             const SizedBox(height: 18),
             Text('Details', style: Theme.of(context).textTheme.titleLarge),

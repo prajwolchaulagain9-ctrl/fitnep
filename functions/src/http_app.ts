@@ -83,6 +83,7 @@ import {
   ClientAssignmentError,
   ClientAssignmentService,
 } from "./client_assignment_service";
+import { ClientIntakeError, ClientIntakeService } from "./client_intake_service";
 
 const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
@@ -99,6 +100,7 @@ export interface NotificationAppDependencies {
   auditWriter?: AuditWriter;
   manualVerificationEnabled?: boolean;
   clientAssignmentService?: ClientAssignmentService;
+  clientIntakeService?: ClientIntakeService;
   health?: {
     buildSha: string;
     checkReady(): Promise<void>;
@@ -283,6 +285,36 @@ export function createNotificationApp(
         email: profile.email,
         assignment_status: profile.assignmentStatus,
         assigned_at: profile.assignedAt,
+      } } });
+    }),
+  );
+  app.get(
+    "/dietitian/assigned-clients/:clientId/intake",
+    asyncRoute(async (request, response) => {
+      if (!dependencies.clientIntakeService) {
+        throw new ClientIntakeError(
+          503,
+          "Client intake storage has not been configured yet.",
+        );
+      }
+      const intake = await dependencies.clientIntakeService
+        .getAssignedClientIntake(
+          currentUser(response),
+          request.params.clientId,
+        );
+      response.json({ data: { intake: {
+        client_id: intake.clientId,
+        allergies: intake.allergies,
+        medical_conditions: intake.medicalConditions,
+        sections: intake.sections.map(section => ({
+          title: section.title,
+          fields: section.fields.map(field => ({
+            label: field.label,
+            value: field.value,
+          })),
+        })),
+        submitted_at: intake.submittedAt,
+        updated_at: intake.updatedAt,
       } } });
     }),
   );
@@ -640,6 +672,10 @@ export function createNotificationApp(
       }
       if (error instanceof PrivateRecordsError) {
         response.status(error.status).json({ error: error.message });
+        return;
+      }
+      if (error instanceof ClientIntakeError) {
+        response.status(error.statusCode).json({ error: error.message });
         return;
       }
       if (isObject(error) && error.type === "entity.too.large") {

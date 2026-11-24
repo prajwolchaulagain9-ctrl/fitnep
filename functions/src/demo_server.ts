@@ -17,6 +17,8 @@ import {
 import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
 import { FirestoreAuditWriter } from "./audit";
 import { NotificationWorkflowService } from "./notification_service";
+import { ClientIntakeService } from "./client_intake_service";
+import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {
@@ -62,6 +64,9 @@ async function main() {
       new ExistingStaffDietitianDirectory(staffAccountRepository),
       new NotificationWorkflowService(new FirestoreNotificationRepository(db)),
       new FirebaseClientDirectory(auth),
+    ),
+    clientIntakeService: new ClientIntakeService(
+      new FirestoreClientIntakeRepository(db),
     ),
   });
   const server = api.listen(3000, "127.0.0.1", () => {

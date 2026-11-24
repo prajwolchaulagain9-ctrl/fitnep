@@ -31,6 +31,7 @@ import '../../features/notifications/presentation/pages/notification_destination
 import '../../features/packages/presentation/pages/package_selection_page.dart';
 import '../../features/packages/presentation/pages/package_approvals_page.dart';
 import '../../features/purchases/presentation/pages/membership_page.dart';
+import '../../features/health_assessment/presentation/pages/client_intake_page.dart';
 import 'app_routes.dart';
 import 'route_access_gate.dart';
 
@@ -290,6 +291,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             type: NotificationType.assignment,
             referenceId: state.pathParameters['id']!,
           ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.dietitianClientIntake,
+        name: AppRoutes.dietitianClientIntakeName,
+        builder: (context, state) => RouteAccessGate(
+          allowedRoles: const {FitNepRole.dietitian},
+          builder: (_) =>
+              ClientIntakePage(clientId: state.pathParameters['id']!),
         ),
       ),
       GoRoute(

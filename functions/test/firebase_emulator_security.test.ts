@@ -30,6 +30,8 @@ import {
   ClientAssignmentService,
   FirebaseClientDirectory,
 } from "../src/client_assignment_service";
+import { ClientIntakeService } from "../src/client_intake_service";
+import { FirestoreClientIntakeRepository } from "../src/firestore_client_intake_repository";
 
 const projectId = "demo-fitnep";
 const authEmulatorHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -543,7 +545,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.deepEqual(own.body.data.records.map((record: { details: unknown }) => record.details), [sample]);
   });
 
-  it("persists assignment and reassignment audits without duplicates", async () => {
+  it("persists assignment audits and switches protected intake access", async () => {
     await createAccount(
       auth,
       "dietitian-2",
@@ -571,6 +573,9 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
           return () => new Date(`2026-11-24T${hour++}:00:00.000Z`);
         })(),
       ),
+      clientIntakeService: new ClientIntakeService(
+        new FirestoreClientIntakeRepository(firestore),
+      ),
     });
     const [adminToken, dietitianAToken, dietitianBToken] = await Promise.all([
       signIn("admin@fitnep.test"),
@@ -588,6 +593,22 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       assigned_by_id: "admin-1",
       version: 1,
     });
+    await firestore.collection("client_intakes").doc("client-a").set({
+      client_id: "client-a",
+      allergies: ["Peanuts", "Shellfish"],
+      medical_conditions: ["Type 2 diabetes"],
+      health_information: {
+        height: "168 cm",
+        weight: "72 kg",
+        current_medications: ["Metformin"],
+      },
+      goals: { primary_goal: "Improve glucose control" },
+      dietary_restrictions: ["Vegetarian"],
+      responses: { sleep: "7 hours", activity_level: "Moderate" },
+      preferred_meal_count: 4,
+      submitted_at: Timestamp.fromDate(new Date("2026-11-20T08:00:00.000Z")),
+      updated_at: Timestamp.fromDate(new Date("2026-11-22T09:30:00.000Z")),
+    });
     assert.equal((await firestore.collection("client_assignment_history")
       .where("client_id", "==", "client-a").get()).empty, true);
     await request(assignmentApi)
@@ -597,7 +618,30 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       .expect(200);
     await request(assignmentApi).get(clientPath)
       .set(bearer(dietitianAToken)).expect(200);
+    const intakePath = `${clientPath}/intake`;
+    const intake = await request(assignmentApi).get(intakePath)
+      .set(bearer(dietitianAToken)).expect(200);
+    assert.deepEqual(intake.body.data.intake.allergies, ["Peanuts", "Shellfish"]);
+    assert.deepEqual(
+      intake.body.data.intake.medical_conditions,
+      ["Type 2 diabetes"],
+    );
+    assert.deepEqual(
+      intake.body.data.intake.sections.map((section: { title: string }) => section.title),
+      ["Health information", "Goals", "Restrictions", "Additional information", "Other intake information"],
+    );
+    assert.equal(
+      intake.body.data.intake.sections[4].fields[0].value,
+      "4",
+    );
+    const intakeDocumentUrl = `http://${firestoreEmulatorHost}/v1/projects/${projectId}` +
+      "/databases/(default)/documents/client_intakes/client-a";
+    assert.equal((await fetch(intakeDocumentUrl, {
+      headers: bearer(dietitianAToken),
+    })).status, 403);
     await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianBToken)).expect(403);
+    await request(assignmentApi).get(intakePath)
       .set(bearer(dietitianBToken)).expect(403);
 
     await request(assignmentApi).put(path).set(bearer(adminToken))
@@ -605,7 +649,11 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
 
     await request(assignmentApi).get(clientPath)
       .set(bearer(dietitianAToken)).expect(403);
+    await request(assignmentApi).get(intakePath)
+      .set(bearer(dietitianAToken)).expect(403);
     await request(assignmentApi).get(clientPath)
+      .set(bearer(dietitianBToken)).expect(200);
+    await request(assignmentApi).get(intakePath)
       .set(bearer(dietitianBToken)).expect(200);
     const current = await firestore.collection("client_assignments")
       .doc("client-a").get();

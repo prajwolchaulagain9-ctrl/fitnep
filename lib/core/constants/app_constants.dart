@@ -42,4 +42,7 @@ class AppConstants {
   /// Dietitian endpoint to view an assigned client's profile.
   static String dietitianAssignedClientEndpoint(String clientId) =>
       'dietitian/assigned-clients/${Uri.encodeComponent(clientId)}';
+
+  static String dietitianClientIntakeEndpoint(String clientId) =>
+      '${dietitianAssignedClientEndpoint(clientId)}/intake';
 }

@@ -141,6 +141,9 @@ service cloud.firestore {
     match /client_assignment_history/{historyId} {
       allow read, write: if false;
     }
+    match /client_intakes/{clientId} {
+      allow read, write: if false;
+    }
     match /client_records/{record=**} {
       allow read, write: if false;
     }

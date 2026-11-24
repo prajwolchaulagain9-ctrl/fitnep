@@ -28,6 +28,7 @@ abstract final class AppRoutes {
   static const taskDetails = '/tasks/:id';
   static const paymentDetails = '/payments/:id';
   static const dietitianAssignedClient = '/dietitian/assigned-clients/:id';
+  static const dietitianClientIntake = '/dietitian/assigned-clients/:id/intake';
 
   // Client
   static const clientHome = '/client/home';
@@ -41,6 +42,7 @@ abstract final class AppRoutes {
   static const taskDetailsName = 'task-details';
   static const paymentDetailsName = 'payment-details';
   static const dietitianAssignedClientName = 'dietitian-assigned-client';
+  static const dietitianClientIntakeName = 'dietitian-client-intake';
   static const clientHomeName = 'client-home';
   static const clientNotificationsName = 'client-notifications';
   static const clientPackagesName = 'client-packages';

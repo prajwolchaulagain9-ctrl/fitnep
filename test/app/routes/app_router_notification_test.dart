@@ -5,6 +5,9 @@ import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
+import 'package:fitnep/features/health_assessment/domain/repositories/client_intake_repository.dart';
+import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_destination_record.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_destination_repository.dart';
@@ -58,6 +61,67 @@ void main() {
       expect(repository.lastReferenceId, 'record-99');
     });
   }
+
+  testWidgets(
+    'assigned dietitian opens the complete intake with priority health alerts first',
+    (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final container = ProviderContainer(
+        overrides: [
+          routeSessionProvider.overrideWith(
+            (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
+          ),
+          notificationDestinationRepositoryProvider.overrideWithValue(
+            _FakeDestinationRepository(),
+          ),
+          clientIntakeRepositoryProvider.overrideWithValue(
+            _FakeClientIntakeRepository(),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+      router.goNamed(
+        AppRoutes.dietitianAssignedClientName,
+        pathParameters: const {'id': 'client-1'},
+      );
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Open full intake form'), findsOneWidget);
+      await tester.tap(find.text('Open full intake form'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Client intake form'), findsOneWidget);
+      expect(find.text('Allergies'), findsOneWidget);
+      expect(find.text('Peanuts'), findsOneWidget);
+      expect(find.text('Medical conditions'), findsOneWidget);
+      expect(find.text('Type 2 diabetes'), findsOneWidget);
+      expect(find.text('Health information'), findsOneWidget);
+      expect(find.text('Goals'), findsOneWidget);
+      expect(find.text('Restrictions'), findsOneWidget);
+      expect(find.text('168 cm'), findsOneWidget);
+      expect(find.text('Improve glucose control'), findsOneWidget);
+      expect(find.text('Vegetarian'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Allergies')).dy,
+        lessThan(tester.getTopLeft(find.text('Health information')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Medical conditions')).dy,
+        lessThan(tester.getTopLeft(find.text('Health information')).dy),
+      );
+    },
+  );
 
   testWidgets('direct links enforce role changes and sign-out', (tester) async {
     final auth = _RouteAuth();
@@ -171,6 +235,38 @@ class _FakeDestinationRepository implements NotificationDestinationRepository {
       title: 'Loaded record',
       description: null,
       fields: const [],
+    );
+  }
+}
+
+class _FakeClientIntakeRepository implements ClientIntakeRepository {
+  @override
+  Future<ClientIntake> getAssignedClientIntake(String clientId) async {
+    return ClientIntake(
+      clientId: clientId,
+      allergies: const ['Peanuts'],
+      medicalConditions: const ['Type 2 diabetes'],
+      submittedAt: DateTime.parse('2026-11-20T08:00:00.000Z'),
+      updatedAt: null,
+      sections: const [
+        ClientIntakeSection(
+          title: 'Health information',
+          fields: [ClientIntakeField(label: 'Height', value: '168 cm')],
+        ),
+        ClientIntakeSection(
+          title: 'Goals',
+          fields: [
+            ClientIntakeField(
+              label: 'Primary goal',
+              value: 'Improve glucose control',
+            ),
+          ],
+        ),
+        ClientIntakeSection(
+          title: 'Restrictions',
+          fields: [ClientIntakeField(label: 'Dietary', value: 'Vegetarian')],
+        ),
+      ],
     );
   }
 }

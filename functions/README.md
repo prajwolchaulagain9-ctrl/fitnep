@@ -131,6 +131,14 @@ membership status and rejects pending, scheduled, expired, inactive, or missing
 packages; only a client with an active package can be assigned to an active
 dietitian.
 
+`GET /dietitian/assigned-clients/:clientId/intake` returns the saved
+`client_intakes/{clientId}` form only to the currently assigned dietitian. The
+assignment and intake are read in one Firestore transaction. Allergies and
+medical conditions are returned separately for priority display, while health
+information, goals, restrictions, responses, and remaining intake fields are
+returned as complete sections. Direct mobile access to intake documents is
+denied.
+
 ## Customer purchase APIs
 
 - `POST /purchases` creates a Pending package selection for the authenticated
