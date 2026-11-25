@@ -10,6 +10,8 @@ import '../../data/registration_privacy.dart';
 import '../controllers/authentication_controller.dart';
 import '../sign_out_to_welcome.dart';
 import '../../../../shared/widgets/legal_links.dart';
+import '../../../../shared/widgets/wellness_illustration.dart';
+import '../../../../app/theme/theme_mode_controller.dart';
 
 class RegistrationPrivacyGate extends ConsumerWidget {
   const RegistrationPrivacyGate({required this.child, this.uid, super.key});
@@ -156,14 +158,25 @@ class _ConsentFormState extends ConsumerState<_ConsentForm> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Complete registration')),
+    appBar: AppBar(
+      title: const Text('Complete registration'),
+      actions: const [ThemeModeButton()],
+    ),
     body: SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text(
-            'Before you continue',
-            style: Theme.of(context).textTheme.headlineSmall,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Before you continue',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const WellnessIllustration(scene: WellnessScene.care, size: 76),
+            ],
           ),
           const SizedBox(height: 12),
           const Text('Review our terms and how FitNEP handles your data.'),

@@ -1,3 +1,5 @@
+import '../../../../shared/widgets/wellness_illustration.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -44,9 +46,12 @@ class PackageSelectionPage extends ConsumerWidget {
 
     return Scaffold(
       drawer: const RoleNavigationDrawer(),
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: const Text('Choose a package'),
+        title: Text(
+          'Choose a package',
+          style: Theme.of(context).textTheme.titleMedium,
+        ),
         actions: [
           IconButton(
             tooltip: 'Refresh',
@@ -88,7 +93,7 @@ class _PackageSelectionBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.isLoading && state.packages.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -96,7 +101,9 @@ class _PackageSelectionBody extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               'Loading packages...',
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -151,9 +158,17 @@ class _PackageSelectionBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Support that fits your goals.',
-          style: theme.textTheme.headlineSmall,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Support that fits your goals.',
+                style: theme.textTheme.headlineSmall,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const WellnessIllustration(size: 70),
+          ],
         ),
         const SizedBox(height: 8),
         Text(

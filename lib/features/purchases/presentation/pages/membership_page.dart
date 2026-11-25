@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
-import '../../../../app/theme/app_theme.dart';
 import '../controllers/membership_controller.dart';
 
 class MembershipPage extends ConsumerWidget {
@@ -16,7 +15,7 @@ class MembershipPage extends ConsumerWidget {
     final controller = ref.read(membershipControllerProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('My Membership'),
         actions: [
@@ -114,9 +113,9 @@ class _MembershipBody extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.card_membership_rounded,
-                      color: AppColors.primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -131,8 +130,8 @@ class _MembershipBody extends StatelessWidget {
                       purchase.statusLabel,
                       style: TextStyle(
                         color: purchase.isExpired
-                            ? AppColors.textSecondary
-                            : AppColors.primary,
+                            ? Theme.of(context).colorScheme.onSurfaceVariant
+                            : Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -182,8 +181,10 @@ class _MembershipBody extends StatelessWidget {
                 Text(
                   purchase.featureDescription,
                   key: const Key('membership_features'),
-                  style: Theme.of(context).textTheme.bodyMedium
-                      ?.copyWith(color: AppColors.textSecondary, height: 1.5),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    height: 1.5,
+                  ),
                 ),
               ],
             ),
@@ -216,7 +217,9 @@ class _TermRow extends StatelessWidget {
             width: 140,
             child: Text(
               label,
-              style: const TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
           Expanded(

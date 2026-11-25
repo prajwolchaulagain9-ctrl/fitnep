@@ -124,7 +124,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     await request(api).post("/sessions/end").set(session.headers).send({}).expect(204);
     await request(api).get("/packages").set(session.headers).expect(401);
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + session.token).send({}).expect(401);
-    assert.equal((await firestore.collection("audit_events").get()).size, 5);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 5);
     // Firebase auth_time has second precision; a fresh authentication must advance it.
     await new Promise(resolve => setTimeout(resolve, 1100));
     const fresh = await start();
@@ -137,7 +137,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     const first = await request(api).get("/sessions/me").set(session.headers).expect(200);
     const replay = await request(api).post("/sessions/start").set("Authorization", "Bearer " + session.token).send({}).expect(200);
     assert(replay.body.data.session_id === session.sessionId);
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
     now += 30_000;
     const throttled = await request(api).post("/sessions/activity").set(session.headers).send({}).expect(200);
     assert.equal(throttled.body.data.expires_at, first.body.data.expires_at);
@@ -260,7 +260,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       const body = JSON.parse(init?.body as string);
       assert.equal(body.to[0].email, "day1-client-a@fitnep.test");
       deliveredCode = body.textContent.match(/\d{6}/)[0];
-      return new Response("{}", { status: 201 });
+      return new Response('{"messageId":"synthetic-accepted-message"}', { status: 201 });
     });
     hosted.use(api);
     const token = await signIn(); const header = { Authorization: "Bearer " + token };
@@ -305,7 +305,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       transaction.create(firestore.doc("_day1_contract_tests/committed"), { status: "active" });
       audit.appendWithEvent(transaction, input, "membership.activated");
     });
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
     assert.equal((await firestore.collection("workflow_outbox").get()).size, 1);
     assert.equal((await firestore.collection("outbox_deliveries").get()).size, 1);
     await assert.rejects(firestore.runTransaction(async transaction => {
@@ -313,7 +313,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       audit.appendWithEvent(transaction, input, "membership.activated");
     }));
     assert.equal((await firestore.doc("_day1_contract_tests/committed").get()).get("status"), "active");
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
     assert.equal((await firestore.collection("workflow_outbox").get()).size, 1);
     await assert.rejects(firestore.runTransaction(async transaction => {
       transaction.create(firestore.doc("_day1_contract_tests/rolled-back"), { status: "active" });
@@ -321,11 +321,11 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       throw new Error("synthetic transaction failure");
     }));
     assert.equal((await firestore.doc("_day1_contract_tests/rolled-back").get()).exists, false);
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
     assert.equal((await firestore.collection("workflow_outbox").get()).size, 1);
     await assert.rejects(audit.append({ ...input, medical_answers: "must not be accepted" } as AuditEventInput));
     await assert.rejects(audit.append({ ...input, occurred_at: "forged" } as AuditEventInput));
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
   });
 
   it("audit failure rolls back session creation and a denied response waits for durable auditing", async () => {
@@ -341,7 +341,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     assert.equal((await firestore.collection("platform_auth_contexts").get()).size, 0);
     const session = await start();
     await request(failing).get("/admin/memberships/pending").set(session.headers).expect(503);
-    assert.equal((await firestore.collection("audit_events").get()).size, 1);
+    assert.equal((await firestore.collection("audit_events").where("action", "not-in", ["account.created", "auth.login"]).get()).size, 1);
   });
 
   it("app accounts cannot append, read, modify or delete audit/session documents through the SDK", async () => {

@@ -91,6 +91,7 @@ import {
 const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
 export interface NotificationAppDependencies {
+  recoverCommittedEvents?: () => void;
   googlePasswordService?: GooglePasswordService;
   clientAssignmentService?: ClientAssignmentService;
   staffAccountRepository?: StaffAccountRepository;
@@ -130,6 +131,10 @@ export function createNotificationApp(
 
   const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
   app.disable("x-powered-by");
+  if (dependencies.recoverCommittedEvents) app.use((_request, response, next) => {
+    response.once("finish", dependencies.recoverCommittedEvents!);
+    next();
+  });
   app.use(express.json({ limit: "32kb" }));
   app.use((_request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
@@ -347,6 +352,7 @@ export function createNotificationApp(
         .getAssignedClientIntake(
           currentUser(response),
           request.params.clientId,
+          response.locals.correlationId,
         );
       response.json({ data: { intake: toApiClientIntake(intake) } });
     }),
@@ -370,6 +376,11 @@ export function createNotificationApp(
       response.json({ data: { intake: toApiClientIntake(intake) } });
     }),
   );
+  app.get("/intakes/me", asyncRoute(async (_request, response) => {
+    if (!dependencies.clientIntakeService) throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    const intake = await dependencies.clientIntakeService.getOwnIntake(currentUser(response), response.locals.correlationId);
+    response.json({ data: { intake: toApiClientIntake(intake) } });
+  }));
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
@@ -697,7 +708,7 @@ export function createNotificationApp(
           ? response.locals.healthAuditTarget
           : { targetType: "api" as const, targetId: access?.resource ?? "protected_endpoint" };
         void Promise.all([
-          dependencies.audit?.denied(attempt),
+          dependencies.audit?.denied(attempt, !dependencies.auditWriter),
           user && dependencies.auditWriter?.append({ actor: user,
             action: "access.denied", ...target,
             outcome: "denied", correlationId: response.locals.correlationId }),
@@ -850,6 +861,7 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
 
 function toApiClientIntake(intake: ClientIntakeRecord) {
   return {
+    version: intake.version ?? 1,
     client_id: intake.clientId,
     allergies: intake.allergies,
     medical_conditions: intake.medicalConditions,

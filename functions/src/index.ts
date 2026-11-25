@@ -9,21 +9,7 @@ import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
-<<<<<<< HEAD
-import { FirestorePackageService, PackageError } from "./package_membership_service";
-import {
-  ClientAssignmentService,
-  ExistingClientPackageStatusReader,
-  ExistingStaffDietitianDirectory,
-  FirebaseClientDirectory,
-} from "./client_assignment_service";
-import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
-import { FirestoreAuditWriter } from "./audit";
-import { ClientIntakeService } from "./client_intake_service";
-import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
-=======
 import { PackageError } from "./package_membership_service";
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 
 if (getApps().length === 0) initializeApp();
 
@@ -32,41 +18,9 @@ export const checkSession = require("../src/index.cjs").checkSession;
 export { registrationPrivacy } from "./registration_privacy";
 export { sendSignupEmailCode, verifySignupEmailCode } from "./signup_email_codes";
 
-<<<<<<< HEAD
-const notificationRepository = new FirestoreNotificationRepository(
-  getFirestore(),
-);
-const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(getFirestore());
-const packageService = new FirestorePackageService(getFirestore());
-const packageRepository = new FirestorePackageRepository(getFirestore());
-const purchaseRepository = new FirestorePurchaseRepository(getFirestore());
-const staffAccountRepository = new FirebaseStaffAccountRepository(getAuth(), getFirestore());
-const auditWriter = new FirestoreAuditWriter(getFirestore());
-const notificationApp = createNotificationApp({
-  authVerifier: new FirebaseAuthVerifier(),
-  staffAccountRepository,
-  notificationRepository,
-  privacyPreferencesRepository,
-  privateRecordsStore: new FirestorePrivateRecordsStore(getFirestore(), privacyPreferencesRepository),
-  packageService,
-  packageRepository,
-  purchaseRepository,
-  clientAssignmentService: new ClientAssignmentService(
-    new FirestoreClientAssignmentRepository(getFirestore(), auditWriter),
-    new ExistingClientPackageStatusReader(packageService),
-    new ExistingStaffDietitianDirectory(staffAccountRepository),
-    new NotificationWorkflowService(notificationRepository),
-    new FirebaseClientDirectory(getAuth()),
-  ),
-  clientIntakeService: new ClientIntakeService(
-    new FirestoreClientIntakeRepository(getFirestore()),
-  ),
-});
-=======
 const dependencies = createFitnepDependencies(getAuth(), getFirestore());
 const packageService = dependencies.packageService;
 const notificationApp = createNotificationApp(dependencies);
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(dependencies.notificationRepository),
 );

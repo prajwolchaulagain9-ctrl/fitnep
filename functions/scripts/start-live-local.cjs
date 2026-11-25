@@ -9,6 +9,7 @@ const { createFitnepDependencies } = require('../lib/api_factory');
 const { createNotificationApp } = require('../lib/http_app');
 const { mountHostedAuth } = require('../lib/hosted_auth');
 const { FirestorePlatformSessionService } = require('../lib/platform_sessions');
+const { startWorkflowRecovery } = require('../lib/workflow_delivery');
 
 const workspace = path.resolve(__dirname, '../..');
 const project = 'fitnep-88908';
@@ -25,6 +26,7 @@ if (process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HO
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
   const dependencies = createFitnepDependencies(auth, firestore);
+  const recovery = startWorkflowRecovery(firestore, auth);
   const buildSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8', windowsHide: true }).trim();
   const app = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
   // Use the configured Brevo delivery on Render when local secrets are absent.
@@ -48,6 +50,7 @@ if (process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HO
   function start(serverApp) {
     serverApp.use(createNotificationApp({
       ...dependencies,
+      recoverCommittedEvents: recovery.drain,
       platformSessions: new FirestorePlatformSessionService(firestore, dependencies.auditWriter, 900),
       manualVerificationEnabled: false,
       health: { buildSha, checkReady: async () => { await firestore.doc('_runtime/health').get(); } },

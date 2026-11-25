@@ -1,3 +1,6 @@
+import '../../../../shared/widgets/wellness_illustration.dart';
+import '../../../../app/routes/route_access_gate.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,7 +30,7 @@ class NotificationsPage extends ConsumerWidget {
     );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Notifications'),
         actions: [
@@ -63,8 +66,10 @@ class NotificationsPage extends ConsumerWidget {
                   ),
                 Expanded(
                   child: RefreshIndicator(
-                    color: AppColors.primary,
-                    backgroundColor: AppColors.surfaceElevated,
+                    color: Theme.of(context).colorScheme.primary,
+                    backgroundColor: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerLow,
                     onRefresh: () => ref
                         .read(notificationControllerProvider.notifier)
                         .refresh(),
@@ -128,7 +133,12 @@ class NotificationsPage extends ConsumerWidget {
   ) {
     late final NotificationNavigationTarget target;
     try {
-      target = NotificationNavigationTarget.fromNotification(notification);
+      target = NotificationNavigationTarget.fromNotification(
+        notification,
+        isClient:
+            notification.type == NotificationType.intake &&
+            ref.read(routeSessionProvider).value?.role == FitNepRole.client,
+      );
     } on NotificationNavigationException catch (error) {
       _showMessage(context, error.message, isError: true);
       return;
@@ -150,7 +160,9 @@ class NotificationsPage extends ConsumerWidget {
     unawaited(
       context.pushNamed<void>(
         target.routeName,
-        pathParameters: {'id': target.referenceId},
+        pathParameters: target.hasPathId
+            ? {'id': target.referenceId}
+            : const {},
       ),
     );
   }
@@ -204,17 +216,23 @@ class _MarkAllReadBar extends StatelessWidget {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 6, 10, 6),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.divider)),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               '$unreadCount unread notification${unreadCount == 1 ? '' : 's'}',
-              style: Theme.of(context).textTheme.labelMedium
-                  ?.copyWith(color: AppColors.textSecondary, letterSpacing: 0),
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                letterSpacing: 0,
+              ),
             ),
           ),
           TextButton.icon(
@@ -246,19 +264,21 @@ class _UnreadCounter extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
           color: count == 0
-              ? AppColors.surfaceVariant
-              : AppColors.primaryContainer,
+              ? Theme.of(context).colorScheme.surfaceContainerHighest
+              : Theme.of(context).colorScheme.primaryContainer,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: count == 0
-                ? AppColors.divider
-                : AppColors.primary.withValues(alpha: 0.3),
+                ? Theme.of(context).colorScheme.outlineVariant
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
           ),
         ),
         child: Text(
           '$count unread',
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: count == 0 ? AppColors.textSecondary : AppColors.primaryDark,
+            color: count == 0
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : AppColors.primaryDark,
             fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),
@@ -339,7 +359,7 @@ class _RefreshableEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) => RefreshIndicator(
-        color: AppColors.primary,
+        color: Theme.of(context).colorScheme.primary,
         onRefresh: onRefresh,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -350,9 +370,9 @@ class _RefreshableEmptyState extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const _StateIcon(
-                    icon: Icons.notifications_none_rounded,
-                    color: AppColors.primary,
+                  const WellnessIllustration(
+                    scene: WellnessScene.care,
+                    size: 108,
                   ),
                   const SizedBox(height: 22),
                   Text(

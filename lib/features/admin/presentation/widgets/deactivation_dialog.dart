@@ -78,7 +78,11 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
                         Text(
                           'This will not delete the account.',
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppColors.textSecondary),
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
                         ),
                       ],
                     ),
@@ -127,7 +131,7 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
               Text(
                 'Reason for deactivation *',
                 style: Theme.of(context).textTheme.labelLarge
-                    ?.copyWith(color: AppColors.textPrimary),
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
               ),
               const SizedBox(height: 8),
               TextFormField(
@@ -135,12 +139,12 @@ class _DeactivationDialogState extends State<_DeactivationDialog> {
                 maxLines: 3,
                 maxLength: 300,
                 style: Theme.of(context).textTheme.bodyMedium
-                    ?.copyWith(color: AppColors.textPrimary),
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
                 decoration: InputDecoration(
                   hintText:
                       'e.g. Non-payment, violation of terms, client request...',
                   counterStyle: TextStyle(
-                    color: AppColors.textDisabled,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 11,
                   ),
                 ),

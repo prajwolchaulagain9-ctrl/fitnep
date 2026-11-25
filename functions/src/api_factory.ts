@@ -42,9 +42,9 @@ export function createFitnepDependencies(auth: Auth, db: Firestore) {
     packageService, packageRepository: new FirestorePackageRepository(db),
     purchaseRepository: new FirestorePurchaseRepository(db),
     googlePasswordService: new GooglePasswordService(auth, db, new BrevoMailer(process.env), process.env.SIGNUP_OTP_HASH_SECRET || ""),
-    clientAssignmentService: new ClientAssignmentService(new FirestoreClientAssignmentRepository(db),
+    clientAssignmentService: new ClientAssignmentService(new FirestoreClientAssignmentRepository(db, auditWriter),
       new ExistingClientPackageStatusReader(packageService), new ExistingStaffDietitianDirectory(staffAccountRepository),
-      new NotificationWorkflowService(notificationRepository), new FirebaseClientDirectory(auth)),
+      new NotificationWorkflowService(notificationRepository), new FirebaseClientDirectory(auth), undefined, true),
     clientIntakeService: new ClientIntakeService(
       new FirestoreClientIntakeRepository(db, auditWriter),
     ),

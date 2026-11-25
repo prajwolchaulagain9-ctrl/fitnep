@@ -9,6 +9,7 @@ import '../domain/account.dart';
 
 // Firebase Auth supplies identity; only live, server-owned accounts supply roles.
 final accountSessionProvider = StreamProvider<FitNepAccount?>((ref) async* {
+  await ref.watch(authenticationSettledProvider.future);
   final identity = await ref.watch(authenticationStateProvider.future);
   if (identity == null) {
     yield null;

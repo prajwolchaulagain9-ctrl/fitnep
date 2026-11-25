@@ -18,7 +18,7 @@ class PackageManagementPage extends ConsumerWidget {
     final controller = ref.read(packageManagementControllerProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Package Management'),
         actions: [
@@ -70,7 +70,7 @@ class _PackageListBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.isLoading && state.packages.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -78,7 +78,9 @@ class _PackageListBody extends StatelessWidget {
             SizedBox(height: 16),
             Text(
               'Loading packages...',
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -153,15 +155,17 @@ class _PackageCard extends ConsumerWidget {
                     height: 44,
                     decoration: BoxDecoration(
                       color: package.isActive
-                          ? AppColors.primaryContainer
-                          : AppColors.surfaceVariant,
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       Icons.fitness_center_rounded,
                       color: package.isActive
-                          ? AppColors.primary
-                          : AppColors.textSecondary,
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -215,7 +219,7 @@ class _PackageCard extends ConsumerWidget {
                   Text(
                     currency.format(package.price),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: AppColors.primary,
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w800,
                     ),
                   ),
@@ -226,8 +230,9 @@ class _PackageCard extends ConsumerWidget {
               const SizedBox(height: 12),
               Text(
                 package.featureDescription,
-                style: Theme.of(context).textTheme.bodyMedium
-                    ?.copyWith(color: AppColors.textSecondary),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 14),
               Row(

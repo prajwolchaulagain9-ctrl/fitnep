@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme/app_theme.dart';
-
 class EmptyStateWidget extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -30,17 +28,23 @@ class EmptyStateWidget extends StatelessWidget {
               width: 88,
               height: 88,
               decoration: BoxDecoration(
-                color: AppColors.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.divider),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
-              child: Icon(icon, size: 40, color: AppColors.textDisabled),
+              child: Icon(
+                icon,
+                size: 40,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 24),
             Text(
               title,
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
               textAlign: TextAlign.center,
@@ -48,8 +52,10 @@ class EmptyStateWidget extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               subtitle,
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: AppColors.textSecondary, height: 1.6),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                height: 1.6,
+              ),
               textAlign: TextAlign.center,
             ),
             if (onAction != null && actionLabel != null) ...[

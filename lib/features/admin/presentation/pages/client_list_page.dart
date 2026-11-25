@@ -33,7 +33,7 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
     final controller = ref.read(clientListControllerProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           _buildSliverAppBar(context, state, controller, innerBoxIsScrolled),
@@ -54,7 +54,7 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
     return SliverAppBar(
       floating: true,
       snap: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
       expandedHeight: 0,
       pinned: false,
       title: AnimatedSwitcher(
@@ -147,7 +147,7 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
     ClientListController controller,
   ) {
     if (state.isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -155,7 +155,9 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
             SizedBox(height: 16),
             Text(
               'Loading clients...',
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -193,8 +195,8 @@ class _ClientListPageState extends ConsumerState<ClientListPage> {
     }
 
     return RefreshIndicator(
-      color: AppColors.primary,
-      backgroundColor: AppColors.surfaceElevated,
+      color: Theme.of(context).colorScheme.primary,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
       onRefresh: controller.refresh,
       child: ListView.builder(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
@@ -250,8 +252,8 @@ class _AppBarTitle extends StatelessWidget {
             Container(
               width: 8,
               height: 8,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
                 shape: BoxShape.circle,
               ),
             ),
@@ -267,9 +269,9 @@ class _AppBarTitle extends StatelessWidget {
         ),
         Text(
           '$clientCount of $totalCount clients',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11,
-            color: AppColors.textSecondary,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: FontWeight.w400,
           ),
         ),
@@ -332,8 +334,8 @@ class _FilterButton extends StatelessWidget {
             child: Container(
               width: 16,
               height: 16,
-              decoration: const BoxDecoration(
-                color: AppColors.primary,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
                 shape: BoxShape.circle,
               ),
               child: Text(
@@ -522,19 +524,25 @@ class _FilterTag extends StatelessWidget {
       margin: const EdgeInsets.only(right: 6),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.primaryContainer,
+        color: Theme.of(context).colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: color ?? AppColors.primary),
+          Icon(
+            icon,
+            size: 12,
+            color: color ?? Theme.of(context).colorScheme.primary,
+          ),
           const SizedBox(width: 4),
           Text(
             label,
             style: TextStyle(
-              color: color ?? AppColors.primary,
+              color: color ?? Theme.of(context).colorScheme.primary,
               fontSize: 11,
               fontWeight: FontWeight.w500,
             ),
@@ -595,7 +603,7 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
               height: 4,
               margin: const EdgeInsets.only(top: 12, bottom: 4),
               decoration: BoxDecoration(
-                color: AppColors.divider,
+                color: Theme.of(context).colorScheme.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -636,8 +644,9 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                   (pkg) => CheckboxListTile(
                     title: Text(
                       pkg,
-                      style: Theme.of(context).textTheme.bodyLarge
-                          ?.copyWith(color: AppColors.textPrimary),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                     value: _packages.contains(pkg),
                     onChanged: (v) => setState(() {
@@ -647,9 +656,11 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                         _packages.remove(pkg);
                       }
                     }),
-                    activeColor: AppColors.primary,
+                    activeColor: Theme.of(context).colorScheme.primary,
                     checkColor: Colors.white,
-                    side: const BorderSide(color: AppColors.divider),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -661,8 +672,9 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                 CheckboxListTile(
                   title: Text(
                     'Active',
-                    style: Theme.of(context).textTheme.bodyLarge
-                        ?.copyWith(color: AppColors.textPrimary),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                   value: _statuses.contains(ClientStatus.active),
                   onChanged: (v) => setState(() {
@@ -672,9 +684,11 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                       _statuses.remove(ClientStatus.active);
                     }
                   }),
-                  activeColor: AppColors.primary,
+                  activeColor: Theme.of(context).colorScheme.primary,
                   checkColor: Colors.white,
-                  side: const BorderSide(color: AppColors.divider),
+                  side: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -682,8 +696,9 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                 CheckboxListTile(
                   title: Text(
                     'Inactive',
-                    style: Theme.of(context).textTheme.bodyLarge
-                        ?.copyWith(color: AppColors.textPrimary),
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
                   ),
                   value: _statuses.contains(ClientStatus.inactive),
                   onChanged: (v) => setState(() {
@@ -693,9 +708,11 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                       _statuses.remove(ClientStatus.inactive);
                     }
                   }),
-                  activeColor: AppColors.primary,
+                  activeColor: Theme.of(context).colorScheme.primary,
                   checkColor: Colors.white,
-                  side: const BorderSide(color: AppColors.divider),
+                  side: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(4),
                   ),
@@ -707,8 +724,9 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                   (diet) => CheckboxListTile(
                     title: Text(
                       diet,
-                      style: Theme.of(context).textTheme.bodyLarge
-                          ?.copyWith(color: AppColors.textPrimary),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
                     ),
                     value: _dietitians.contains(diet),
                     onChanged: (v) => setState(() {
@@ -718,9 +736,11 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
                         _dietitians.remove(diet);
                       }
                     }),
-                    activeColor: AppColors.primary,
+                    activeColor: Theme.of(context).colorScheme.primary,
                     checkColor: Colors.white,
-                    side: const BorderSide(color: AppColors.divider),
+                    side: BorderSide(
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(4),
                     ),
@@ -736,9 +756,13 @@ class _FilterMenuSheetState extends ConsumerState<_FilterMenuSheet> {
               horizontal: 20,
               vertical: 16,
             ).copyWith(bottom: MediaQuery.of(context).viewInsets.bottom + 16),
-            decoration: const BoxDecoration(
-              color: AppColors.surfaceElevated,
-              border: Border(top: BorderSide(color: AppColors.divider)),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              border: Border(
+                top: BorderSide(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
+              ),
             ),
             child: SizedBox(
               width: double.infinity,
@@ -774,7 +798,7 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title.toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: AppColors.textDisabled,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
           letterSpacing: 1.2,
           fontWeight: FontWeight.w600,
         ),

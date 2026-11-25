@@ -85,29 +85,32 @@ class AuditLogTile extends StatelessWidget {
                     ),
                     Text(
                       _formatTimestamp(log.timestamp),
-                      style: Theme.of(context).textTheme.labelSmall
-                          ?.copyWith(color: AppColors.textDisabled),
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 RichText(
                   text: TextSpan(
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textSecondary, height: 1.5),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      height: 1.5,
+                    ),
                     children: [
                       TextSpan(
                         text: log.adminName,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       TextSpan(text: ' → '),
                       TextSpan(
                         text: log.clientName,
-                        style: const TextStyle(
-                          color: AppColors.textPrimary,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -122,14 +125,18 @@ class AuditLogTile extends StatelessWidget {
                       vertical: 6,
                     ),
                     decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppColors.divider),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
                     child: Text(
                       '"${log.reason}"',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textSecondary,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontStyle: FontStyle.italic,
                       ),
                     ),

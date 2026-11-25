@@ -14,12 +14,14 @@ class ClientIntake {
     required this.sections,
     required this.submittedAt,
     required this.updatedAt,
+    this.version = 1,
     this.status = ClientIntakeStatus.submitted,
     this.reviewAction,
     this.reviewNote,
     this.reviewUpdatedAt,
   });
 
+  final int version;
   final String clientId;
   final List<String> allergies;
   final List<String> medicalConditions;

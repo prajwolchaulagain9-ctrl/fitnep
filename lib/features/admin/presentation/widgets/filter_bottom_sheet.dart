@@ -55,7 +55,7 @@ class _FilterBottomSheetState extends State<FilterBottomSheet> {
               height: 4,
               margin: const EdgeInsets.only(top: 12, bottom: 20),
               decoration: BoxDecoration(
-                color: AppColors.divider,
+                color: Theme.of(context).colorScheme.outlineVariant,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -185,12 +185,12 @@ class _StatusOption extends StatelessWidget {
       title: Text(
         label,
         style: Theme.of(context).textTheme.titleSmall
-            ?.copyWith(color: AppColors.textPrimary),
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
       ),
       trailing: Checkbox(
         value: selected,
         onChanged: (v) => onToggle(v ?? false),
-        activeColor: AppColors.primary,
+        activeColor: Theme.of(context).colorScheme.primary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     );
@@ -215,12 +215,12 @@ class _StringOption extends StatelessWidget {
       title: Text(
         label,
         style: Theme.of(context).textTheme.titleSmall
-            ?.copyWith(color: AppColors.textPrimary),
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
       ),
       trailing: Checkbox(
         value: selected,
         onChanged: (v) => onToggle(v ?? false),
-        activeColor: AppColors.primary,
+        activeColor: Theme.of(context).colorScheme.primary,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     );

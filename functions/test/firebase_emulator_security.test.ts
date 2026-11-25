@@ -539,7 +539,6 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.deepEqual(own.body.data.records.map((record: { details: unknown }) => record.details), [sample]);
   });
 
-<<<<<<< HEAD
   it("persists assignment audits and switches protected intake access", async () => {
     await createAccount(
       auth,
@@ -577,6 +576,18 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       signIn("dietitian@fitnep.test"),
       signIn("dietitian-2@fitnep.test"),
     ]);
+    for (const uid of ["admin-1", "client-a", "client-b", "dietitian-1", "dietitian-2"]) {
+      await new FirestoreAccountService(firestore, auth).provision(await auth.getUser(uid));
+    }
+    for (const uid of ["client-a", "client-b"]) {
+      await new FirestorePrivacyAcceptanceStore(firestore).recordForClient(uid, {
+        age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
+      });
+      await new FirestorePrivacyPreferencesRepository(firestore).updateSharing(uid, { shareNutritionRecords: true });
+      await firestore.doc(`package_memberships/assignment-${uid}`).set({ id: `assignment-${uid}`, client_id: uid,
+        package: { id: "basic", name: "Basic", duration_days: 30, price_npr: 2500, features: ["Nutrition"] },
+        status: "active", created_at: "2026-11-24T00:00:00Z", start_at: "2026-11-24T00:00:00Z", end_at: "2026-12-24T00:00:00Z" });
+    }
     const path = "/admin/client-assignments/client-a";
     const clientPath = "/dietitian/assigned-clients/client-a";
 
@@ -707,7 +718,8 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     assert.equal((await fetch(historyUrl, {
       headers: bearer(dietitianAToken),
     })).status, 403);
-=======
+  });
+
   async function healthFixture() {
     await Promise.all([
       createAccount(auth, "staff-1", "staff@fitnep.test", "staff"),
@@ -892,7 +904,6 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
     const events = await firestore.collection("audit_events").where("action", "==", "health.read").get();
     assert.equal(events.size, 2);
     for (const ids of expected) assert(events.docs.some(event => JSON.stringify(event.get("record_ids")) === JSON.stringify(ids)));
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
   });
 
   it("enforces ownership with real emulator ID tokens and persisted records", async () => {

@@ -1,4 +1,6 @@
 import { Auth, UserRecord } from "firebase-admin/auth";
+import { randomUUID } from "node:crypto";
+import { FirestoreAuditWriter } from "./audit";
 import { FieldPath, FieldValue, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuthenticatedUser, isUserRole, UserRole } from "./domain";
 import { Permission, PermissionDeniedError, rolePermissions, requirePermission } from "./authorization_policy";
@@ -78,14 +80,20 @@ export interface DeniedAttempt {
 }
 export class FirestoreAuditStore {
   constructor(readonly firestore: Firestore) {}
-  async denied(attempt: DeniedAttempt): Promise<void> {
+  async denied(attempt: DeniedAttempt, appendUnified = true): Promise<void> {
     const recordId = attempt.recordId;
     const safeRecordId = typeof recordId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(recordId) &&
       !/^(xkeysib-|gh[pousr]_)/i.test(recordId) ? recordId : null;
-    await this.firestore.collection("audit_logs").add({
+    await this.firestore.runTransaction(async transaction => {
+      transaction.create(this.firestore.collection("audit_logs").doc(), {
       user_id: attempt.uid, current_role: attempt.role, action: attempt.action.slice(0, 100),
       resource: attempt.resource.slice(0, 200), record_id: safeRecordId,
       result: "DENIED", reason: attempt.reason.slice(0, 200), timestamp: FieldValue.serverTimestamp(),
+      });
+      if (appendUnified && attempt.uid && isUserRole(attempt.role)) new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+        actor: { uid: attempt.uid, role: attempt.role }, action: "access.denied", outcome: "denied",
+        targetType: "api", targetId: safeRecordId ?? attempt.resource.slice(0, 200), correlationId: randomUUID(),
+      });
     });
   }
   async list(after?: string, recordId?: string) {
@@ -118,6 +126,11 @@ export class FirestoreAccountService {
       transaction.set(this.firestore.collection("account_access").doc(identity.uid), {
         revision: 0, updated_at: timestamp,
       });
+      new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+        actor: { uid: identity.uid, role: data.role as UserRole, displayName: identity.displayName ?? identity.uid },
+        action: "account.created", targetType: "account", targetId: identity.uid,
+        status: data.account_status, outcome: "succeeded", correlationId: randomUUID(),
+      });
       return accountFrom(reference.id, data);
     });
   }
@@ -146,8 +159,16 @@ export class FirestoreAccountService {
         body.full_name.trim().length < 1 || body.full_name.trim().length > 120) {
       throw new AccountInputError("Supply a full name of 1 to 120 characters.");
     }
-    await this.firestore.collection("users").doc(actor.uid).update({
-      full_name: body.full_name.trim(), updated_at: FieldValue.serverTimestamp(),
+    await this.firestore.runTransaction(async transaction => {
+      const reference = this.firestore.collection("users").doc(actor.uid);
+      const current = accountFrom(actor.uid, (await transaction.get(reference)).data());
+      if (!accountMatchesActor(current, actor)) throw new PermissionDeniedError();
+      if (current.full_name === (body.full_name as string).trim()) return;
+      transaction.update(reference, { full_name: (body.full_name as string).trim(), updated_at: FieldValue.serverTimestamp() });
+      new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+        actor, action: "account.updated", targetType: "account", targetId: actor.uid,
+        outcome: "succeeded", correlationId: randomUUID(),
+      });
     });
     return this.get(actor.uid);
   }
@@ -169,7 +190,7 @@ export class FirestoreAccountService {
       const [adminDoc, targetDoc] = await Promise.all([transaction.get(adminRef), transaction.get(targetRef)]);
       const admin = accountFrom(adminDoc.id, adminDoc.data());
       const target = accountFrom(targetDoc.id, targetDoc.data());
-      if (admin.account_status !== "active") throw new PermissionDeniedError("The actor account is inactive.");
+      if (!accountMatchesActor(admin, actor)) throw new PermissionDeniedError("The actor authority has changed.");
       requirePermission(admin.role, isRole ? "manage_user_roles" : accountManagementPermission(target.role));
       const role = isRole ? body.role as UserRole : target.role;
       const status = isRole ? target.account_status : body.account_status as Account["account_status"];
@@ -181,6 +202,17 @@ export class FirestoreAccountService {
         updated_at: FieldValue.serverTimestamp() });
       transaction.set(this.firestore.collection("account_access").doc(uid), {
         revision: target.role_revision + 1, updated_at: FieldValue.serverTimestamp(),
+      });
+      const operationId = randomUUID();
+      const trustedActor: AuthenticatedUser = { uid: admin.id, role: admin.role, displayName: admin.full_name || admin.id, roleRevision: admin.role_revision };
+      new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+        actor: trustedActor, action: isRole ? "account.role_changed" : status === "inactive" ? "account.deactivated" : "account.reactivated",
+        targetType: "account", targetId: uid, version: target.role_revision + 1, status,
+        outcome: "succeeded", operationId, correlationId: operationId,
+      });
+      transaction.create(this.firestore.collection("account_auth_operations").doc(operationId), {
+        target_id: uid, revision: target.role_revision + 1, actor: trustedActor,
+        correlation_id: operationId, state: "requested", requested_at: FieldValue.serverTimestamp(), attempt_count: 0,
       });
       transaction.create(this.firestore.collection("audit_logs").doc(), {
         user_id: actor.uid, current_role: admin.role, record_id: uid, resource: "user_management",

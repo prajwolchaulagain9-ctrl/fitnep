@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../app/theme/app_theme.dart';
 import '../controllers/authentication_controller.dart';
 import '../sign_out_to_welcome.dart';
 import 'password_recovery_pages.dart';
@@ -26,13 +25,13 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
             child: Container(
               width: 104,
               height: 104,
-              decoration: const BoxDecoration(
-                color: AppColors.primaryContainer,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.construction_rounded,
-                color: AppColors.primary,
+                color: Theme.of(context).colorScheme.primary,
                 size: 52,
               ),
             ),
@@ -42,17 +41,17 @@ class AppUnderDevelopmentPage extends ConsumerWidget {
             'Coming Soon',
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              color: AppColors.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Your personalized nutrition and fitness workspace is on the way. '
             'Thank you for being part of FITNEP.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 14,
               height: 1.5,
             ),

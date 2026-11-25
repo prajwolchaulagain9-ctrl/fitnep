@@ -77,7 +77,7 @@ class _EditPackagePageState extends ConsumerState<EditPackagePage> {
         if (leave && context.mounted) context.pop();
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(title: const Text('Edit Package')),
         body: SafeArea(
           top: false,

@@ -51,6 +51,8 @@ class NotificationDestinationRecordModel extends NotificationDestinationRecord {
       'invoice_number',
     ],
     NotificationType.assignment => const ['name', 'title'],
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => const ['title', 'name'],
   };
 
@@ -65,6 +67,8 @@ class NotificationDestinationRecordModel extends NotificationDestinationRecord {
     NotificationType.task => const ['description', 'notes', 'instructions'],
     NotificationType.payment => const ['notes', 'description'],
     NotificationType.assignment => const ['email'],
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => const ['description', 'message'],
   };
 
@@ -114,6 +118,8 @@ class NotificationDestinationRecordModel extends NotificationDestinationRecord {
         add('Email', const ['email']);
         add('Assigned at', const ['assigned_at']);
         add('Status', const ['assignment_status']);
+      case NotificationType.intake:
+      case NotificationType.membership:
       case NotificationType.other:
         add('Status', const ['status']);
     }
@@ -137,6 +143,8 @@ class NotificationDestinationRecordModel extends NotificationDestinationRecord {
     NotificationType.task => 'Task',
     NotificationType.payment => 'Payment',
     NotificationType.assignment => 'Assigned client',
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => 'Record',
   };
 }

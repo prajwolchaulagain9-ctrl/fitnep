@@ -43,7 +43,7 @@ class _CreatePackagePageState extends ConsumerState<CreatePackagePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: const Text('Create Package')),
       body: SafeArea(
         top: false,

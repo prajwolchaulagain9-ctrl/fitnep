@@ -9,9 +9,14 @@ import '../controllers/client_intake_controller.dart';
 import '../widgets/intake_priority_card.dart';
 
 class ClientIntakePage extends ConsumerStatefulWidget {
-  const ClientIntakePage({super.key, required this.clientId});
+  const ClientIntakePage({
+    super.key,
+    required this.clientId,
+    this.readOnly = false,
+  });
 
   final String clientId;
+  final bool readOnly;
 
   @override
   ConsumerState<ClientIntakePage> createState() => _ClientIntakePageState();
@@ -23,15 +28,23 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
 
   @override
   Widget build(BuildContext context) {
-    final intake = ref.watch(clientIntakeProvider(widget.clientId));
+    final provider = widget.readOnly
+        ? ownClientIntakeProvider(widget.clientId)
+        : clientIntakeProvider(widget.clientId);
+    final intake = ref.watch(provider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Client intake form')),
+      appBar: AppBar(
+        title: Text(
+          widget.readOnly ? 'Your intake form' : 'Client intake form',
+        ),
+      ),
       body: SafeArea(
         top: false,
         child: intake.when(
           data: (value) => _IntakeView(
             intake: _savedIntake ?? value,
             isSaving: _isSaving,
+            readOnly: widget.readOnly,
             onMarkReviewed: _markReviewed,
             onRequestMissingInformation: () => _requestInformation(
               ClientIntakeReviewAction.missingInformation,
@@ -43,8 +56,7 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (error, _) => _IntakeError(
             error: error,
-            onRetry: () =>
-                ref.invalidate(clientIntakeProvider(widget.clientId)),
+            onRetry: () => ref.invalidate(provider),
           ),
         ),
       ),
@@ -93,7 +105,15 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
     try {
       final saved = await ref
           .read(clientIntakeRepositoryProvider)
-          .updateReview(clientId: widget.clientId, action: action, note: note);
+          .updateReview(
+            clientId: widget.clientId,
+            action: action,
+            note: note,
+            expectedVersion:
+                (_savedIntake ??
+                        ref.read(clientIntakeProvider(widget.clientId)).value)
+                    ?.version,
+          );
       if (!mounted) return;
       setState(() => _savedIntake = saved);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -119,12 +139,14 @@ class _IntakeView extends StatelessWidget {
   const _IntakeView({
     required this.intake,
     required this.isSaving,
+    this.readOnly = false,
     required this.onMarkReviewed,
     required this.onRequestMissingInformation,
     required this.onRequestClarification,
   });
 
   final ClientIntake intake;
+  final bool readOnly;
   final bool isSaving;
   final VoidCallback onMarkReviewed;
   final VoidCallback onRequestMissingInformation;
@@ -165,12 +187,13 @@ class _IntakeView extends StatelessWidget {
           const SizedBox(height: 12),
         ],
         const SizedBox(height: 12),
-        _ReviewActionsCard(
-          isSaving: isSaving,
-          onMarkReviewed: onMarkReviewed,
-          onRequestMissingInformation: onRequestMissingInformation,
-          onRequestClarification: onRequestClarification,
-        ),
+        if (!readOnly)
+          _ReviewActionsCard(
+            isSaving: isSaving,
+            onMarkReviewed: onMarkReviewed,
+            onRequestMissingInformation: onRequestMissingInformation,
+            onRequestClarification: onRequestClarification,
+          ),
       ],
     );
   }
@@ -213,16 +236,16 @@ class _ReviewStatusCard extends StatelessWidget {
       ),
       ClientIntakeStatus.submitted => (
         'Awaiting review',
-        'Review the submitted information and select an action below.',
+        'The submitted information is awaiting your care team’s review.',
         Icons.schedule_rounded,
         AppColors.info,
-        AppColors.surfaceVariant,
+        Theme.of(context).colorScheme.surfaceContainerHighest,
       ),
     };
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: background,
+        color: AppColors.statusSurface(context, color, background),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),

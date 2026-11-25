@@ -12,7 +12,8 @@ class StatusBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isActive = status == ClientStatus.active;
-    final color = isActive ? AppColors.statusActive : AppColors.statusInactive;
+    final tone = isActive ? AppColors.statusActive : AppColors.statusInactive;
+    final color = AppColors.statusTone(context, tone);
     final bgColor = isActive
         ? AppColors.statusActiveContainer
         : AppColors.statusInactiveContainer;
@@ -24,7 +25,7 @@ class StatusBadge extends StatelessWidget {
         vertical: large ? 6 : 3,
       ),
       decoration: BoxDecoration(
-        color: bgColor,
+        color: AppColors.statusSurface(context, tone, bgColor),
         borderRadius: BorderRadius.circular(large ? 10 : 6),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),

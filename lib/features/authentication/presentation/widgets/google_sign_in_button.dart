@@ -21,7 +21,7 @@ class GoogleSignInButton extends StatelessWidget {
       backgroundColor: Theme.of(context).colorScheme.surface,
       side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-      shape: const StadiumBorder(),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     ),
     icon: isLoading
         ? const SizedBox.square(
@@ -44,16 +44,21 @@ class AuthenticationDivider extends StatelessWidget {
   const AuthenticationDivider({super.key});
 
   @override
-  Widget build(BuildContext context) => const Padding(
+  Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.symmetric(vertical: 12),
     child: Row(
       children: [
-        Expanded(child: Divider()),
+        const Expanded(child: Divider()),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text('or', style: TextStyle(color: Color(0xFF657A8C))),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'or',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
-        Expanded(child: Divider()),
+        const Expanded(child: Divider()),
       ],
     ),
   );

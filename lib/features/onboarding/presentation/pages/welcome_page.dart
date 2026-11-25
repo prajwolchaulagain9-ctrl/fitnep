@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
+import '../../../../shared/widgets/wellness_illustration.dart';
+import '../../../../app/theme/theme_mode_controller.dart';
 
 class WelcomePage extends StatefulWidget {
   const WelcomePage({super.key});
@@ -89,6 +91,7 @@ class _WelcomePageState extends State<WelcomePage> {
                         onPressed: () => context.pushNamed(AppRoutes.login),
                         child: const Text('Skip'),
                       ),
+                      const ThemeModeButton(),
                     ],
                   ),
                 ),
@@ -122,6 +125,7 @@ class _WelcomePageState extends State<WelcomePage> {
                                 children: [
                                   ExcludeSemantics(
                                     child: _WelcomeVisual(
+                                      scene: WellnessScene.values[index],
                                       height: visualHeight,
                                       icon: slide.icon,
                                       detail: slide.detail,
@@ -250,11 +254,13 @@ class _WelcomeVisual extends StatelessWidget {
     required this.icon,
     required this.detail,
     required this.detailIcon,
+    required this.scene,
   });
   final double height;
   final IconData icon;
   final String detail;
   final IconData detailIcon;
+  final WellnessScene scene;
 
   @override
   Widget build(BuildContext context) {
@@ -264,17 +270,7 @@ class _WelcomeVisual extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: height * 0.88,
-            height: height * 0.88,
-            decoration: BoxDecoration(
-              color: colors.primaryContainer,
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Icon(icon, size: height * 0.39, color: colors.primary),
-            ),
-          ),
+          WellnessIllustration(scene: scene, size: height * 0.84),
           Positioned(
             top: 12,
             right: 28,

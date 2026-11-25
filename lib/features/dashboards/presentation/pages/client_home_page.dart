@@ -1,3 +1,5 @@
+import '../../../../shared/widgets/wellness_illustration.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,7 +24,7 @@ class ClientHomePage extends ConsumerWidget {
 
     return Scaffold(
       drawer: const RoleNavigationDrawer(),
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         titleSpacing: 16,
         title: const _ClientAppBarTitle(),
@@ -48,7 +50,7 @@ class ClientHomePage extends ConsumerWidget {
                         key: notificationBadgeKey,
                         count: unreadCount,
                         maxCount: 99,
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         textColor: AppColors.textInverse,
                         child: const Icon(Icons.notifications_none_rounded),
                       )
@@ -88,10 +90,10 @@ class ClientHomePage extends ConsumerWidget {
             ],
             const _MembershipActions(),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Your FitNep updates',
               style: TextStyle(
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
@@ -154,40 +156,41 @@ class _ClientAppBarTitle extends StatelessWidget {
 
 class _WelcomeCard extends StatelessWidget {
   const _WelcomeCard();
-
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primary, AppColors.primaryLight],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: colors.primaryContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.favorite_rounded,
-            color: AppColors.textInverse,
-            size: 28,
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Welcome back',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-              color: AppColors.textInverse,
-              fontWeight: FontWeight.w700,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Welcome back',
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    color: colors.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              const WellnessIllustration(
+                scene: WellnessScene.movement,
+                size: 86,
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Text(
             'Your diet plan, messages, tasks, and payment updates are all in one place.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.textInverse.withValues(alpha: 0.9),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colors.onPrimaryContainer,
               height: 1.45,
             ),
           ),
@@ -205,9 +208,9 @@ class _UpdateTypesCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: const Column(
         children: [
@@ -259,10 +262,14 @@ class _UpdateTypeRow extends StatelessWidget {
           width: 42,
           height: 42,
           decoration: BoxDecoration(
-            color: AppColors.primaryContainer,
+            color: Theme.of(context).colorScheme.primaryContainer,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: AppColors.primary, size: 21),
+          child: Icon(
+            icon,
+            color: Theme.of(context).colorScheme.primary,
+            size: 21,
+          ),
         ),
         const SizedBox(width: 13),
         Expanded(

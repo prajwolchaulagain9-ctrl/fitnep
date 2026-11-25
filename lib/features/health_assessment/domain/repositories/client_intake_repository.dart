@@ -7,5 +7,6 @@ abstract class ClientIntakeRepository {
     required String clientId,
     required ClientIntakeReviewAction action,
     String? note,
+    int? expectedVersion,
   });
 }

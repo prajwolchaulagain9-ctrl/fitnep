@@ -76,7 +76,11 @@ class PaymentHistoryTile extends StatelessWidget {
                 ),
               ),
               if (!isLast)
-                Container(width: 1.5, height: 44, color: AppColors.divider),
+                Container(
+                  width: 1.5,
+                  height: 44,
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
             ],
           ),
           const SizedBox(width: 14),
@@ -92,15 +96,16 @@ class PaymentHistoryTile extends StatelessWidget {
                       Text(
                         payment.description,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textPrimary,
+                          color: Theme.of(context).colorScheme.onSurface,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 3),
                       Text(
                         DateFormat('dd MMM yyyy').format(payment.date),
-                        style: Theme.of(context).textTheme.bodySmall
-                            ?.copyWith(color: AppColors.textSecondary),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -112,7 +117,7 @@ class PaymentHistoryTile extends StatelessWidget {
                     Text(
                       'Rs. ${payment.amount.toStringAsFixed(0)}',
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppColors.textPrimary,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -123,7 +128,11 @@ class PaymentHistoryTile extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: _statusBg,
+                        color: AppColors.statusSurface(
+                          context,
+                          _statusColor,
+                          _statusBg,
+                        ),
                         borderRadius: BorderRadius.circular(5),
                       ),
                       child: Row(

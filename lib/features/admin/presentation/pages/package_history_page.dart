@@ -15,7 +15,7 @@ class PackageHistoryPage extends ConsumerWidget {
     final state = ref.watch(packageHistoryControllerProvider);
     final controller = ref.read(packageHistoryControllerProvider.notifier);
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -152,7 +152,7 @@ class _PackageHistoryCard extends StatelessWidget {
                   child: Text(
                     'By ${history.adminName}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textPrimary,
+                      color: Theme.of(context).colorScheme.onSurface,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -190,7 +190,7 @@ class _ChangeRow extends StatelessWidget {
         Text(
           change.label,
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: AppColors.textPrimary,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -235,14 +235,16 @@ class _ValueBox extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.divider),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
           ),
           child: Text(
             value,
             style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: AppColors.textPrimary),
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurface),
           ),
         ),
       ],

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../app/routes/app_routes.dart';
 import '../../../app/routes/route_access_gate.dart';
 import '../../../shared/widgets/fitnep_wordmark.dart';
+import '../../../app/theme/theme_mode_controller.dart';
 import '../../authentication/presentation/controllers/authentication_controller.dart';
 
 typedef RoleMenuItem = ({
@@ -185,6 +186,29 @@ class RoleNavigationDrawer extends ConsumerWidget {
                 },
               ),
             const Divider(),
+            ListTile(
+              leading: const Icon(Icons.palette_outlined),
+              title: const Text('Appearance'),
+              trailing: DropdownButton<ThemeMode>(
+                value: ref.watch(themeModeProvider),
+                onChanged: (mode) {
+                  if (mode != null) {
+                    ref.read(themeModeProvider.notifier).select(mode);
+                  }
+                },
+                items: const [
+                  DropdownMenuItem(
+                    value: ThemeMode.system,
+                    child: Text('System'),
+                  ),
+                  DropdownMenuItem(
+                    value: ThemeMode.light,
+                    child: Text('Light'),
+                  ),
+                  DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                ],
+              ),
+            ),
             if (action.errorMessage != null)
               Padding(
                 padding: const EdgeInsets.all(16),

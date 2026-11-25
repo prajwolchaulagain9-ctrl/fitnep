@@ -12,6 +12,7 @@ abstract class ClientIntakeRemoteDatasource {
     required String clientId,
     required ClientIntakeReviewAction action,
     String? note,
+    int? expectedVersion,
   });
 }
 
@@ -48,6 +49,7 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
     required String clientId,
     required ClientIntakeReviewAction action,
     String? note,
+    int? expectedVersion,
   }) async {
     if (_apiClient.dio.options.baseUrl.trim().isEmpty) {
       throw const ClientIntakeException(
@@ -56,7 +58,10 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
       );
     }
     try {
-      final data = <String, Object?>{'action': _reviewActionName(action)};
+      final data = <String, Object?>{
+        'action': _reviewActionName(action),
+        'expected_version': ?expectedVersion,
+      };
       if (note case final reviewNote?) data['note'] = reviewNote;
       final response = await _apiClient.dio.patch<Object?>(
         AppConstants.dietitianClientIntakeReviewEndpoint(clientId),

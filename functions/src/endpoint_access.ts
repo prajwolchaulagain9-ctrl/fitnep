@@ -46,6 +46,7 @@ const endpoints: [string, RegExp, Permission][] = [
   ["GET", /^\/notifications(?:\/([^/]+))?$/, "view_own_notifications"],
   ["PATCH", /^\/notifications\/(read-all|([^/]+)\/read)$/, "update_own_notifications"],
   ["GET", /^\/privacy\/preferences$/, "manage_own_privacy"],
+  ["GET", /^\/intakes\/me$/, "view_client_records"],
   ["PATCH", /^\/privacy\/preferences$/, "manage_own_privacy"],
   ["GET", /^\/packages$/, "view_packages"],
   ["GET", /^\/admin\/(?:packages|package-history|memberships\/pending)$/, "manage_business_settings"],

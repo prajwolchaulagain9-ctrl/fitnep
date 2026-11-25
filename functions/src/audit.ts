@@ -7,6 +7,7 @@ export const auditActions = [
   "session.started", "session.ended", "auth.login", "access.denied", "health.read",
   "account.created", "account.updated", "account.role_changed",
   "account.deactivated", "account.reactivated", "privacy.accepted", "privacy.updated",
+  "account.auth_synchronized",
   "membership.selected", "membership.activated", "payment.submitted",
   "payment.verified", "payment.rejected", "payment.adjusted",
   "client.assigned", "client.reassigned", "intake.submitted", "intake.revised",

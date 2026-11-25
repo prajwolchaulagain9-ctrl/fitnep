@@ -28,7 +28,7 @@ class NotificationDestinationPage extends ConsumerWidget {
     final state = ref.watch(notificationDestinationProvider(request));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(title: Text(_pageTitle)),
       body: SafeArea(
         top: false,
@@ -65,6 +65,8 @@ class NotificationDestinationPage extends ConsumerWidget {
     NotificationType.task => 'Task Details',
     NotificationType.payment => 'Payment Details',
     NotificationType.assignment => 'Assigned Client',
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => 'Details',
   };
 
@@ -74,6 +76,8 @@ class NotificationDestinationPage extends ConsumerWidget {
     NotificationType.task => 'task',
     NotificationType.payment => 'payment',
     NotificationType.assignment => 'assigned client',
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => 'record',
   };
 }
@@ -94,7 +98,7 @@ class _RecordView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RefreshIndicator(
-      color: AppColors.primary,
+      color: Theme.of(context).colorScheme.primary,
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -108,9 +112,11 @@ class _RecordView extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.cardBackground,
+              color: Theme.of(context).colorScheme.surface,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.divider),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,10 +125,10 @@ class _RecordView extends StatelessWidget {
                   width: 52,
                   height: 52,
                   decoration: BoxDecoration(
-                    color: _accent.withValues(alpha: 0.12),
+                    color: _accent(context).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(15),
                   ),
-                  child: Icon(_icon, color: _accent, size: 27),
+                  child: Icon(_icon, color: _accent(context), size: 27),
                 ),
                 const SizedBox(height: 18),
                 Text(
@@ -145,13 +151,15 @@ class _RecordView extends StatelessWidget {
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: AppColors.surfaceVariant,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     'Reference: ${record.id}',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       letterSpacing: 0,
                     ),
                   ),
@@ -173,9 +181,11 @@ class _RecordView extends StatelessWidget {
             const SizedBox(height: 10),
             Container(
               decoration: BoxDecoration(
-                color: AppColors.cardBackground,
+                color: Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.divider),
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.outlineVariant,
+                ),
               ),
               child: Column(
                 children: [
@@ -203,16 +213,20 @@ class _RecordView extends StatelessWidget {
     NotificationType.task => Icons.task_alt_rounded,
     NotificationType.payment => Icons.receipt_long_outlined,
     NotificationType.assignment => Icons.person_pin_outlined,
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => Icons.description_outlined,
   };
 
-  Color get _accent => switch (type) {
+  Color _accent(BuildContext context) => switch (type) {
     NotificationType.dietPlan => AppColors.success,
     NotificationType.message => AppColors.info,
     NotificationType.task => AppColors.actionPackageChange,
     NotificationType.payment => AppColors.warning,
-    NotificationType.assignment => AppColors.primary,
-    NotificationType.other => AppColors.primary,
+    NotificationType.assignment => Theme.of(context).colorScheme.primary,
+    NotificationType.intake ||
+    NotificationType.membership ||
+    NotificationType.other => Theme.of(context).colorScheme.primary,
   };
 }
 
@@ -241,7 +255,7 @@ class _DetailRow extends StatelessWidget {
               field.value,
               textAlign: TextAlign.right,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w600,
               ),
             ),

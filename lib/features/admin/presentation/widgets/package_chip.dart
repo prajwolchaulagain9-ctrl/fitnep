@@ -23,7 +23,7 @@ class PackageChip extends StatelessWidget {
     }
   }
 
-  Color get _bgColor {
+  Color _bgColor(BuildContext context) {
     switch (packageName.toLowerCase()) {
       case 'basic':
         return AppColors.packageBasicContainer;
@@ -34,7 +34,7 @@ class PackageChip extends StatelessWidget {
       case 'elite':
         return AppColors.packageEliteContainer;
       default:
-        return AppColors.surfaceVariant;
+        return Theme.of(context).colorScheme.surfaceContainerHighest;
     }
   }
 
@@ -46,14 +46,14 @@ class PackageChip extends StatelessWidget {
         vertical: large ? 5 : 3,
       ),
       decoration: BoxDecoration(
-        color: _bgColor,
+        color: AppColors.statusSurface(context, _color, _bgColor(context)),
         borderRadius: BorderRadius.circular(large ? 8 : 5),
         border: Border.all(color: _color.withValues(alpha: 0.35)),
       ),
       child: Text(
         packageName,
         style: TextStyle(
-          color: _color,
+          color: AppColors.statusTone(context, _color),
           fontSize: large ? 13 : 10,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.3,

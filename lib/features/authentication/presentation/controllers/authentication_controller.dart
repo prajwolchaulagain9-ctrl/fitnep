@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -73,7 +75,19 @@ final authenticationBootstrapProvider = FutureProvider<AuthenticationService>((
   return service;
 }, retry: (retryCount, error) => null);
 
+// Firebase publishes the first Google identity before password delivery refreshes
+// its credential. Account/consent requests must wait for that refresh to finish.
+final authenticationSettledProvider = FutureProvider<void>((ref) async {
+  if (!ref.watch(
+    authenticationControllerProvider.select((action) => action.isLoading),
+  )) {
+    return;
+  }
+  await Completer<void>().future;
+});
+
 final staffPasswordChangeRequiredProvider = FutureProvider<bool>((ref) async {
+  await ref.watch(authenticationSettledProvider.future);
   final user = await ref.watch(authenticationStateProvider.future);
   if (user == null) return false;
   if (AppConfig.hostedSessionsEnabled) {
@@ -222,7 +236,9 @@ class AuthenticationController extends Notifier<AuthenticationActionState> {
     state = AuthenticationActionState(isLoading: true, isGoogleSignIn: google);
     try {
       final succeeded = await action();
-      if (ref.mounted) state = const AuthenticationActionState();
+      if (ref.mounted) {
+        state = AuthenticationActionState(noticeMessage: state.noticeMessage);
+      }
       return succeeded;
     } on AuthenticationFailure catch (error) {
       if (ref.mounted) {

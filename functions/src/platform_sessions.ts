@@ -80,6 +80,10 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
         actor, action: "session.started", targetType: "account", targetId: actor.uid,
         outcome: "succeeded", correlationId,
       });
+      this.audit.appendInTransaction(transaction, {
+        actor, action: "auth.login", targetType: "account", targetId: actor.uid,
+        outcome: "succeeded", correlationId,
+      });
       return { ...this.view(actor, expiresAt), session_id: reference.id };
     });
   }

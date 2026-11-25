@@ -29,14 +29,10 @@ export interface ClientAssignmentAuditContext {
 }
 
 export interface ClientAssignmentRepository {
-<<<<<<< HEAD
   assign(
     record: ClientAssignmentRecord,
     audit: ClientAssignmentAuditContext,
   ): Promise<ClientAssignmentRecord>;
-=======
-  assign(record: ClientAssignmentRecord, actor?: AuthenticatedUser): Promise<ClientAssignmentRecord>;
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
   currentClientCounts(): Promise<Record<string, number>>;
   getCurrent(clientId: string, actor?: AuthenticatedUser): Promise<ClientAssignmentRecord | null>;
 }
@@ -77,6 +73,7 @@ export class ClientAssignmentService {
     private readonly notifications: Pick<NotificationWorkflowService, "clientAssigned"> | null,
     private readonly clients: AssignedClientDirectory | null,
     private readonly now = () => new Date(),
+    private readonly durableNotifications = false,
   ) {}
 
   async eligibility(actor: AuthenticatedUser, clientIdInput: unknown) {
@@ -109,7 +106,6 @@ export class ClientAssignmentService {
     const clientProfile = this.clients !== null
       ? await this.clients.getClient(eligibility.clientId)
       : null;
-<<<<<<< HEAD
     const assignment = await this.repository.assign(
       {
         clientId: eligibility.clientId,
@@ -121,17 +117,7 @@ export class ClientAssignmentService {
       },
       { actor, correlationId },
     );
-=======
-    const assignment = await this.repository.assign({
-      clientId: eligibility.clientId,
-      dietitianId,
-      active: true,
-      assignedAt: this.now().toISOString(),
-      assignedById: actor.uid,
-      version: 0,
-    }, actor);
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
-    if (this.notifications !== null) {
+    if (this.notifications !== null && !this.durableNotifications) {
       await this.notifications.clientAssigned(actor, {
         clientId: assignment.clientId,
         dietitianId: assignment.dietitianId,

@@ -18,9 +18,11 @@ class ClientCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.cardBackground,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.divider),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
         child: Material(
           color: Colors.transparent,
@@ -28,8 +30,10 @@ class ClientCard extends StatelessWidget {
           child: InkWell(
             onTap: onTap,
             borderRadius: BorderRadius.circular(16),
-            splashColor: AppColors.primary.withValues(alpha: 0.06),
-            highlightColor: AppColors.primary.withValues(alpha: 0.04),
+            splashColor: Theme.of(context).colorScheme.primary
+                .withValues(alpha: 0.06),
+            highlightColor: Theme.of(context).colorScheme.primary
+                .withValues(alpha: 0.04),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
@@ -48,7 +52,9 @@ class ClientCard extends StatelessWidget {
                                 client.name,
                                 style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(
-                                      color: AppColors.textPrimary,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
                                       fontWeight: FontWeight.w600,
                                     ),
                                 maxLines: 1,
@@ -70,7 +76,9 @@ class ClientCard extends StatelessWidget {
                                   Icon(
                                     Icons.person_outline_rounded,
                                     size: 13,
-                                    color: AppColors.textDisabled,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                   ),
                                   const SizedBox(width: 4),
                                   Expanded(
@@ -80,7 +88,9 @@ class ClientCard extends StatelessWidget {
                                           .textTheme
                                           .bodySmall
                                           ?.copyWith(
-                                            color: AppColors.textSecondary,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
                                             fontSize: 11,
                                           ),
                                       maxLines: 1,
@@ -98,7 +108,7 @@ class ClientCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: AppColors.textDisabled,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     size: 20,
                   ),
                 ],

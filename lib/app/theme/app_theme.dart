@@ -1,13 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:animations/animations.dart';
 
 class AppColors {
   AppColors._();
+  static Color statusTone(BuildContext context, Color tone) => Color.lerp(
+    tone,
+    Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black,
+    Theme.of(context).brightness == Brightness.dark ? .35 : .14,
+  )!;
+  static Color statusSurface(BuildContext context, Color tone, Color light) =>
+      Theme.of(context).brightness == Brightness.dark
+      ? Color.alphaBlend(
+          tone.withValues(alpha: .14),
+          Theme.of(context).colorScheme.surface,
+        )
+      : light;
 
   // Brand palette inspired by the FitNep Figma design.
   static const primary = Color(0xFFFA6B09);
   static const primaryLight = Color(0xFFFF8A33);
-  static const primaryDark = Color(0xFFD95700);
+  static const primaryDark = Color(0xFFB94B00);
   static const primaryContainer = Color(0xFFFFF0E6);
 
   // Backgrounds
@@ -21,7 +36,7 @@ class AppColors {
 
   // Text
   static const textPrimary = Color(0xFF0C1F2A);
-  static const textSecondary = Color(0xFF657A8C);
+  static const textSecondary = Color(0xFF596D7E);
   static const textDisabled = Color(0xFFA8AFB4);
   static const textInverse = Color(0xFFFFFFFF);
 
@@ -64,13 +79,13 @@ abstract final class AppTheme {
 
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
-    final scheme =
+    final seededScheme =
         ColorScheme.fromSeed(
           seedColor: AppColors.primary,
           brightness: brightness,
         ).copyWith(
           primary: isLight ? AppColors.primary : AppColors.primaryLight,
-          onPrimary: isLight ? Colors.white : AppColors.textPrimary,
+          onPrimary: AppColors.textPrimary,
           primaryContainer: isLight
               ? AppColors.primaryContainer
               : const Color(0xFF49260F),
@@ -89,11 +104,30 @@ abstract final class AppTheme {
           outlineVariant: isLight ? AppColors.divider : const Color(0xFF354652),
           error: isLight ? AppColors.error : const Color(0xFFFFB4AB),
         );
+    final colors = isLight
+        ? seededScheme
+        : seededScheme.copyWith(
+            primary: const Color(0xFFFFD369),
+            onPrimary: const Color(0xFF222831),
+            surface: const Color(0xFF222831),
+            onSurface: const Color(0xFFEEEEEE),
+            onSurfaceVariant: const Color(0xFFC5CBD3),
+            surfaceContainerLowest: const Color(0xFF1B2027),
+            surfaceContainerLow: const Color(0xFF292F38),
+            surfaceContainer: const Color(0xFF303640),
+            surfaceContainerHigh: const Color(0xFF353B45),
+            surfaceContainerHighest: const Color(0xFF393E46),
+            primaryContainer: const Color(0xFF463921),
+            onPrimaryContainer: const Color(0xFFFFDF97),
+            outline: const Color(0xFF8A939F),
+            outlineVariant: const Color(0xFF4D5662),
+          );
+    final scheme = colors;
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: scheme,
+      colorScheme: colors,
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: scheme.surface,
+      scaffoldBackgroundColor: colors.surface,
     );
     final text = base.textTheme.apply(
       bodyColor: scheme.onSurface,
@@ -104,11 +138,14 @@ abstract final class AppTheme {
       padding: const WidgetStatePropertyAll(
         EdgeInsets.symmetric(horizontal: 24, vertical: 14),
       ),
-      shape: const WidgetStatePropertyAll(StadiumBorder()),
+      shape: WidgetStatePropertyAll(
+        RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      animationDuration: const Duration(milliseconds: 160),
       textStyle: const WidgetStatePropertyAll(
         TextStyle(
           fontFamily: 'Inter',
-          fontSize: 18,
+          fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
       ),
@@ -119,6 +156,12 @@ abstract final class AppTheme {
           borderSide: BorderSide(color: color, width: width),
         );
     return base.copyWith(
+      pageTransitionsTheme: PageTransitionsTheme(
+        builders: {
+          ...base.pageTransitionsTheme.builders,
+          TargetPlatform.android: const _FitNepPageTransitions(),
+        },
+      ),
       textTheme: text.copyWith(
         headlineLarge: text.headlineLarge?.copyWith(
           fontSize: 32,
@@ -271,6 +314,27 @@ abstract final class AppTheme {
         backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
       ),
+    );
+  }
+}
+
+class _FitNepPageTransitions extends PageTransitionsBuilder {
+  const _FitNepPageTransitions();
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    return SharedAxisTransition(
+      animation: animation,
+      secondaryAnimation: secondaryAnimation,
+      transitionType: SharedAxisTransitionType.horizontal,
+      fillColor: Theme.of(context).colorScheme.surface,
+      child: child,
     );
   }
 }

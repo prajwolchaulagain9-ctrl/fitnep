@@ -6,6 +6,7 @@ import {
   Firestore,
   QueryDocumentSnapshot,
   Timestamp,
+  Transaction,
 } from "firebase-admin/firestore";
 
 import {
@@ -99,9 +100,16 @@ export class FirestoreNotificationRepository
   createIfAbsent(
     input: NewNotification,
   ): Promise<CreateNotificationResult> {
-    const reference = this.collection.doc(documentIdForEvent(input.eventKey));
-    return this.firestore.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(reference);
+    return this.firestore.runTransaction(async transaction =>
+      (await this.createManyInTransaction(transaction, [input]))[0]!);
+  }
+
+  async createManyInTransaction(transaction: Transaction, inputs: NewNotification[]): Promise<CreateNotificationResult[]> {
+    const references = inputs.map(input => this.collection.doc(documentIdForEvent(input.eventKey)));
+    const snapshots = await Promise.all(references.map(reference => transaction.get(reference)));
+    return inputs.map((input, index) => {
+      const reference = references[index]!;
+      const snapshot = snapshots[index]!;
       if (snapshot.exists) {
         const existing = fromSnapshot(snapshot);
         if (existing.eventKey !== input.eventKey) {

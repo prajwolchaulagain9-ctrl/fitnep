@@ -7,6 +7,10 @@ import {
 } from "firebase-admin/firestore";
 
 import { AuditWriter, FirestoreAuditWriter } from "./audit";
+import { AuthenticatedUser } from "./domain";
+import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
+import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
+import { createHash } from "node:crypto";
 
 import {
   ClientIntakeError,
@@ -39,36 +43,39 @@ const reservedKeys = new Set([
   "review_updated_at",
   "reviewed_by_id",
   "version",
+  "review_revision",
 ]);
 
 export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
   constructor(
     private readonly firestore: Firestore,
-    private readonly audit: Pick<AuditWriter, "appendInTransaction"> =
+    private readonly audit: Pick<AuditWriter, "appendInTransaction" | "appendWithEvent"> =
       new FirestoreAuditWriter(firestore),
+    private readonly reads: Pick<FirestorePrivateRecordsStore, "readResource"> =
+      new FirestorePrivateRecordsStore(firestore, new FirestorePrivacyPreferencesRepository(firestore), audit),
   ) {}
 
   getForAssignedDietitian(
     clientId: string,
     dietitianId: string,
+    context?: ClientIntakeReviewContext,
   ): Promise<ClientIntakeRecord> {
-    return this.firestore.runTransaction(async transaction => {
-      const assignmentReference = this.firestore
-        .collection("client_assignments")
-        .doc(clientId);
-      const intakeReference = this.firestore
-        .collection("client_intakes")
-        .doc(clientId);
-      const [assignment, intake] = await Promise.all([
-        transaction.get(assignmentReference),
-        transaction.get(intakeReference),
-      ]);
-      requireAssignment(assignment, dietitianId);
+    return this.readFor(context?.actor ?? { uid: dietitianId, role: "dietitian" }, clientId, context?.correlationId);
+  }
+
+  getForOwner(actor: AuthenticatedUser, correlationId: string) {
+    return this.readFor(actor, actor.uid, correlationId);
+  }
+
+  private readFor(actor: AuthenticatedUser, clientId: string, correlationId?: string) {
+    return this.reads.readResource(actor, { clientId, category: "intakes", recordId: "submitted" }, async transaction => {
+      const intake = await transaction.get(this.firestore.doc(`client_intakes/${clientId}`));
       if (!intake.exists) {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
-      return parseIntake(clientId, intake.data());
-    });
+      if (intake.get("status") === "draft") throw new ClientIntakeError(404, "No submitted intake form exists.");
+      return { data: parseIntake(clientId, intake.data()) };
+    }, correlationId);
   }
 
   updateReviewForAssignedDietitian(
@@ -77,7 +84,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     review: ClientIntakeReviewUpdate,
     context: ClientIntakeReviewContext,
   ): Promise<ClientIntakeRecord> {
-    return this.firestore.runTransaction(async transaction => {
+    return this.reads.readResource(context.actor, { clientId, category: "intakes", recordId: "submitted" }, async transaction => {
       const assignmentReference = this.firestore
         .collection("client_assignments")
         .doc(clientId);
@@ -92,7 +99,18 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       if (!intake.exists) {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
-
+      const version = intake.get("version") ?? 1;
+      if (!Number.isSafeInteger(version) || version < 1 || !Number.isSafeInteger(intake.get("review_revision") ?? 0)) {
+        throw new ClientIntakeError(503, "Intake version metadata needs attention.");
+      }
+      if (review.expectedVersion !== undefined && review.expectedVersion !== version) {
+        throw new ClientIntakeError(400, "The intake version changed. Reload before reviewing.");
+      }
+      if (intake.get("status") === "draft") throw new ClientIntakeError(400, "Only submitted intake versions can be reviewed.");
+      if (intake.get("review_action") === review.action && (intake.get("review_note") ?? null) === review.note && intake.get("reviewed_by_id") === dietitianId) {
+        return { data: parseIntake(clientId, intake.data()) };
+      }
+      const revision = (intake.get("review_revision") ?? 0) + 1;
       const updatedAt = Timestamp.now();
       transaction.update(intakeReference, {
         status: review.status,
@@ -100,29 +118,38 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         review_note: review.note ?? FieldValue.delete(),
         review_updated_at: updatedAt,
         reviewed_by_id: dietitianId,
+        review_revision: revision,
       });
-      this.audit.appendInTransaction(transaction, {
+      transaction.create(this.firestore.collection("intake_review_history").doc(`${clientId}_v${version}_r${revision}`), {
+        client_id: clientId, version, revision, reviewed_by_id: dietitianId, action: review.action,
+        status: review.status, note: review.note, reviewed_at: updatedAt,
+      });
+      const auditInput = {
         actor: context.actor,
         action: review.action === "reviewed"
-          ? "intake.reviewed"
-          : "intake.information_requested",
-        targetType: "intake",
+          ? "intake.reviewed" as const
+          : "intake.information_requested" as const,
+        targetType: "intake" as const,
         targetId: clientId,
         clientId,
         dietitianId,
         status: review.status,
-        outcome: "succeeded",
+        outcome: "succeeded" as const,
         correlationId: context.correlationId,
-      });
-      return parseIntake(clientId, {
+        version,
+        operationId: createHash("sha256").update(`${clientId}:${version}:${revision}`).digest("hex"),
+      };
+      if (review.action === "reviewed") this.audit.appendInTransaction(transaction, auditInput);
+      else this.audit.appendWithEvent(transaction, auditInput, "intake.information_requested");
+      return { data: parseIntake(clientId, {
         ...intake.data(),
         status: review.status,
         review_action: review.action,
         review_note: review.note,
         review_updated_at: updatedAt,
         reviewed_by_id: dietitianId,
-      });
-    });
+      }) };
+    }, context.correlationId);
   }
 }
 
@@ -165,6 +192,7 @@ function parseIntake(
   addSection(sections, "Other intake information", remaining);
 
   return {
+    version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
     clientId,
     allergies: stringList(data.allergies ?? data.food_allergies),
     medicalConditions: stringList(

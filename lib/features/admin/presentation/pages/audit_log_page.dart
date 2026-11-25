@@ -6,7 +6,6 @@ import '../../../../app/routes/app_routes.dart';
 import '../controllers/audit_log_controller.dart';
 import '../widgets/audit_log_tile.dart';
 import '../widgets/empty_state_widget.dart';
-import '../../../../app/theme/app_theme.dart';
 
 class AuditLogPage extends ConsumerWidget {
   const AuditLogPage({super.key});
@@ -17,7 +16,7 @@ class AuditLogPage extends ConsumerWidget {
     final controller = ref.read(auditLogControllerProvider.notifier);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -25,9 +24,9 @@ class AuditLogPage extends ConsumerWidget {
             const Text('Audit Log'),
             Text(
               '${state.logs.length} authorization and admin events recorded',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w400,
               ),
             ),
@@ -62,8 +61,10 @@ class AuditLogPage extends ConsumerWidget {
               subtitle: 'Administrative actions such as deactivations and profile changes will appear here.',
             )
           : RefreshIndicator(
-              color: AppColors.primary,
-              backgroundColor: AppColors.surfaceElevated,
+              color: Theme.of(context).colorScheme.primary,
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerLow,
               onRefresh: controller.refresh,
               child: ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 12),

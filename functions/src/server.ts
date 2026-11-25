@@ -7,19 +7,7 @@ import { mountHostedAuth } from "./hosted_auth";
 import { HostedConfigurationError, readHostedConfig } from "./hosted_config";
 import { createNotificationApp } from "./http_app";
 import { FirestorePlatformSessionService } from "./platform_sessions";
-<<<<<<< HEAD
-import {
-  ClientAssignmentService,
-  ExistingClientPackageStatusReader,
-  ExistingStaffDietitianDirectory,
-  FirebaseClientDirectory,
-} from "./client_assignment_service";
-import { FirestoreClientAssignmentRepository } from "./firestore_client_assignment_repository";
-import { NotificationWorkflowService } from "./notification_service";
-import { ClientIntakeService } from "./client_intake_service";
-import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
-=======
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
+import { startWorkflowRecovery } from "./workflow_delivery";
 
 function start() {
   const config = readHostedConfig(process.env);
@@ -29,40 +17,13 @@ function start() {
   });
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
-<<<<<<< HEAD
-  const audit = new FirestoreAuditWriter(firestore);
-  const privacy = new FirestorePrivacyPreferencesRepository(firestore);
-  const packageMemberships = new FirestorePackageService(firestore);
-  const purchases = new FirestorePurchaseRepository(firestore);
-  const staffAccounts = new FirebaseStaffAccountRepository(auth, firestore);
-  const app = createNotificationApp({
-    authVerifier: new FirebaseAuthVerifier(auth),
-    notificationRepository: new FirestoreNotificationRepository(firestore),
-    staffAccountRepository: staffAccounts,
-    packageService: packageMemberships,
-    packageRepository: new FirestorePackageRepository(firestore),
-    purchaseRepository: purchases,
-    clientAssignmentService: new ClientAssignmentService(
-      new FirestoreClientAssignmentRepository(firestore, audit),
-      new ExistingClientPackageStatusReader(packageMemberships),
-      new ExistingStaffDietitianDirectory(staffAccounts),
-      new NotificationWorkflowService(new FirestoreNotificationRepository(firestore)),
-      new FirebaseClientDirectory(auth),
-    ),
-    clientIntakeService: new ClientIntakeService(
-      new FirestoreClientIntakeRepository(firestore),
-    ),
-    privacyPreferencesRepository: privacy,
-    privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy),
-    platformSessions: new FirestorePlatformSessionService(firestore, audit, config.idleTimeoutSeconds),
-    auditWriter: audit,
-=======
   const dependencies = createFitnepDependencies(auth, firestore);
+  const recovery = startWorkflowRecovery(firestore, auth);
   const authAdapter = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
   const api = createNotificationApp({
     ...dependencies,
+    recoverCommittedEvents: recovery.drain,
     platformSessions: new FirestorePlatformSessionService(firestore, dependencies.auditWriter, config.idleTimeoutSeconds),
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
     manualVerificationEnabled: false,
     health: {
       buildSha: config.buildSha,
@@ -80,6 +41,7 @@ function start() {
     void deleteApp(firebase).finally(() => { process.exitCode = 1; });
   });
   const close = () => {
+    recovery.stop();
     const deadline = setTimeout(() => process.exit(1), 10_000);
     deadline.unref();
     server.close(() => { void deleteApp(firebase).finally(() => process.exit(0)); });

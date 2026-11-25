@@ -12,14 +12,14 @@ class NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _accentColor;
+    final accent = _accentColor(context);
     final isUnread = !notification.isRead;
     final backgroundColor = isUnread
-        ? AppColors.primary.withValues(alpha: 0.055)
-        : AppColors.cardBackground;
+        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.055)
+        : Theme.of(context).colorScheme.surface;
     final borderColor = isUnread
-        ? AppColors.primary.withValues(alpha: 0.32)
-        : AppColors.divider;
+        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.32)
+        : Theme.of(context).colorScheme.outlineVariant;
 
     return Semantics(
       container: true,
@@ -64,7 +64,9 @@ class NotificationTile extends StatelessWidget {
                               notification.title,
                               style: Theme.of(context).textTheme.titleMedium
                                   ?.copyWith(
-                                    color: AppColors.textPrimary,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface,
                                     fontWeight: isUnread
                                         ? FontWeight.w700
                                         : FontWeight.w600,
@@ -78,8 +80,8 @@ class NotificationTile extends StatelessWidget {
                               width: 9,
                               height: 9,
                               margin: const EdgeInsets.only(top: 4),
-                              decoration: const BoxDecoration(
-                                color: AppColors.primary,
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -90,17 +92,19 @@ class NotificationTile extends StatelessWidget {
                       Text(
                         notification.message,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.textSecondary,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           height: 1.45,
                         ),
                       ),
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          const Icon(
+                          Icon(
                             Icons.schedule_rounded,
                             size: 14,
-                            color: AppColors.textDisabled,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onSurfaceVariant,
                           ),
                           const SizedBox(width: 5),
                           Expanded(
@@ -109,7 +113,9 @@ class NotificationTile extends StatelessWidget {
                                   .format(notification.createdAt.toLocal()),
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
-                                    color: AppColors.textDisabled,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
                                     letterSpacing: 0,
                                   ),
                             ),
@@ -119,7 +125,9 @@ class NotificationTile extends StatelessWidget {
                               'Unread',
                               style: Theme.of(context).textTheme.labelSmall
                                   ?.copyWith(
-                                    color: AppColors.primary,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary,
                                     fontWeight: FontWeight.w700,
                                   ),
                             ),
@@ -142,15 +150,19 @@ class NotificationTile extends StatelessWidget {
     NotificationType.task => Icons.task_alt_rounded,
     NotificationType.payment => Icons.payments_outlined,
     NotificationType.assignment => Icons.person_pin_outlined,
+    NotificationType.intake ||
+    NotificationType.membership ||
     NotificationType.other => Icons.notifications_none_rounded,
   };
 
-  Color get _accentColor => switch (notification.type) {
+  Color _accentColor(BuildContext context) => switch (notification.type) {
     NotificationType.dietPlan => AppColors.success,
     NotificationType.message => AppColors.info,
     NotificationType.task => AppColors.actionPackageChange,
     NotificationType.payment => AppColors.warning,
-    NotificationType.assignment => AppColors.primary,
-    NotificationType.other => AppColors.primary,
+    NotificationType.assignment => Theme.of(context).colorScheme.primary,
+    NotificationType.intake ||
+    NotificationType.membership ||
+    NotificationType.other => Theme.of(context).colorScheme.primary,
   };
 }

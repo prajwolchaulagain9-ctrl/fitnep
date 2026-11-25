@@ -1,5 +1,6 @@
 import { DocumentSnapshot, FieldPath, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { randomUUID } from "node:crypto";
+import { ClientIntakeError } from "./client_intake_service";
 
 import { AuditWriter, AuditUnavailableError, FirestoreAuditWriter } from "./audit";
 import { AuditedHealthReadService, HealthReadTarget } from "./audited_health_reads";
@@ -96,7 +97,7 @@ export class FirestorePrivateRecordsStore implements PrivateRecordsStore {
         .read(transaction, actor, target, correlationId ?? randomUUID(), () => load(transaction));
     }).catch(error => {
       if (error instanceof PrivateRecordAuthorizationError || error instanceof PrivateRecordsError ||
-        error instanceof AuditUnavailableError) throw error;
+        error instanceof AuditUnavailableError || error instanceof ClientIntakeError) throw error;
       if (error instanceof PermissionDeniedError) throw new PrivateRecordAuthorizationError(error.reason);
       throw new PrivateRecordsError(503, "Private record storage is temporarily unavailable.");
     });

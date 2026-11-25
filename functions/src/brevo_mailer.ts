@@ -4,9 +4,11 @@ export class BrevoMailer {
   constructor(private readonly environment: NodeJS.ProcessEnv, private readonly transport: typeof fetch = fetch) {}
 
   assertConfigured() {
-    if (!this.environment.BREVO_API_KEY || !this.environment.BREVO_SENDER_EMAIL ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.environment.BREVO_SENDER_EMAIL)) {
-      throw new HttpsError("failed-precondition", "Email delivery is not configured.", { reason: "email-configuration" });
+    if (!this.environment.BREVO_API_KEY?.trim() || !this.environment.BREVO_SENDER_EMAIL?.trim() ||
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.environment.BREVO_SENDER_EMAIL.trim())) {
+      throw new HttpsError("failed-precondition", "Email delivery is not configured.", {
+        reason: !this.environment.BREVO_API_KEY?.trim() ? "missing-brevo-api-key" : "invalid-brevo-sender",
+      });
     }
   }
 
@@ -14,9 +16,9 @@ export class BrevoMailer {
     this.assertConfigured();
     const response = await this.transport("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
-      headers: { "api-key": this.environment.BREVO_API_KEY!, "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "api-key": this.environment.BREVO_API_KEY!.trim(), "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
-        sender: { email: this.environment.BREVO_SENDER_EMAIL, name: this.environment.BREVO_SENDER_NAME || "FitNEP" },
+        sender: { email: this.environment.BREVO_SENDER_EMAIL!.trim(), name: this.environment.BREVO_SENDER_NAME || "FitNEP" },
         to: [{ email }], subject, textContent,
       }),
       signal: AbortSignal.timeout(15_000),

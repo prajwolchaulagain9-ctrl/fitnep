@@ -50,6 +50,8 @@ abstract final class AppRoutes {
   static const clientPrivacyPreferences = '/client/privacy-preferences';
   static const clientPackages = '/client/packages';
   static const clientMembership = '/client/membership';
+  static const clientIntake = '/client/intake';
+  static const clientIntakeName = 'client-intake';
 
   static const dietPlanDetailsName = 'diet-plan-details';
   static const messageThreadName = 'message-thread';

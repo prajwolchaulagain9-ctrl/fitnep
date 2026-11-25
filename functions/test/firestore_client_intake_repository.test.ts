@@ -66,6 +66,7 @@ function createFixture() {
   const repository = new FirestoreClientIntakeRepository(
     firestore as unknown as Firestore,
     {
+      appendWithEvent: (_transaction, input) => { auditInput = input; return "audit-1"; },
       appendInTransaction: (
         _transaction: Transaction,
         input: AuditEventInput,
@@ -74,6 +75,8 @@ function createFixture() {
         return "audit-1";
       },
     },
+    { readResource: (_actor, _target, load) => firestore.runTransaction(async transaction =>
+      (await load(transaction as unknown as Transaction)).data) },
   );
   return {
     firestore,
@@ -126,6 +129,7 @@ class FakeTransaction {
   update(_reference: { path: string }, data: Record<string, unknown>): void {
     this.firestore.savedUpdate = data;
   }
+  create(_reference: unknown, _data: unknown): void {}
 }
 
 class FakeSnapshot {

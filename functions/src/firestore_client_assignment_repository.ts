@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-=======
-import { Firestore } from "firebase-admin/firestore";
 import { accountFrom, accountMatchesActor, getCurrentAssignment } from "./account_service";
-import { AuthenticatedUser } from "./domain";
 import { FirestorePackageService, inactivePackageAssignmentMessage } from "./package_membership_service";
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
+import { AuthenticatedUser } from "./domain";
 import {
   DocumentData,
   DocumentReference,
@@ -27,14 +23,10 @@ implements ClientAssignmentRepository {
     private readonly audit: AuditWriter,
   ) {}
 
-<<<<<<< HEAD
   async assign(
     record: ClientAssignmentRecord,
     auditContext: ClientAssignmentAuditContext,
   ): Promise<ClientAssignmentRecord> {
-=======
-  async assign(record: ClientAssignmentRecord, expectedActor?: AuthenticatedUser): Promise<ClientAssignmentRecord> {
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
     const reference = this.firestore.collection("client_assignments")
       .doc(record.clientId);
     return this.firestore.runTransaction(async transaction => {
@@ -44,24 +36,17 @@ implements ClientAssignmentRepository {
         readAccount(record.assignedById), readAccount(record.clientId), readAccount(record.dietitianId),
       ]);
       if (actor.role !== "admin" || actor.account_status !== "active" ||
-        (expectedActor !== undefined && !accountMatchesActor(actor, expectedActor)) ||
+        (!accountMatchesActor(actor, auditContext.actor)) ||
         client.role !== "client" || client.account_status !== "active" ||
         dietitian.role !== "dietitian" || dietitian.account_status !== "active") {
         throw new ClientAssignmentError(403, "Assignments require current active accounts with the matching roles.");
       }
       const snapshot = await transaction.get(reference);
-<<<<<<< HEAD
-      const previousVersion = snapshot.exists
-        ? positiveVersion(snapshot.get("version")) ?? 1
-=======
       if (await new FirestorePackageService(this.firestore).assignmentStatus(record.clientId, transaction) !== "active") {
         throw new ClientAssignmentError(409, inactivePackageAssignmentMessage);
       }
-      const previousVersion = snapshot.exists &&
-        Number.isSafeInteger(snapshot.get("version")) &&
-        snapshot.get("version") > 0
-        ? snapshot.get("version") as number
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
+      const previousVersion = snapshot.exists
+        ? positiveVersion(snapshot.get("version")) ?? 1
         : 0;
       const sameDietitian = snapshot.exists &&
         snapshot.get("active") === true &&
@@ -85,7 +70,15 @@ implements ClientAssignmentRepository {
         assignedById,
         version,
       };
-<<<<<<< HEAD
+      const currentValues = {
+        ...currentAssignmentValues(assigned),
+        client_role_revision: client.role_revision,
+        dietitian_role_revision: dietitian.role_revision,
+        team_member_ids: sameDietitian ? (snapshot.get("team_member_ids") ?? snapshot.get("staff_ids") ?? []) : [],
+        team_member_role_revisions: sameDietitian ? (snapshot.get("team_member_role_revisions") ?? snapshot.get("staff_role_revisions") ?? {}) : {},
+        staff_ids: sameDietitian ? (snapshot.get("team_member_ids") ?? snapshot.get("staff_ids") ?? []) : [],
+        staff_role_revisions: sameDietitian ? (snapshot.get("team_member_role_revisions") ?? snapshot.get("staff_role_revisions") ?? {}) : {},
+      };
       const history = this.firestore.collection("client_assignment_history");
       const currentHistory = history.doc(historyDocumentId(
         assigned.clientId,
@@ -100,7 +93,7 @@ implements ClientAssignmentRepository {
           currentHistory,
           historyValues(assigned),
         );
-        transaction.set(reference, currentAssignmentValues(assigned));
+        transaction.set(reference, currentValues);
         return assigned;
       }
 
@@ -150,35 +143,23 @@ implements ClientAssignmentRepository {
           historyValues(assigned),
         );
       }
-      transaction.set(reference, currentAssignmentValues(assigned));
-      this.audit.appendInTransaction(transaction, {
+      transaction.set(reference, currentValues);
+      const eventType = snapshot.exists ? "client.reassigned" : "client.assigned";
+      this.audit.appendWithEvent(transaction, {
         actor: auditContext.actor,
-        action: snapshot.exists ? "client.reassigned" : "client.assigned",
+        action: eventType,
         targetType: "assignment",
         targetId: assigned.clientId,
         outcome: "succeeded",
         correlationId: auditContext.correlationId,
+        operationId: `assignment-${assigned.clientId}-v${assigned.version}`,
         clientId: assigned.clientId,
         dietitianId: assigned.dietitianId,
         ...(snapshot.exists
           ? { previousDietitianId: snapshot.get("dietitian_id") as string }
           : {}),
-=======
-      transaction.set(reference, {
-        active: true,
-        client_id: assigned.clientId,
-        dietitian_id: assigned.dietitianId,
-        client_role_revision: client.role_revision,
-        dietitian_role_revision: dietitian.role_revision,
-        team_member_ids: sameDietitian ? (snapshot.get("team_member_ids") ?? snapshot.get("staff_ids") ?? []) : [],
-        staff_ids: sameDietitian ? (snapshot.get("team_member_ids") ?? snapshot.get("staff_ids") ?? []) : [],
-        team_member_role_revisions: sameDietitian ? (snapshot.get("team_member_role_revisions") ?? snapshot.get("staff_role_revisions") ?? {}) : {},
-        staff_role_revisions: sameDietitian ? (snapshot.get("team_member_role_revisions") ?? snapshot.get("staff_role_revisions") ?? {}) : {},
-        assigned_at: assigned.assignedAt,
-        assigned_by_id: assigned.assignedById,
->>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
         version: assigned.version,
-      });
+      }, eventType);
       return assigned;
     });
   }

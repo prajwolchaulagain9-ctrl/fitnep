@@ -7,6 +7,8 @@ import '../../../../shared/widgets/password_form_field.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../shared/widgets/app_page.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
+import '../../../../shared/widgets/wellness_illustration.dart';
+import '../../../../app/theme/theme_mode_controller.dart';
 import '../../data/password_recovery_service.dart';
 
 // One compact layout for login, registration and recovery.
@@ -39,7 +41,9 @@ class RecoveryPage extends StatelessWidget {
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
             minimumSize: const Size(double.infinity, 52),
-            shape: const StadiumBorder(),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
             textStyle: base.textTheme.labelLarge?.copyWith(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -71,10 +75,24 @@ class RecoveryPage extends StatelessWidget {
                     ),
                   const Spacer(),
                   const FitNepWordmark(width: 40),
+                  const ThemeModeButton(),
                 ],
               ),
               const SizedBox(height: 12),
-              Text(title, style: base.textTheme.headlineMedium),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(title, style: base.textTheme.headlineMedium),
+                  ),
+                  const SizedBox(width: 12),
+                  if (MediaQuery.sizeOf(context).height > 600 &&
+                      MediaQuery.viewInsetsOf(context).bottom == 0)
+                    const WellnessIllustration(
+                      scene: WellnessScene.care,
+                      size: 58,
+                    ),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(
                 description,

@@ -43,15 +43,13 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
     return { uid, email: user.email, emailVerified: user.emailVerified };
   };
   const codes = () => {
-    const key = environment.BREVO_API_KEY;
     const secret = environment.SIGNUP_OTP_HASH_SECRET;
-    const sender = environment.BREVO_SENDER_EMAIL;
-    if (environment.SIGNUP_EMAIL_OTP_ENABLED === "false" || !key || !secret || secret.length < 32 ||
-        !sender || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sender)) {
+    if (environment.SIGNUP_EMAIL_OTP_ENABLED?.trim().toLowerCase() === "false" || !secret || secret.length < 32) {
       throw new HttpsError("failed-precondition", "Email verification is not configured.", {
-        reason: !secret || secret.length < 32 ? "invalid-otp-secret" : "email-configuration",
+        reason: !secret || secret.length < 32 ? "invalid-otp-secret" : "email-verification-disabled",
       });
     }
+    mailer.assertConfigured();
     return new SignupEmailCodeService(new HostedEmailCodeStore(firestore),
       (email, code) => mailer.send(email, "Verify your FitNEP email", `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`), async proven => {
       const latest = await auth.getUser(proven.uid);

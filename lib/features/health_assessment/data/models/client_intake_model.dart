@@ -2,6 +2,7 @@ import '../../domain/entities/client_intake.dart';
 
 class ClientIntakeModel extends ClientIntake {
   const ClientIntakeModel({
+    super.version,
     required super.clientId,
     required super.allergies,
     required super.medicalConditions,
@@ -23,6 +24,9 @@ class ClientIntakeModel extends ClientIntake {
       throw const FormatException('The intake belongs to another client.');
     }
     return ClientIntakeModel(
+      version: json['version'] is int && (json['version'] as int) > 0
+          ? json['version'] as int
+          : 1,
       clientId: clientId,
       allergies: _stringList(json['allergies']),
       medicalConditions: _stringList(json['medical_conditions']),

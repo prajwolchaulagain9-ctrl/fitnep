@@ -132,6 +132,7 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
     required String clientId,
     required ClientIntakeReviewAction action,
     String? note,
+    int? expectedVersion,
   }) async {
     lastAction = action;
     lastNote = note;

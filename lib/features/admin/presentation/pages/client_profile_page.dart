@@ -70,7 +70,7 @@ class ClientProfilePage extends ConsumerWidget {
     });
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
           : state.client == null
@@ -154,7 +154,11 @@ class ClientProfilePage extends ConsumerWidget {
                       Text(
                         option.clientCountLabel,
                         style: Theme.of(dialogContext).textTheme.bodySmall
-                            ?.copyWith(color: AppColors.textSecondary),
+                            ?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            ),
                       ),
                     ],
                   ),
@@ -184,8 +188,8 @@ class ClientProfilePage extends ConsumerWidget {
     return SliverAppBar(
       expandedHeight: 200,
       pinned: true,
-      backgroundColor: AppColors.surface,
-      foregroundColor: AppColors.textPrimary,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      foregroundColor: Theme.of(context).colorScheme.onSurface,
       flexibleSpace: FlexibleSpaceBar(
         background: _ProfileHeader(client: client),
         collapseMode: CollapseMode.parallax,
@@ -262,7 +266,10 @@ class _ProfileHeader extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.surface, _color.withValues(alpha: 0.08)],
+          colors: [
+            Theme.of(context).colorScheme.surface,
+            _color.withValues(alpha: 0.08),
+          ],
         ),
       ),
       child: SafeArea(
@@ -562,7 +569,7 @@ class _PaymentSummarySection extends StatelessWidget {
                 value: 'Rs. ${client.outstandingAmount.toStringAsFixed(0)}',
                 color: client.outstandingAmount > 0
                     ? AppColors.statusInactive
-                    : AppColors.textSecondary,
+                    : Theme.of(context).colorScheme.onSurfaceVariant,
                 icon: Icons.pending_outlined,
               ),
             ),
@@ -646,11 +653,13 @@ class _PaymentHistorySection extends StatelessWidget {
       icon: Icons.history_rounded,
       children: [
         if (client.paymentHistory.isEmpty)
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Text(
               'No payment records.',
-              style: TextStyle(color: AppColors.textSecondary),
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           )
         else
@@ -685,7 +694,9 @@ class _PackageHistorySection extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: isCurrent ? AppColors.primary : AppColors.textDisabled,
+                  color: isCurrent
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -700,8 +711,10 @@ class _PackageHistorySection extends StatelessWidget {
                           entry.packageName,
                           style: TextStyle(
                             color: isCurrent
-                                ? AppColors.textPrimary
-                                : AppColors.textSecondary,
+                                ? Theme.of(context).colorScheme.onSurface
+                                : Theme.of(context)
+                                      .colorScheme
+                                      .onSurfaceVariant,
                             fontWeight: isCurrent
                                 ? FontWeight.w600
                                 : FontWeight.w400,
@@ -716,13 +729,15 @@ class _PackageHistorySection extends StatelessWidget {
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: AppColors.primaryContainer,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Current',
                               style: TextStyle(
-                                color: AppColors.primary,
+                                color: Theme.of(context).colorScheme.primary,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -833,9 +848,9 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.cardBackground,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.divider),
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -844,13 +859,17 @@ class _SectionCard extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Row(
               children: [
-                Icon(icon, color: AppColors.primary, size: 18),
+                Icon(
+                  icon,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 18,
+                ),
                 const SizedBox(width: 10),
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 if (trailing != null) ...[const Spacer(), trailing!],
@@ -886,14 +905,18 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 16, color: AppColors.textDisabled),
+          Icon(
+            icon,
+            size: 16,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
           const SizedBox(width: 10),
           SizedBox(
             width: 100,
             child: Text(
               label,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -902,7 +925,7 @@ class _InfoRow extends StatelessWidget {
             child: Text(
               value,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppColors.textPrimary,
+                color: Theme.of(context).colorScheme.onSurface,
                 fontWeight: FontWeight.w500,
               ),
             ),

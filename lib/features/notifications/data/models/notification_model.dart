@@ -36,6 +36,8 @@ class NotificationModel extends NotificationEntity {
       NotificationType.task => 'task',
       NotificationType.payment => 'payment',
       NotificationType.assignment => 'assignment',
+      NotificationType.intake => 'intake',
+      NotificationType.membership => 'membership',
       NotificationType.other => 'other',
     },
     'reference_id': referenceId,
@@ -92,6 +94,8 @@ class NotificationModel extends NotificationEntity {
       'task' || 'tasks' => NotificationType.task,
       'payment' || 'payments' => NotificationType.payment,
       'assignment' || 'client_assignment' => NotificationType.assignment,
+      'intake' => NotificationType.intake,
+      'membership' => NotificationType.membership,
       _ => NotificationType.other,
     };
   }

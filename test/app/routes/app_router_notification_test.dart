@@ -269,6 +269,7 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
     required String clientId,
     required ClientIntakeReviewAction action,
     String? note,
+    int? expectedVersion,
   }) => getAssignedClientIntake(clientId);
 
   @override

@@ -9,6 +9,7 @@ import '../features/authentication/presentation/sign_out_to_welcome.dart';
 import '../shared/widgets/app_startup_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';
+import 'theme/theme_mode_controller.dart';
 
 final _messengerKey = GlobalKey<ScaffoldMessengerState>();
 
@@ -18,8 +19,10 @@ class FitNepApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen(authenticationControllerProvider, (previous, next) {
-      if (next.noticeMessage != null &&
-          next.noticeMessage != previous?.noticeMessage) {
+      if (!next.isLoading &&
+          next.noticeMessage != null &&
+          (previous?.isLoading == true ||
+              next.noticeMessage != previous?.noticeMessage)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           _messengerKey.currentState?.showSnackBar(
             SnackBar(content: Text(next.noticeMessage!)),
@@ -31,6 +34,9 @@ class FitNepApp extends ConsumerWidget {
     final authenticationState = ref.watch(authenticationStateProvider);
     final passwordChange = ref.watch(staffPasswordChangeRequiredProvider);
     final signedIn = authenticationState.value != null;
+    final completingSignIn = ref
+        .watch(authenticationControllerProvider)
+        .isLoading;
     final router = ref.watch(appRouterProvider);
 
     return MaterialApp.router(
@@ -39,8 +45,7 @@ class FitNepApp extends ConsumerWidget {
       scaffoldMessengerKey: _messengerKey,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      // The supplied Figma screens define the app's light appearance.
-      themeMode: ThemeMode.light,
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
       builder: (context, child) {
         final switchAccount = signedIn
@@ -71,7 +76,8 @@ class FitNepApp extends ConsumerWidget {
               )
             : null;
         if (authenticationBootstrap.isLoading ||
-            authenticationState.isLoading) {
+            authenticationState.isLoading ||
+            (signedIn && completingSignIn)) {
           return AppStartupView(recoveryAction: switchAccount);
         }
         if (authenticationBootstrap.hasError || authenticationState.hasError) {

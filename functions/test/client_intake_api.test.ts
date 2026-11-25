@@ -35,6 +35,7 @@ describe("assigned client intake API", () => {
       .expect(200);
 
     assert.deepEqual(response.body.data.intake, {
+      version: 1,
       client_id: "client-1",
       allergies: ["Peanuts", "Shellfish"],
       medical_conditions: ["Type 2 diabetes"],
