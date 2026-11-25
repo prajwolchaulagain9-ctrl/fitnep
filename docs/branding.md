@@ -7,17 +7,19 @@ The source asset is `assets/images/fitnep_logo.png` (641×615).
 `FitNepWordmark` displays the original image with the reference's rounded shape
 and aspect ratio on startup, welcome, recovery, and the client header.
 
-The shared baseline uses white surfaces, navy text, orange `#FA6B09` actions,
-Inter typography, 13px outlined fields, pill buttons and 16px bordered cards.
+The light theme pairs cool ivory surfaces and slate text with muted lavender
+actions. The dark theme uses charcoal surfaces, soft lavender, and muted sage.
+The FitNEP mark uses deep lavender on pearl in light mode and pale lavender on
+charcoal in dark mode.
 Inter is bundled with its OFL license, so startup does not download a font.
 `AppTheme.light` and the legacy `lightTheme` name resolve to one shared theme.
-Recovery no longer replaces that theme with a private Material configuration.
-The app uses the supplied light appearance consistently across phone settings.
 
-Android launch resources include a centered logo before Flutter starts, with
-Android 12 safe-area padding. iOS uses the same logo in its launch storyboard.
-`scripts/prepare_branding.py` regenerates native bitmap display resources from
-the unchanged source image; it requires Python and Pillow.
+The Android and iOS launch screens use the device appearance to select the
+light or dark FitNEP wordmark and matching background. Regenerate the native
+logo bitmaps from the Flutter wordmark with
+`flutter test scripts/prepare_branding_test.dart`. If the scaffold background
+colors change, update the Android `launch_background` colors and the iOS
+`LaunchBackground` color asset.
 
 The Flutter startup view shows the logo while Firebase initializes. Connection
 failure remains retryable. No forced delay or splash route is inserted, so cold

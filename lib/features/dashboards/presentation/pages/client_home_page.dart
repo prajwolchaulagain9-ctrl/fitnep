@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
-import '../../../../app/theme/app_theme.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../../authorization/presentation/role_home_page.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
@@ -51,7 +50,7 @@ class ClientHomePage extends ConsumerWidget {
                         count: unreadCount,
                         maxCount: 99,
                         backgroundColor: Theme.of(context).colorScheme.primary,
-                        textColor: AppColors.textInverse,
+                        textColor: Theme.of(context).colorScheme.onPrimary,
                         child: const Icon(Icons.notifications_none_rounded),
                       )
                     : const Icon(Icons.notifications_none_rounded),
@@ -160,10 +159,21 @@ class _WelcomeCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: colors.primaryContainer,
+        gradient: dark
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.surfaceContainerHighest,
+                  colors.primaryContainer,
+                ],
+              )
+            : null,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -205,39 +215,36 @@ class _UpdateTypesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: const Column(
-        children: [
-          _UpdateTypeRow(
-            icon: Icons.restaurant_menu_rounded,
-            title: 'Diet plans',
-            subtitle: 'Plan assignments and nutrition updates',
-          ),
-          Divider(height: 25),
-          _UpdateTypeRow(
-            icon: Icons.chat_bubble_outline_rounded,
-            title: 'Messages',
-            subtitle: 'New conversations from your care team',
-          ),
-          Divider(height: 25),
-          _UpdateTypeRow(
-            icon: Icons.task_alt_rounded,
-            title: 'Tasks',
-            subtitle: 'Activities assigned by your dietitian',
-          ),
-          Divider(height: 25),
-          _UpdateTypeRow(
-            icon: Icons.payments_outlined,
-            title: 'Payments',
-            subtitle: 'Successful payment confirmations',
-          ),
-        ],
+    return const Card(
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _UpdateTypeRow(
+              icon: Icons.restaurant_menu_rounded,
+              title: 'Diet plans',
+              subtitle: 'Plan assignments and nutrition updates',
+            ),
+            Divider(height: 25),
+            _UpdateTypeRow(
+              icon: Icons.chat_bubble_outline_rounded,
+              title: 'Messages',
+              subtitle: 'New conversations from your care team',
+            ),
+            Divider(height: 25),
+            _UpdateTypeRow(
+              icon: Icons.task_alt_rounded,
+              title: 'Tasks',
+              subtitle: 'Activities assigned by your dietitian',
+            ),
+            Divider(height: 25),
+            _UpdateTypeRow(
+              icon: Icons.payments_outlined,
+              title: 'Payments',
+              subtitle: 'Successful payment confirmations',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -258,18 +265,9 @@ class _UpdateTypeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: Theme.of(context).colorScheme.primary,
-            size: 21,
-          ),
+        SizedBox(
+          width: 36,
+          child: Icon(icon, color: Theme.of(context).colorScheme.primary),
         ),
         const SizedBox(width: 13),
         Expanded(

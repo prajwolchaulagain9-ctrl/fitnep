@@ -6,6 +6,7 @@ import 'package:fitnep/core/services/firebase_providers.dart';
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:fitnep/shared/widgets/app_startup_view.dart';
+import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:animations/animations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,10 +90,11 @@ void main() {
     },
   );
 
-  test('Color Hunt dark palette gives body text and primary controls accessible contrast', () {
-    final colors = AppTheme.dark.colorScheme;
-    expect(colors.surface, const Color(0xFF222831));
-    expect(colors.primary, const Color(0xFFFFD369));
+  test('FitNEP palettes keep text and controls readable in both modes', () {
+    expect(AppTheme.light.scaffoldBackgroundColor, const Color(0xFFF6F5F9));
+    expect(AppTheme.light.colorScheme.primary, const Color(0xFF66517E));
+    expect(AppTheme.dark.scaffoldBackgroundColor, const Color(0xFF24242C));
+    expect(AppTheme.dark.colorScheme.primary, const Color(0xFFCBB9E4));
     double contrast(Color a, Color b) {
       final x = a.computeLuminance(), y = b.computeLuminance();
       return (x > y ? (x + .05) / (y + .05) : (y + .05) / (x + .05));
@@ -106,7 +108,55 @@ void main() {
         greaterThanOrEqualTo(4.5),
       );
       expect(contrast(c.onPrimary, c.primary), greaterThanOrEqualTo(4.5));
+      expect(
+        contrast(c.onPrimaryContainer, c.primaryContainer),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        contrast(c.primary, c.primaryContainer),
+        greaterThanOrEqualTo(4.5),
+      );
+      expect(
+        contrast(c.onSurfaceVariant, theme.cardTheme.color!),
+        greaterThanOrEqualTo(4.5),
+      );
     }
+    expect(
+      contrast(AppColors.logoForeground, AppColors.logoBackground),
+      greaterThanOrEqualTo(4.5),
+    );
+    expect(
+      contrast(AppColors.darkLogoForeground, AppColors.darkLogoBackground),
+      greaterThanOrEqualTo(4.5),
+    );
+  });
+
+  testWidgets('the FitNEP logo follows changes to the active theme', (
+    tester,
+  ) async {
+    Future<void> render(ThemeData theme) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: theme,
+          home: const Center(child: FitNepWordmark()),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    final logo = find.byType(FitNepWordmark);
+    final filter = find.descendant(
+      of: logo,
+      matching: find.byType(ColorFiltered),
+    );
+    await render(AppTheme.light);
+    final light = tester.widget<ColorFiltered>(filter).colorFilter;
+    await render(AppTheme.dark);
+    expect(tester.widget<ColorFiltered>(filter).colorFilter, isNot(light));
+    final image = tester.widget<Image>(
+      find.descendant(of: logo, matching: find.byType(Image)),
+    );
+    expect((image.image as AssetImage).assetName, FitNepWordmark.assetPath);
   });
 
   testWidgets('reduced motion removes shared-axis page movement', (

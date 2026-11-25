@@ -14,23 +14,21 @@ class WellnessIllustration extends StatelessWidget {
   final WellnessScene scene;
   final double size;
   @override
-  Widget build(BuildContext context) => ExcludeSemantics(
-    child: SizedBox.square(
-      dimension: size,
-      child: CustomPaint(
-        painter: _WellnessPainter(
-          scene,
-          Theme.of(context).brightness == Brightness.dark,
-        ),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return ExcludeSemantics(
+      child: SizedBox.square(
+        dimension: size,
+        child: CustomPaint(painter: _WellnessPainter(scene, colors)),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _WellnessPainter extends CustomPainter {
-  const _WellnessPainter(this.scene, this.dark);
+  const _WellnessPainter(this.scene, this.colors);
   final WellnessScene scene;
-  final bool dark;
+  final ColorScheme colors;
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -38,6 +36,10 @@ class _WellnessPainter extends CustomPainter {
     final ink = const Color(0xFF25343A);
     final orange = const Color(0xFFFF923F);
     final green = const Color(0xFF79A987);
+    final backdrop = Color.alphaBlend(
+      colors.primary.withValues(alpha: .10),
+      colors.primaryContainer,
+    );
     void oval(Rect rect, Color color) =>
         canvas.drawOval(rect, Paint()..color = color);
     void line(Offset start, Offset end, Color color, double width) =>
@@ -49,13 +51,10 @@ class _WellnessPainter extends CustomPainter {
             ..strokeWidth = width
             ..strokeCap = StrokeCap.round,
         );
-    oval(
-      const Rect.fromLTWH(10, 14, 140, 136),
-      dark ? const Color(0xFF393E46) : const Color(0xFFFFF0E6),
-    );
+    oval(const Rect.fromLTWH(10, 14, 140, 136), backdrop);
     oval(
       const Rect.fromLTWH(36, 138, 92, 8),
-      (dark ? Colors.black : ink).withValues(alpha: 0.07),
+      Colors.black.withValues(alpha: 0.07),
     );
     if (scene == WellnessScene.nutrition) {
       line(const Offset(79, 44), const Offset(69, 23), green, 10);
@@ -100,14 +99,14 @@ class _WellnessPainter extends CustomPainter {
       const skin = Color(0xFFC99770);
       line(const Offset(75, 102), const Offset(64, 136), ink, 13);
       line(const Offset(92, 102), const Offset(108, 131), ink, 13);
-      line(const Offset(64, 138), const Offset(49, 138), orange, 9);
-      line(const Offset(108, 134), const Offset(119, 134), orange, 9);
+      line(const Offset(64, 138), const Offset(49, 138), colors.secondary, 9);
+      line(const Offset(108, 134), const Offset(119, 134), colors.secondary, 9);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           const Rect.fromLTWH(58, 63, 49, 48),
           const Radius.circular(19),
         ),
-        Paint()..color = green,
+        Paint()..color = colors.primary,
       );
       line(const Offset(62, 73), const Offset(43, 59), skin, 10);
       line(const Offset(43, 59), const Offset(47, 43), skin, 10);
@@ -131,8 +130,8 @@ class _WellnessPainter extends CustomPainter {
       line(const Offset(73, 50), const Offset(78, 50), ink, 2);
       for (final x in [47.0, 117.0]) {
         line(Offset(x - 12, 36), Offset(x + 12, 36), ink, 5);
-        line(Offset(x - 12, 29), Offset(x - 12, 43), orange, 8);
-        line(Offset(x + 12, 29), Offset(x + 12, 43), orange, 8);
+        line(Offset(x - 12, 29), Offset(x - 12, 43), colors.secondary, 8);
+        line(Offset(x + 12, 29), Offset(x + 12, 43), colors.secondary, 8);
       }
     } else {
       final heart = Path()
@@ -162,5 +161,5 @@ class _WellnessPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_WellnessPainter oldDelegate) =>
-      oldDelegate.scene != scene || oldDelegate.dark != dark;
+      oldDelegate.scene != scene || oldDelegate.colors != colors;
 }

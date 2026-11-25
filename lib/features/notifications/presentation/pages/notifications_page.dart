@@ -278,7 +278,7 @@ class _UnreadCounter extends StatelessWidget {
           style: Theme.of(context).textTheme.labelMedium?.copyWith(
             color: count == 0
                 ? Theme.of(context).colorScheme.onSurfaceVariant
-                : AppColors.primaryDark,
+                : Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.w700,
             letterSpacing: 0,
           ),

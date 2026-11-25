@@ -19,24 +19,28 @@ class AppColors {
         )
       : light;
 
-  // Brand palette inspired by the FitNep Figma design.
-  static const primary = Color(0xFFFA6B09);
-  static const primaryLight = Color(0xFFFF8A33);
-  static const primaryDark = Color(0xFFB94B00);
-  static const primaryContainer = Color(0xFFFFF0E6);
+  static const primary = Color(0xFF66517E);
+  static const darkPrimary = Color(0xFFCBB9E4);
+  static const primaryContainer = Color(0xFFE9E4F2);
+
+  // Reverse the light and dark tones across the complete wordmark.
+  static const logoBackground = Color(0xFFECE6F4);
+  static const logoForeground = Color(0xFF594571);
+  static const darkLogoBackground = Color(0xFF383342);
+  static const darkLogoForeground = Color(0xFFE6DAF3);
 
   // Backgrounds
-  static const background = Color(0xFFFFFFFF);
-  static const surface = Color(0xFFFFFFFF);
-  static const surfaceVariant = Color(0xFFF5F5F5);
-  static const surfaceElevated = Color(0xFFFFFFFF);
-  static const cardBackground = Color(0xFFFFFFFF);
-  static const divider = Color(0xFFE2E6E9);
-  static const fieldBorder = Color(0xFF2E4F63);
+  static const background = Color(0xFFF6F5F9);
+  static const surface = Color(0xFFFCFBFD);
+  static const surfaceVariant = Color(0xFFEAE7F0);
+  static const surfaceElevated = Color(0xFFFCFBFD);
+  static const cardBackground = Color(0xFFFCFBFD);
+  static const divider = Color(0xFFDBD7E4);
+  static const fieldBorder = Color(0xFF79748A);
 
   // Text
-  static const textPrimary = Color(0xFF0C1F2A);
-  static const textSecondary = Color(0xFF596D7E);
+  static const textPrimary = Color(0xFF172137);
+  static const textSecondary = Color(0xFF4F596D);
   static const textDisabled = Color(0xFFA8AFB4);
   static const textInverse = Color(0xFFFFFFFF);
 
@@ -79,55 +83,59 @@ abstract final class AppTheme {
 
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
-    final seededScheme =
+    final scheme =
         ColorScheme.fromSeed(
           seedColor: AppColors.primary,
           brightness: brightness,
         ).copyWith(
-          primary: isLight ? AppColors.primary : AppColors.primaryLight,
-          onPrimary: AppColors.textPrimary,
+          primary: isLight ? AppColors.primary : AppColors.darkPrimary,
+          onPrimary: isLight ? Colors.white : const Color(0xFF2D2438),
           primaryContainer: isLight
               ? AppColors.primaryContainer
-              : const Color(0xFF49260F),
+              : const Color(0xFF373440),
           onPrimaryContainer: isLight
-              ? AppColors.primaryDark
-              : const Color(0xFFFFDCC5),
-          surface: isLight ? AppColors.surface : const Color(0xFF101D27),
-          onSurface: isLight ? AppColors.textPrimary : const Color(0xFFF4F5F6),
+              ? AppColors.textPrimary
+              : const Color(0xFFF4EDF9),
+          secondary: isLight
+              ? const Color(0xFF45536E)
+              : const Color(0xFFBFCAA9),
+          onSecondary: isLight ? Colors.white : const Color(0xFF283020),
+          secondaryContainer: isLight
+              ? const Color(0xFFE2E7F0)
+              : const Color(0xFF3A4134),
+          onSecondaryContainer: isLight
+              ? AppColors.textPrimary
+              : const Color(0xFFE2E9D7),
+          surface: isLight ? AppColors.surface : const Color(0xFF24242C),
+          onSurface: isLight ? AppColors.textPrimary : const Color(0xFFF6F4FA),
           onSurfaceVariant: isLight
               ? AppColors.textSecondary
-              : const Color(0xFFB9C7CE),
+              : const Color(0xFFCBC7D2),
+          surfaceContainerLowest: isLight
+              ? Colors.white
+              : const Color(0xFF1D1D24),
+          surfaceContainerLow: isLight
+              ? const Color(0xFFF1EFF5)
+              : const Color(0xFF32313B),
+          surfaceContainer: isLight
+              ? const Color(0xFFEFEDF4)
+              : const Color(0xFF373641),
+          surfaceContainerHigh: isLight
+              ? const Color(0xFFEDEAF2)
+              : const Color(0xFF3C3A47),
           surfaceContainerHighest: isLight
               ? AppColors.surfaceVariant
-              : const Color(0xFF1C2B36),
-          outline: isLight ? AppColors.fieldBorder : const Color(0xFF78909E),
-          outlineVariant: isLight ? AppColors.divider : const Color(0xFF354652),
-          error: isLight ? AppColors.error : const Color(0xFFFFB4AB),
+              : const Color(0xFF42404D),
+          outline: isLight ? AppColors.fieldBorder : const Color(0xFF938B9C),
+          outlineVariant: isLight ? AppColors.divider : const Color(0xFF4C4958),
+          error: isLight ? const Color(0xFFB3262F) : const Color(0xFFFFB4AB),
         );
-    final colors = isLight
-        ? seededScheme
-        : seededScheme.copyWith(
-            primary: const Color(0xFFFFD369),
-            onPrimary: const Color(0xFF222831),
-            surface: const Color(0xFF222831),
-            onSurface: const Color(0xFFEEEEEE),
-            onSurfaceVariant: const Color(0xFFC5CBD3),
-            surfaceContainerLowest: const Color(0xFF1B2027),
-            surfaceContainerLow: const Color(0xFF292F38),
-            surfaceContainer: const Color(0xFF303640),
-            surfaceContainerHigh: const Color(0xFF353B45),
-            surfaceContainerHighest: const Color(0xFF393E46),
-            primaryContainer: const Color(0xFF463921),
-            onPrimaryContainer: const Color(0xFFFFDF97),
-            outline: const Color(0xFF8A939F),
-            outlineVariant: const Color(0xFF4D5662),
-          );
-    final scheme = colors;
+    final background = isLight ? AppColors.background : scheme.surface;
     final base = ThemeData(
       useMaterial3: true,
-      colorScheme: colors,
+      colorScheme: scheme,
       fontFamily: 'Inter',
-      scaffoldBackgroundColor: colors.surface,
+      scaffoldBackgroundColor: background,
     );
     final text = base.textTheme.apply(
       bodyColor: scheme.onSurface,
@@ -195,7 +203,7 @@ abstract final class AppTheme {
         ),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: scheme.surface,
+        backgroundColor: background,
         foregroundColor: scheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -210,14 +218,14 @@ abstract final class AppTheme {
           statusBarColor: Colors.transparent,
           statusBarIconBrightness: isLight ? Brightness.dark : Brightness.light,
           statusBarBrightness: brightness,
-          systemNavigationBarColor: scheme.surface,
+          systemNavigationBarColor: background,
           systemNavigationBarIconBrightness: isLight
               ? Brightness.dark
               : Brightness.light,
         ),
       ),
       cardTheme: CardThemeData(
-        color: scheme.surface,
+        color: isLight ? scheme.surface : scheme.surfaceContainerLow,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
@@ -225,6 +233,7 @@ abstract final class AppTheme {
           side: BorderSide(color: scheme.outlineVariant),
         ),
       ),
+      drawerTheme: DrawerThemeData(backgroundColor: scheme.surfaceContainerLow),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: scheme.surfaceContainerHighest,
@@ -261,14 +270,12 @@ abstract final class AppTheme {
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: buttonStyle.copyWith(
           foregroundColor: WidgetStatePropertyAll(scheme.onSurface),
-          side: WidgetStatePropertyAll(
-            BorderSide(color: scheme.outlineVariant),
-          ),
+          side: WidgetStatePropertyAll(BorderSide(color: scheme.outline)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: isLight ? AppColors.primaryDark : scheme.primary,
+          foregroundColor: scheme.primary,
           minimumSize: const Size(48, 48),
           textStyle: const TextStyle(
             fontFamily: 'Inter',
@@ -333,7 +340,7 @@ class _FitNepPageTransitions extends PageTransitionsBuilder {
       animation: animation,
       secondaryAnimation: secondaryAnimation,
       transitionType: SharedAxisTransitionType.horizontal,
-      fillColor: Theme.of(context).colorScheme.surface,
+      fillColor: Theme.of(context).scaffoldBackgroundColor,
       child: child,
     );
   }
