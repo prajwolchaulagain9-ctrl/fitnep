@@ -65,15 +65,15 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     });
   }
 
-  Future<void> _send({bool resend = false}) async {
-    if (_busy || _remaining > 0) return;
+  Future<void> _send({bool resend = false, bool useLink = false}) async {
+    if (_busy || (!useLink && _remaining > 0)) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
       final service = ref.read(emailVerificationServiceProvider);
-      final delivery = _usingLink
+      final delivery = _usingLink || useLink
           ? await service.sendVerificationLink()
           : await service.sendCode(resend: resend);
       if (!mounted) return;
@@ -151,7 +151,7 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     ref.invalidate(authenticationStateProvider);
     final user = await ref.read(authenticationStateProvider.future);
     if (user != null && user.uid == uid && user.emailVerified) {
-      router.goNamed(AppRoutes.welcome);
+      router.go(AppRoutes.dashboard);
     }
   }
 
@@ -228,6 +228,15 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
                     ? 'Resend $deliveryType'
                     : 'Send verification email',
               ),
+            ),
+            if (!_usingLink && _error != null && _remaining == 0)
+              TextButton(
+                onPressed: busy ? null : () => _send(useLink: true),
+                child: const Text('Send a verification link instead'),
+              ),
+            TextButton(
+              onPressed: () => context.pushNamed(AppRoutes.privacyPolicy),
+              child: const Text('Read Privacy Policy'),
             ),
             TextButton(
               onPressed: busy ? null : () => signOutToWelcome(context, ref),

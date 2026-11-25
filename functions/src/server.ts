@@ -2,18 +2,12 @@ import { applicationDefault, cert, deleteApp, initializeApp } from "firebase-adm
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-import { FirestoreAuditWriter } from "./audit";
-import { FirebaseAuthVerifier } from "./auth";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePackageRepository } from "./firestore_package_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
+import { createFitnepDependencies } from "./api_factory";
+import { mountHostedAuth } from "./hosted_auth";
 import { HostedConfigurationError, readHostedConfig } from "./hosted_config";
 import { createNotificationApp } from "./http_app";
-import { FirestorePackageService } from "./package_membership_service";
 import { FirestorePlatformSessionService } from "./platform_sessions";
+<<<<<<< HEAD
 import {
   ClientAssignmentService,
   ExistingClientPackageStatusReader,
@@ -24,6 +18,8 @@ import { FirestoreClientAssignmentRepository } from "./firestore_client_assignme
 import { NotificationWorkflowService } from "./notification_service";
 import { ClientIntakeService } from "./client_intake_service";
 import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
+=======
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 
 function start() {
   const config = readHostedConfig(process.env);
@@ -33,6 +29,7 @@ function start() {
   });
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
+<<<<<<< HEAD
   const audit = new FirestoreAuditWriter(firestore);
   const privacy = new FirestorePrivacyPreferencesRepository(firestore);
   const packageMemberships = new FirestorePackageService(firestore);
@@ -59,12 +56,21 @@ function start() {
     privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacy),
     platformSessions: new FirestorePlatformSessionService(firestore, audit, config.idleTimeoutSeconds),
     auditWriter: audit,
+=======
+  const dependencies = createFitnepDependencies(auth, firestore);
+  const authAdapter = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
+  const api = createNotificationApp({
+    ...dependencies,
+    platformSessions: new FirestorePlatformSessionService(firestore, dependencies.auditWriter, config.idleTimeoutSeconds),
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
     manualVerificationEnabled: false,
     health: {
       buildSha: config.buildSha,
       checkReady: async () => { await firestore.doc("_runtime/health").get(); },
     },
   });
+  const app = authAdapter;
+  app.use(api);
   // Render terminates HTTPS and forwards to the assigned PORT.
   const server = app.listen(config.port, "0.0.0.0", () => {
     console.log("FitNEP API listening on port " + config.port + "; build " + config.buildSha);

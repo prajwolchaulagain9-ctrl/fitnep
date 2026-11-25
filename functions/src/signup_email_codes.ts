@@ -1,9 +1,12 @@
+import { BrevoMailer } from "./brevo_mailer";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import { defineBoolean, defineSecret, defineString } from "firebase-functions/params";
 import { CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { EmailCodeRecord, EmailCodeStore, EmailIdentity, SignupEmailCodeService } from "./signup_email_code_service";
+import { FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { PermissionDeniedError, requirePermission } from "./authorization_policy";
 
 // CommonJS recovery helpers stay in src; TypeScript deploys from lib.
 const { requireValidSession } = require("../src/session.cjs");
@@ -42,6 +45,17 @@ async function identityFor(request: CallableRequest): Promise<EmailIdentity> {
   // Verify revocation using the actual bearer token, not client-supplied UID/email.
   const token = await requireValidSession(request);
   const user = await getAuth().getUser(token.uid);
+  let account;
+  try {
+    account = await new FirestoreAccountService(getFirestore(), getAuth()).current(user.uid);
+    requirePermission(account.role, "edit_own_profile");
+    if (account.account_status !== "active") throw new PermissionDeniedError("The account is inactive.");
+  } catch (error) {
+    if (!(error instanceof PermissionDeniedError)) throw new HttpsError("unavailable", "Account verification is unavailable.");
+    await new FirestoreAuditStore(getFirestore()).denied({ uid: user.uid, role: account?.role ?? null,
+      action: "verify_own_email", resource: "email_verification", reason: error.reason });
+    throw new HttpsError("permission-denied", "This account cannot verify email. Contact support.");
+  }
   if (user.disabled || !user.email ||
       !user.providerData.some((provider) => provider.providerId === "password")) {
     throw new HttpsError("failed-precondition", "An email/password account is required.");
@@ -55,22 +69,10 @@ function createService(): SignupEmailCodeService {
   }
   return new SignupEmailCodeService(
     new FirestoreEmailCodeStore(),
-    async (email, code) => {
-      // Brevo credentials and verification codes stay on the server. Never log
-      // the request/response body: it may contain account data or the OTP.
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: { "api-key": brevoApiKey.value(), "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender: { email: senderEmail.value(), name: senderName.value() },
-          to: [{ email }],
-          subject: "Verify your FitNEP email",
-          textContent: `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!response.ok) throw new Error("Email delivery failed.");
-    },
+    (email, code) => new BrevoMailer({
+      BREVO_API_KEY: brevoApiKey.value(), BREVO_SENDER_EMAIL: senderEmail.value(), BREVO_SENDER_NAME: senderName.value(),
+    }).send(email, "Verify your FitNEP email",
+      `Your FitNEP verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`),
     async (identity) => {
       const latest = await getAuth().getUser(identity.uid);
       if (latest.disabled || latest.email !== identity.email) {

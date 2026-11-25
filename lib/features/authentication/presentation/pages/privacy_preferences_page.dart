@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../../core/constants/privacy_policy.dart';
 import '../../domain/entities/privacy_preferences.dart';
 import '../controllers/privacy_preferences_controller.dart';
 
@@ -83,16 +84,11 @@ class _PrivacyPreferencesPageState
               ),
               const SizedBox(height: 8),
               Text(
-                'Choose what your assigned dietitian can view. Each choice '
-                'is off until you turn it on.',
+                PrivacyPolicyText.sharingIntroduction,
                 style: theme.textTheme.bodyLarge,
               ),
               const SizedBox(height: 12),
-              const Text(
-                'You can always view your saved records. An assigned '
-                'dietitian can view only the categories you share. '
-                'Other dietitians, staff and admins cannot view them.',
-              ),
+              const Text(PrivacyPolicyText.recordAccess),
               if (_isSaving) ...[
                 const SizedBox(height: 16),
                 const LinearProgressIndicator(),
@@ -107,8 +103,8 @@ class _PrivacyPreferencesPageState
                         icon: icon,
                         title: title,
                         description: value.isShared(category)
-                            ? 'Visible to you and your assigned dietitian.'
-                            : 'Visible only to you.',
+                            ? PrivacyPolicyText.sharedVisibility
+                            : PrivacyPolicyText.privateVisibility,
                         value: value.isShared(category),
                         onChanged: _isSaving
                             ? null
@@ -119,9 +115,7 @@ class _PrivacyPreferencesPageState
               ),
               const SizedBox(height: 16),
               Text(
-                'Turning off photo or activity sharing stops new collection '
-                'in FitNEP and removes dietitian access. Your saved entries '
-                'stay in your account.',
+                PrivacyPolicyText.withdrawal,
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

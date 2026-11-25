@@ -1,3 +1,5 @@
+import '../../../../support/offline_hosted_session.dart';
+
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
@@ -30,6 +32,7 @@ void main() {
       ]);
       final container = ProviderContainer(
         overrides: [
+          offlineHostedSessionOverride,
           registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           routeSessionProvider.overrideWith(
             (ref) async =>

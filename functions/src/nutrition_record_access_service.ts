@@ -1,44 +1,63 @@
 import { AuthenticatedUser } from "./domain";
 import { PrivacyPreferencesRepository, SharingChoice } from "./privacy_preferences_repository";
+import { PermissionDeniedError } from "./authorization_policy";
 
-/** Supplies the current assignment from trusted server-side assignment data. */
-export interface CurrentDietitianAssignmentReader {
-  getCurrentDietitianId(clientId: string): Promise<string | null>;
+export interface CurrentAssignedTeam {
+  dietitianId: string;
+  teamMemberIds: readonly string[];
 }
 
-export class PrivateRecordAuthorizationError extends Error {
-  constructor() {
-    super("This account cannot access these records.");
+/** Only the active, current assignment grants access; history never does. */
+export interface CurrentTeamAssignmentReader {
+  getCurrentTeam(clientId: string): Promise<CurrentAssignedTeam | null>;
+}
+
+export function currentAssignedTeam(data: Record<string, unknown> | undefined): CurrentAssignedTeam | null {
+  const validUid = (value: unknown): value is string => typeof value === "string" &&
+    value.length > 0 && value.length <= 128 && !/[\u0000-\u0020\u007f]/.test(value);
+  if (data?.active !== true || !validUid(data.dietitian_id)) return null;
+  const members = data.team_member_ids === undefined ? (data.staff_ids ?? []) : data.team_member_ids;
+  if (!Array.isArray(members) || !members.every(validUid)) return null;
+  return { dietitianId: data.dietitian_id, teamMemberIds: [...new Set(members)] };
+}
+
+export class PrivateRecordAuthorizationError extends PermissionDeniedError {
+  constructor(reason = "The account cannot access these records.") {
+    super(reason);
   }
 }
 
 export class PrivateRecordAccessService {
   constructor(
-    private readonly assignments: CurrentDietitianAssignmentReader,
+    private readonly assignments: CurrentTeamAssignmentReader,
     private readonly preferences: Pick<PrivacyPreferencesRepository, "getForClient">,
+    private readonly acceptance: { hasCurrentAcceptance(clientId: string): Promise<boolean> },
   ) {}
 
   async assertCanRead(
     user: AuthenticatedUser,
     clientId: string,
     choice: SharingChoice,
-  ): Promise<void> {
-    if (user.role === "client" && user.uid === clientId) return;
-    if (user.role !== "dietitian") {
+    ownerOnly = false,
+  ): Promise<CurrentAssignedTeam | null> {
+    if (user.role === "client" && user.uid === clientId) return null;
+    if (user.role === "client" || ownerOnly) {
       throw new PrivateRecordAuthorizationError();
     }
 
-    const assignedDietitianId = await this.assignments.getCurrentDietitianId(
-      clientId,
-    );
-    if (assignedDietitianId !== user.uid) {
+    const team = await this.assignments.getCurrentTeam(clientId);
+    const assigned = team && (user.role === "dietitian"
+      ? team.dietitianId === user.uid
+      : (user.role === "staff" || user.role === "admin") && team.teamMemberIds.includes(user.uid));
+    if (!assigned || !(await this.acceptance.hasCurrentAcceptance(clientId))) {
       throw new PrivateRecordAuthorizationError();
     }
 
     const preference = await this.preferences.getForClient(clientId);
     if (!preference[choice]) {
-      throw new PrivateRecordAuthorizationError();
+      throw new PrivateRecordAuthorizationError("The client has not enabled sharing for this category.");
     }
+    return team;
   }
 
   async assertCanCollect(
@@ -46,7 +65,8 @@ export class PrivateRecordAccessService {
     clientId: string,
     choice: SharingChoice,
   ): Promise<void> {
-    if (user.role !== "client" || user.uid !== clientId) {
+    if (user.role !== "client" || user.uid !== clientId ||
+      !(await this.acceptance.hasCurrentAcceptance(clientId))) {
       throw new PrivateRecordAuthorizationError();
     }
     // Manually entered nutrition logs belong to the client even when private.

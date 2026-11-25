@@ -1,12 +1,9 @@
 import { deleteApp, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
-import { FirebaseAuthVerifier } from "./auth";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
+import { createFitnepDependencies } from "./api_factory";
 import { createNotificationApp } from "./http_app";
+<<<<<<< HEAD
 import { FirestorePackageService } from "./package_membership_service";
 import {
   ClientAssignmentService,
@@ -19,6 +16,8 @@ import { FirestoreAuditWriter } from "./audit";
 import { NotificationWorkflowService } from "./notification_service";
 import { ClientIntakeService } from "./client_intake_service";
 import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
+=======
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {
@@ -31,14 +30,16 @@ const auth = getAuth(firebase);
 const db = getFirestore(firebase);
 
 async function main() {
-  for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"]] as const) {
-    const demoUser = await auth.getUser(uid).catch((error: unknown) => {
+  const dependencies = createFitnepDependencies(auth, db);
+  for (const [uid, role] of [["demo-client", "client"], ["demo-admin", "admin"],
+    ["demo-staff", "staff"], ["demo-dietitian", "dietitian"]] as const) {
+    try { await auth.getUser(uid); } catch (error) {
       if ((error as { code?: string }).code !== "auth/user-not-found") throw error;
-      return auth.createUser({ uid, email: `${uid}@fitnep.test`, emailVerified: true, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
-    });
-    if (demoUser.customClaims?.role == null) {
-      await auth.setCustomUserClaims(uid, { ...demoUser.customClaims, role });
+      await auth.createUser({ uid, email: `${uid}@fitnep.test`, password: "FitnepDemo123!", displayName: role === "client" ? "Demo Client" : "Demo Admin" });
     }
+    await auth.setCustomUserClaims(uid, { role });
+    await auth.updateUser(uid, { emailVerified: true });
+    await dependencies.accounts.provision(await auth.getUser(uid));
   }
   for (const [id, name, days, price, features] of [
     ["basic", "Basic", 30, 2500, ["Personalized nutrition plan", "Weekly check-ins"]],
@@ -47,6 +48,7 @@ async function main() {
   ] as const) {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
   }
+<<<<<<< HEAD
   const privacyPreferencesRepository = new FirestorePrivacyPreferencesRepository(db);
   const packageService = new FirestorePackageService(db);
   const staffAccountRepository = new FirebaseStaffAccountRepository(auth, db);
@@ -69,6 +71,9 @@ async function main() {
       new FirestoreClientIntakeRepository(db),
     ),
   });
+=======
+  const api = createNotificationApp(dependencies);
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
   const server = api.listen(3000, "127.0.0.1", () => {
     console.log("Free FitNEP demo ready at http://127.0.0.1:3000. No real money is processed.");
   });

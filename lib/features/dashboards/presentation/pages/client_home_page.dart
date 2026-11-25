@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
-import '../../../authentication/presentation/sign_out_to_welcome.dart';
+import '../../../authorization/presentation/role_home_page.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 import '../../../purchases/presentation/controllers/membership_controller.dart';
 
@@ -21,6 +21,7 @@ class ClientHomePage extends ConsumerWidget {
     final purchase = ref.watch(membershipControllerProvider).purchase;
 
     return Scaffold(
+      drawer: const RoleNavigationDrawer(),
       backgroundColor: AppColors.background,
       appBar: AppBar(
         titleSpacing: 16,
@@ -30,11 +31,6 @@ class ClientHomePage extends ConsumerWidget {
             tooltip: 'Privacy preferences',
             onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
             icon: const Icon(Icons.privacy_tip_outlined),
-          ),
-          IconButton(
-            tooltip: 'Sign out',
-            onPressed: () => signOutToWelcome(context, ref),
-            icon: const Icon(Icons.logout_rounded),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 8),

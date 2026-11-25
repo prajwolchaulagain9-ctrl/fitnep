@@ -5,7 +5,7 @@ enum PrivacySharingCategory {
   activityData,
 }
 
-/// The client's choices for sharing records with their assigned dietitian.
+/// The client's choices for sharing records with their current assigned team.
 ///
 /// Sharing is disabled by default and can be enabled only by the client.
 class PrivacyPreferences {

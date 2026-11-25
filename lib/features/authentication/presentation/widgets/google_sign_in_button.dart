@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/app_assets.dart';
+
 class GoogleSignInButton extends StatelessWidget {
   const GoogleSignInButton({
     super.key,
@@ -15,9 +17,10 @@ class GoogleSignInButton extends StatelessWidget {
     onPressed: onPressed,
     style: OutlinedButton.styleFrom(
       minimumSize: const Size(double.infinity, 52),
-      foregroundColor: const Color(0xFF102637),
-      backgroundColor: Colors.white,
-      side: const BorderSide(color: Color(0xFFDADCE0)),
+      foregroundColor: Theme.of(context).colorScheme.onSurface,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
       shape: const StadiumBorder(),
     ),
     icon: isLoading
@@ -26,7 +29,7 @@ class GoogleSignInButton extends StatelessWidget {
             child: CircularProgressIndicator(strokeWidth: 2),
           )
         : Image.asset(
-            'assets/icons/google_g.png',
+            AppAssets.googleLogo,
             width: 20,
             height: 20,
             excludeFromSemantics: true,
@@ -42,7 +45,7 @@ class AuthenticationDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.symmetric(vertical: 20),
+    padding: EdgeInsets.symmetric(vertical: 12),
     child: Row(
       children: [
         Expanded(child: Divider()),

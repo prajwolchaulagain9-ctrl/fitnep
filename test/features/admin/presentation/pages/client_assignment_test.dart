@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
+import 'package:fitnep/features/admin/data/datasources/admin_local_datasource.dart';
 import 'package:fitnep/features/admin/data/repositories/client_assignment_repository.dart';
 import 'package:fitnep/features/admin/domain/entities/staff_account_entity.dart';
 import 'package:fitnep/features/admin/presentation/controllers/client_profile_controller.dart';
+import 'package:fitnep/features/admin/presentation/controllers/client_list_controller.dart';
 import 'package:fitnep/features/admin/presentation/pages/client_profile_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -44,6 +46,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          adminDatasourceProvider.overrideWithValue(AdminLocalDatasource()),
           clientAssignmentRepositoryProvider.overrideWithValue(
             ClientAssignmentRepository(api.dio),
           ),
@@ -109,6 +112,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          adminDatasourceProvider.overrideWithValue(AdminLocalDatasource()),
           clientAssignmentRepositoryProvider.overrideWithValue(
             ClientAssignmentRepository(api.dio),
           ),

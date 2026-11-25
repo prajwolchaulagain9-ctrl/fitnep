@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
+import '../../../../core/authorization/authorization_refresh.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 import '../../data/datasources/package_remote_datasource.dart';
 import '../../data/repositories/package_repository_impl.dart';
@@ -17,6 +18,15 @@ final packageRemoteDatasourceProvider = Provider<PackageRemoteDatasource>((
 final packageRepositoryProvider = Provider<PackageRepository>((ref) {
   return PackageRepositoryImpl(ref.watch(packageRemoteDatasourceProvider));
 });
+
+// Re-fetch on page entry and after admin mutations; never retain an empty
+// catalog across a client/admin account switch.
+final activePackagesProvider = FutureProvider.autoDispose<List<PackageEntity>>((
+  ref,
+) {
+  ref.watch(authorizationEpochProvider);
+  return ref.watch(packageRepositoryProvider).getActivePackages();
+}, retry: (count, error) => null);
 
 class PackageManagementState {
   final List<PackageEntity> packages;
@@ -102,6 +112,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         featureDescription: featureDescription,
       );
       if (!ref.mounted || generation != _generation) return created;
+      ref.invalidate(activePackagesProvider);
       List<PackageEntity> refreshed;
       try {
         refreshed = await _repository.getPackages();
@@ -147,6 +158,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         featureDescription: featureDescription,
       );
       if (!ref.mounted || generation != _generation) return updated;
+      ref.invalidate(activePackagesProvider);
       // Replace the updated package in the list optimistically.
       final updatedList = state.packages
           .map((p) {
@@ -180,6 +192,7 @@ class PackageManagementController extends Notifier<PackageManagementState> {
         isActive: isActive,
       );
       if (!ref.mounted || generation != _generation) return updated;
+      ref.invalidate(activePackagesProvider);
       final updatedList = state.packages
           .map((p) {
             return p.id == updated.id ? updated : p;

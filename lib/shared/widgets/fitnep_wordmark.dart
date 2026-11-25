@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/app_assets.dart';
+
 // Original Figma image fill from node 4:994, with its rounded display shape.
 class FitNepWordmark extends StatelessWidget {
   const FitNepWordmark({super.key, this.width = 140});
 
-  static const assetPath = 'assets/images/fitnep_logo.png';
+  static const assetPath = AppAssets.wordmark;
   final double width;
 
   @override

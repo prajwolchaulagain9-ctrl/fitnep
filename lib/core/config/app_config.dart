@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppConfig {
   AppConfig._();
 
@@ -42,15 +44,42 @@ class AppConfig {
 
   static const String _configuredApiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: '',
+    defaultValue: renderApiBaseUrl,
+  );
+  static const renderApiBaseUrl = 'https://fitnep-api.onrender.com/';
+  static const localApiBaseUrl = String.fromEnvironment(
+    'LOCAL_API_BASE_URL',
+    defaultValue: 'http://127.0.0.1:3300/',
+  );
+  static const autoLocalBackend = bool.fromEnvironment(
+    'AUTO_LOCAL_BACKEND',
+    defaultValue: true,
   );
 
-  static String get apiBaseUrl {
-    if (useFirebaseEmulators) return 'http://$emulatorHost:3000/';
-    final value = _configuredApiBaseUrl.trim();
+  static List<String> get apiCandidates {
+    if (apiBaseUrl.isEmpty) return const [];
+    if (useFirebaseEmulators || !kDebugMode || !autoLocalBackend) {
+      return [apiBaseUrl];
+    }
+    return {
+      _normalize(localApiBaseUrl),
+      apiBaseUrl,
+      renderApiBaseUrl,
+    }.where((url) => url.isNotEmpty).toList();
+  }
+
+  static String _normalize(String value) {
+    value = value.trim();
     if (value.isEmpty || value.endsWith('/')) return value;
     return '$value/';
   }
 
+  static String get apiBaseUrl {
+    if (useFirebaseEmulators) return 'http://$emulatorHost:3000/';
+    return _normalize(_configuredApiBaseUrl);
+  }
+
   static bool get hasApiBaseUrl => apiBaseUrl.isNotEmpty;
+  static bool get hostedSessionsEnabled =>
+      hasApiBaseUrl && !useFirebaseEmulators;
 }

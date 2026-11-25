@@ -35,12 +35,6 @@ import '../../features/health_assessment/presentation/pages/client_intake_page.d
 import 'app_routes.dart';
 import 'route_access_gate.dart';
 
-const _sharedRoles = {
-  FitNepRole.client,
-  FitNepRole.dietitian,
-  FitNepRole.admin,
-};
-
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
   ref.listen(authenticationStateProvider, (previous, next) {
@@ -126,7 +120,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminPackageApprovals,
         name: 'admin-package-approvals',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'manage_business_settings',
           builder: (_) => const PackageApprovalsPage(),
         ),
       ),
@@ -164,7 +158,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.appUnderDevelopment,
         path: AppRoutes.appUnderDevelopmentPath,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.staff},
+          requiredPermission: 'view_staff_dashboard',
           builder: (_) => const AppUnderDevelopmentPage(),
         ),
       ),
@@ -192,7 +186,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientHome,
         name: AppRoutes.clientHomeName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          requiredPermission: 'view_client_dashboard',
           builder: (_) => const ClientHomePage(),
         ),
       ),
@@ -200,7 +194,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientNotifications,
         name: AppRoutes.clientNotificationsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          requiredPermission: 'view_own_notifications',
           builder: (_) => const NotificationsPage(),
         ),
       ),
@@ -209,7 +203,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPackages,
         name: AppRoutes.clientPackagesName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          requiredPermission: 'manage_own_membership',
           builder: (_) => const PackageSelectionPage(),
         ),
       ),
@@ -217,7 +211,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientMembership,
         name: AppRoutes.clientMembershipName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client},
+          requiredPermission: 'manage_own_membership',
           builder: (_) => const MembershipPage(),
         ),
       ),
@@ -225,8 +219,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.clientPrivacyPreferences,
         name: 'client-privacy-preferences',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.client, null},
-          requirePrivacyAcceptance: true,
+          requiredPermission: 'manage_own_privacy',
           builder: (_) => const PrivacyPreferencesPage(),
         ),
       ),
@@ -234,7 +227,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.notifications,
         name: 'notifications',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: _sharedRoles,
+          requiredPermission: 'view_own_notifications',
           builder: (_) => const NotificationsPage(),
         ),
       ),
@@ -242,7 +235,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.dietPlanDetails,
         name: AppRoutes.dietPlanDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: _sharedRoles,
+          requiredPermission: 'view_own_workflow',
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.dietPlan,
             referenceId: state.pathParameters['id']!,
@@ -253,7 +246,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.messageThread,
         name: AppRoutes.messageThreadName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: _sharedRoles,
+          requiredPermission: 'view_own_workflow',
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.message,
             referenceId: state.pathParameters['id']!,
@@ -264,7 +257,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.taskDetails,
         name: AppRoutes.taskDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: _sharedRoles,
+          requiredPermission: 'view_own_workflow',
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.task,
             referenceId: state.pathParameters['id']!,
@@ -275,7 +268,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.paymentDetails,
         name: AppRoutes.paymentDetailsName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: _sharedRoles,
+          requiredPermission: 'view_own_workflow',
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.payment,
             referenceId: state.pathParameters['id']!,
@@ -286,7 +279,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.dietitianAssignedClient,
         name: AppRoutes.dietitianAssignedClientName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.dietitian},
+          requiredPermission: 'view_assigned_client_records',
           builder: (_) => NotificationDestinationPage(
             type: NotificationType.assignment,
             referenceId: state.pathParameters['id']!,
@@ -297,7 +290,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.dietitianClientIntake,
         name: AppRoutes.dietitianClientIntakeName,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.dietitian},
+          requiredPermission: 'view_assigned_client_records',
           builder: (_) =>
               ClientIntakePage(clientId: state.pathParameters['id']!),
         ),
@@ -305,14 +298,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.adminStaffAccounts,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'manage_staff_accounts',
           builder: (_) => const StaffAccountsPage(),
         ),
       ),
       GoRoute(
         path: AppRoutes.adminStaffHistory,
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'manage_staff_accounts',
           builder: (_) => const StaffAccountHistoryPage(),
         ),
       ),
@@ -320,7 +313,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminClients,
         name: 'admin-clients',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'manage_client_accounts',
           builder: (_) => const ClientListPage(),
         ),
         routes: [
@@ -331,7 +324,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final clientId = state.pathParameters['id']!;
               return RouteAccessGate(
-                allowedRoles: const {FitNepRole.admin},
+                requiredPermission: 'manage_client_accounts',
                 builder: (_) => ClientProfilePage(clientId: clientId),
               );
             },
@@ -342,7 +335,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.auditLog,
         name: 'audit-log',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'view_audit_logs',
           builder: (_) => const AuditLogPage(),
         ),
       ),
@@ -350,7 +343,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.adminPackages,
         name: 'admin-packages',
         builder: (context, state) => RouteAccessGate(
-          allowedRoles: const {FitNepRole.admin},
+          requiredPermission: 'manage_business_settings',
           builder: (_) => const PackageManagementPage(),
         ),
         routes: [
@@ -358,7 +351,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'history',
             name: 'admin-package-history',
             builder: (context, state) => RouteAccessGate(
-              allowedRoles: const {FitNepRole.admin},
+              requiredPermission: 'manage_business_settings',
               builder: (_) => const PackageHistoryPage(),
             ),
           ),
@@ -366,7 +359,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: 'create',
             name: 'admin-create-package',
             builder: (context, state) => RouteAccessGate(
-              allowedRoles: const {FitNepRole.admin},
+              requiredPermission: 'manage_business_settings',
               builder: (_) => const CreatePackagePage(),
             ),
           ),
@@ -374,7 +367,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: ':packageId/edit',
             name: 'admin-edit-package',
             builder: (context, state) => RouteAccessGate(
-              allowedRoles: const {FitNepRole.admin},
+              requiredPermission: 'manage_business_settings',
               builder: (context) {
                 final package = state.extra;
                 if (package is PackageEntity &&

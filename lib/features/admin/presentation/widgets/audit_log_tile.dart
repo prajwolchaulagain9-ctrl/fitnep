@@ -35,6 +35,14 @@ class AuditLogTile extends StatelessWidget {
         return Icons.credit_card_rounded;
       case AuditActionType.profileUpdated:
         return Icons.edit_outlined;
+      case AuditActionType.authorizationDenied:
+        return Icons.lock_outline;
+      case AuditActionType.userRoleChanged:
+        return Icons.manage_accounts_outlined;
+      case AuditActionType.accountStatusChanged:
+        return Icons.person_outline;
+      case AuditActionType.clientAssignmentChanged:
+        return Icons.group_outlined;
     }
   }
 
@@ -126,6 +134,10 @@ class AuditLogTile extends StatelessWidget {
                       ),
                     ),
                   ),
+                ],
+                if (log.details != null) ...[
+                  const SizedBox(height: 6),
+                  Text(log.details!),
                 ],
                 if (!isLast) ...[const SizedBox(height: 14), const Divider()],
               ],

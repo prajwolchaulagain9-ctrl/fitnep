@@ -1,3 +1,4 @@
+import { requirePermission } from "./authorization_policy";
 import { AuthenticatedUser, PurchaseRecord } from "./domain";
 import { PurchaseRepository } from "./purchase_repository";
 
@@ -41,7 +42,7 @@ export class PurchaseService {
   }
 
   private requireClient(user: AuthenticatedUser): void {
-    if (user.role !== "client") throw new PurchaseAuthorizationError();
+    requirePermission(user.role, "manage_own_membership");
   }
 }
 

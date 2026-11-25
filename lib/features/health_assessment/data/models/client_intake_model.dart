@@ -8,6 +8,10 @@ class ClientIntakeModel extends ClientIntake {
     required super.sections,
     required super.submittedAt,
     required super.updatedAt,
+    required super.status,
+    required super.reviewAction,
+    required super.reviewNote,
+    required super.reviewUpdatedAt,
   });
 
   factory ClientIntakeModel.fromJson(
@@ -25,8 +29,27 @@ class ClientIntakeModel extends ClientIntake {
       sections: _sections(json['sections']),
       submittedAt: _date(json['submitted_at']),
       updatedAt: _date(json['updated_at']),
+      status: _status(json['status']),
+      reviewAction: _reviewAction(json['review_action']),
+      reviewNote: _optionalString(json['review_note']),
+      reviewUpdatedAt: _date(json['review_updated_at']),
     );
   }
+
+  static ClientIntakeStatus _status(Object? value) => switch (value) {
+    'reviewed' => ClientIntakeStatus.reviewed,
+    'information_requested' => ClientIntakeStatus.informationRequested,
+    _ => ClientIntakeStatus.submitted,
+  };
+
+  static ClientIntakeReviewAction? _reviewAction(Object? value) =>
+      switch (value) {
+        'reviewed' => ClientIntakeReviewAction.reviewed,
+        'missing_information' => ClientIntakeReviewAction.missingInformation,
+        'clarification_requested' =>
+          ClientIntakeReviewAction.clarificationRequested,
+        _ => null,
+      };
 
   static List<ClientIntakeSection> _sections(Object? value) {
     if (value is! List) throw const FormatException('Invalid intake sections.');
@@ -69,6 +92,13 @@ class ClientIntakeModel extends ClientIntake {
       throw const FormatException('Missing intake text.');
     }
     return value.trim();
+  }
+
+  static String? _optionalString(Object? value) {
+    if (value == null) return null;
+    if (value is! String) throw const FormatException('Invalid review note.');
+    final normalized = value.trim();
+    return normalized.isEmpty ? null : normalized;
   }
 
   static DateTime? _date(Object? value) {

@@ -98,7 +98,8 @@ class ClientProfilePage extends ConsumerWidget {
                         onAssign: () => _handleAssign(context, ref, controller),
                       ),
                       const SizedBox(height: 16),
-                      _PaymentSummarySection(client: state.client!),
+                      if (state.client!.hasFinancialSummary)
+                        _PaymentSummarySection(client: state.client!),
                       const SizedBox(height: 16),
                       _PaymentHistorySection(client: state.client!),
                       const SizedBox(height: 16),
@@ -409,7 +410,9 @@ class _PersonalInfoSection extends StatelessWidget {
         ),
         _InfoRow(
           'Date of Birth',
-          '${DateFormat('dd MMM yyyy').format(client.dateOfBirth)} (${client.age} yrs)',
+          client.dateOfBirth == null
+              ? 'Not provided'
+              : '${DateFormat('dd MMM yyyy').format(client.dateOfBirth!)} (${client.age} yrs)',
           Icons.cake_outlined,
         ),
         _InfoRow('Address', client.address, Icons.location_on_outlined),
@@ -502,8 +505,7 @@ class _AssignmentSection extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              state.assignmentMessage ??
-                  'Only clients with an active package can be assigned.',
+              state.assignmentMessage ?? inactivePackageAssignmentMessage,
               style: const TextStyle(color: AppColors.statusInactive),
             ),
           ),

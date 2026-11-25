@@ -1,14 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/datasources/admin_local_datasource.dart';
+import '../../data/datasources/admin_datasource.dart';
+import '../../data/datasources/admin_remote_datasource.dart';
+import '../../../authorization/data/authorization_repository.dart';
 import '../../data/repositories/admin_repository_impl.dart';
 import '../../domain/entities/client_entity.dart';
 import '../../domain/usecases/get_all_clients_usecase.dart';
 
 // ── Dependency providers ───────────────────────────────────────────────────
 
-final adminDatasourceProvider = Provider<AdminLocalDatasource>(
-  (_) => AdminLocalDatasource(),
+final adminDatasourceProvider = Provider<AdminDatasource>(
+  (ref) => AdminRemoteDatasource(ref.watch(authorizationRepositoryProvider)),
 );
 
 final adminRepositoryProvider = Provider<AdminRepositoryImpl>((ref) {

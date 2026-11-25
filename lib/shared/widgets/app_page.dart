@@ -6,12 +6,14 @@ class AppPage extends StatelessWidget {
     super.key,
     this.title,
     this.alignment = Alignment.center,
+    this.padding = const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
     required this.child,
   });
 
   final String? title;
   final Widget child;
   final AlignmentGeometry alignment;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +27,7 @@ class AppPage extends StatelessWidget {
           child: Align(
             alignment: alignment,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: padding,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
                 child: SizedBox(width: double.infinity, child: child),

@@ -1,3 +1,4 @@
+import { requirePermission } from "./authorization_policy";
 import {
   AuthenticatedUser,
   NewPackage,
@@ -120,7 +121,7 @@ export class PackageService {
   }
 
   private requireAdmin(user: AuthenticatedUser): void {
-    if (user.role !== "admin") throw new PackageAuthorizationError();
+    requirePermission(user.role, "manage_business_settings");
   }
 }
 

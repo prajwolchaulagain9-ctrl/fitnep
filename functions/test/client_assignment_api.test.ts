@@ -269,7 +269,8 @@ describe("dietitian client visibility and notification (acceptance criterion)", 
       .set(bearer("dietitian-2"))
       .expect(403);
 
-    assert.ok(response.body.error.includes("not currently assigned"));
+    assert.equal(response.body.code, "permission-denied");
+    assert.equal(response.body.data, undefined);
   });
 
   it("admin cannot use the dietitian client view endpoint", async () => {

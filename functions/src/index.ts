@@ -1,20 +1,15 @@
 import { getApps, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getAuth } from "firebase-admin/auth";
+import { createFitnepDependencies } from "./api_factory";
 import { onRequest } from "firebase-functions/v2/https";
 
-import { FirebaseAuthVerifier } from "./auth";
-import { FirebaseStaffAccountRepository } from "./firebase_staff_account_repository";
-import { FirestoreNotificationRepository } from "./firestore_notification_repository";
-import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
-import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
-import { FirestorePackageRepository } from "./firestore_package_repository";
-import { FirestorePurchaseRepository } from "./firestore_purchase_repository";
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
+<<<<<<< HEAD
 import { FirestorePackageService, PackageError } from "./package_membership_service";
 import {
   ClientAssignmentService,
@@ -26,6 +21,9 @@ import { FirestoreClientAssignmentRepository } from "./firestore_client_assignme
 import { FirestoreAuditWriter } from "./audit";
 import { ClientIntakeService } from "./client_intake_service";
 import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
+=======
+import { PackageError } from "./package_membership_service";
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 
 if (getApps().length === 0) initializeApp();
 
@@ -34,6 +32,7 @@ export const checkSession = require("../src/index.cjs").checkSession;
 export { registrationPrivacy } from "./registration_privacy";
 export { sendSignupEmailCode, verifySignupEmailCode } from "./signup_email_codes";
 
+<<<<<<< HEAD
 const notificationRepository = new FirestoreNotificationRepository(
   getFirestore(),
 );
@@ -63,8 +62,13 @@ const notificationApp = createNotificationApp({
     new FirestoreClientIntakeRepository(getFirestore()),
   ),
 });
+=======
+const dependencies = createFitnepDependencies(getAuth(), getFirestore());
+const packageService = dependencies.packageService;
+const notificationApp = createNotificationApp(dependencies);
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
 const workflowTriggers = createNotificationWorkflowTriggers(
-  new NotificationWorkflowService(notificationRepository),
+  new NotificationWorkflowService(dependencies.notificationRepository),
 );
 
 export const api = onRequest(

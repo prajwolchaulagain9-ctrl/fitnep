@@ -4,20 +4,29 @@ import express, {
   Response,
   RequestHandler,
 } from "express";
-import { randomUUID } from "node:crypto";
 
-import { AuthVerifier, AuthenticationError } from "./auth";
+import { randomUUID } from "node:crypto";
+import { HttpsError } from "firebase-functions/v2/https";
+import { GooglePasswordService } from "./google_password_service";
+import { ClientAssignmentError, ClientAssignmentService } from "./client_assignment_service";
 import { AuditUnavailableError, AuditWriter } from "./audit";
+import { healthAuditTarget } from "./audited_health_reads";
 import { PlatformSessionService, platformSessionHeader } from "./platform_sessions";
 import { createSessionRouter } from "./session_routes";
-import { roleCanPerformAction } from "./authorization_policy";
+import { StaffAccountService } from "./staff_account_service";
+import { StaffAccountError, StaffAccountRepository } from "./staff_account_repository";
+import { StaffAccount } from "./domain";
+import { AuthVerifier, AuthenticationError } from "./auth";
+import { AccountInputError, FirestoreAccountService, FirestoreAuditStore } from "./account_service";
+import { PermissionDeniedError, requirePermission } from "./authorization_policy";
+import { endpointAccess } from "./endpoint_access";
+import { BackendUnavailableError, createRbacRouter } from "./rbac_http";
 import {
   AuthenticatedUser,
   NotificationRecord,
   PackageChangeHistoryRecord,
   PackageHistoryValues,
   PurchaseRecord,
-  StaffAccount,
 } from "./domain";
 import { FirestorePackageService, PackageError } from "./package_membership_service";
 import {
@@ -75,19 +84,22 @@ import {
   PurchaseService,
 } from "./purchase_service";
 import {
-  StaffAccountError,
-  StaffAccountRepository,
-} from "./staff_account_repository";
-import { StaffAccountService } from "./staff_account_service";
-import {
-  ClientAssignmentError,
-  ClientAssignmentService,
-} from "./client_assignment_service";
-import { ClientIntakeError, ClientIntakeService } from "./client_intake_service";
-
+  ClientIntakeError,
+  ClientIntakeRecord,
+  ClientIntakeService,
+} from "./client_intake_service";
 const temporaryPasswordPath = "/auth/staff/change-temporary-password";
 
 export interface NotificationAppDependencies {
+  googlePasswordService?: GooglePasswordService;
+  clientAssignmentService?: ClientAssignmentService;
+  staffAccountRepository?: StaffAccountRepository;
+  platformSessions?: PlatformSessionService;
+  auditWriter?: AuditWriter;
+  manualVerificationEnabled?: boolean;
+  health?: { buildSha: string; checkReady(): Promise<void> };
+  accounts?: FirestoreAccountService;
+  audit?: FirestoreAuditStore;
   authVerifier: AuthVerifier;
   notificationRepository: NotificationRepository;
   privacyPreferencesRepository?: PrivacyPreferencesRepository;
@@ -95,16 +107,7 @@ export interface NotificationAppDependencies {
   packageService?: FirestorePackageService;
   packageRepository?: PackageRepository;
   purchaseRepository?: PurchaseRepository;
-  staffAccountRepository?: StaffAccountRepository;
-  platformSessions?: PlatformSessionService;
-  auditWriter?: AuditWriter;
-  manualVerificationEnabled?: boolean;
-  clientAssignmentService?: ClientAssignmentService;
   clientIntakeService?: ClientIntakeService;
-  health?: {
-    buildSha: string;
-    checkReady(): Promise<void>;
-  };
 }
 
 export function createNotificationApp(
@@ -124,11 +127,16 @@ export function createNotificationApp(
   const purchaseService = new PurchaseService(
     dependencies.purchaseRepository ?? new UnconfiguredPurchaseRepository(),
   );
-  const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
 
+  const staffAccounts = new StaffAccountService(dependencies.staffAccountRepository);
   app.disable("x-powered-by");
+  app.use(express.json({ limit: "32kb" }));
   app.use((_request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
+    next();
+  });
+
+  app.use((_request, response, next) => {
     response.locals.correlationId = randomUUID();
     response.setHeader("X-Request-Id", response.locals.correlationId);
     next();
@@ -137,7 +145,7 @@ export function createNotificationApp(
     const health = dependencies.health;
     app.get("/healthz", asyncRoute(async (_request, response) => {
       try {
-        if (!/^[a-f0-9]{40}$/i.test(health.buildSha)) throw new Error("Unknown backend build.");
+        if (!/^[a-f0-9]{40}$/i.test(health.buildSha)) throw new Error();
         await health.checkReady();
         response.json({ data: { ready: true, build_sha: health.buildSha, node_version: process.version } });
       } catch {
@@ -145,12 +153,33 @@ export function createNotificationApp(
       }
     }));
   }
-  app.use(express.json({ limit: "32kb" }));
-  if (dependencies.platformSessions) {
-    app.use("/sessions", createSessionRouter(dependencies.authVerifier, dependencies.platformSessions));
-  }
-
-  app.use(authenticate(dependencies.authVerifier, dependencies.platformSessions));
+  if (dependencies.platformSessions) app.use("/sessions", createSessionRouter(dependencies.authVerifier, dependencies.platformSessions));
+  app.use(authenticate(dependencies.authVerifier));
+  app.use(asyncRoute(async (request, response, next) => {
+    const prerequisites = ["/session", "/auth/staff/change-temporary-password"];
+    if (response.locals.user.mustChangePassword === true && !prerequisites.includes(request.path)) {
+      throw new AuthenticationError("Change your temporary password before continuing.", 403);
+    }
+    if (dependencies.platformSessions && !prerequisites.includes(request.path)) {
+      await dependencies.platformSessions.verify(currentUser(response), request.header(platformSessionHeader));
+    }
+    next();
+  }));
+  app.use(asyncRoute(async (request, response, next) => {
+    const access = endpointAccess(request.method, request.path) ??
+      (/^\/admin(?:\/|$)/i.test(request.path) ? { permission: "manage_user_roles" as const, resource: "admin_features" } : null);
+    response.locals.access = access;
+    if (access) {
+      const user = currentUser(response);
+      requirePermission(user.role, access.permission);
+      if (user.emailVerified === false &&
+          !["view_dashboard", "view_own_profile", "edit_own_profile"].includes(access.permission)) {
+        throw new PermissionDeniedError("Email verification is required.");
+      }
+    }
+    next();
+  }));
+  app.use(createRbacRouter(dependencies.accounts, dependencies.audit, dependencies.privateRecordsStore));
   app.use(rejectRecipientOverrides);
 
   app.get(
@@ -208,7 +237,24 @@ export function createNotificationApp(
     response.json({ data: { account: toApiStaffAccount(account) } });
   }));
 
-  app.post(temporaryPasswordPath, asyncRoute(async (request, response) => {
+  app.post("/auth/staff/change-temporary-password", asyncRoute(async (request, response) => {
+    if (currentUser(response).googleTemporaryPassword === true) {
+      if (!dependencies.googlePasswordService) throw new StaffAccountError(503, "Password setup is unavailable.");
+      if (!isObject(request.body) || Object.keys(request.body).some(key => key !== "new_password")) {
+        throw new StaffAccountError(400, "Supply only a new password.");
+      }
+      try {
+        await dependencies.googlePasswordService.change(currentUser(response), request.body.new_password);
+      } catch (error) {
+        if (error instanceof HttpsError) {
+          const status = error.code === "invalid-argument" ? 400 : error.code === "permission-denied" ? 403 : error.code === "failed-precondition" ? 409 : 503;
+          throw new StaffAccountError(status, error.message);
+        }
+        throw error;
+      }
+      response.status(204).end();
+      return;
+    }
     await staffAccounts.changeTemporaryPassword(
       currentUser(response),
       isObject(request.body) ? request.body : {},
@@ -302,20 +348,26 @@ export function createNotificationApp(
           currentUser(response),
           request.params.clientId,
         );
-      response.json({ data: { intake: {
-        client_id: intake.clientId,
-        allergies: intake.allergies,
-        medical_conditions: intake.medicalConditions,
-        sections: intake.sections.map(section => ({
-          title: section.title,
-          fields: section.fields.map(field => ({
-            label: field.label,
-            value: field.value,
-          })),
-        })),
-        submitted_at: intake.submittedAt,
-        updated_at: intake.updatedAt,
-      } } });
+      response.json({ data: { intake: toApiClientIntake(intake) } });
+    }),
+  );
+  app.patch(
+    "/dietitian/assigned-clients/:clientId/intake/review",
+    asyncRoute(async (request, response) => {
+      if (!dependencies.clientIntakeService) {
+        throw new ClientIntakeError(
+          503,
+          "Client intake storage has not been configured yet.",
+        );
+      }
+      const intake = await dependencies.clientIntakeService
+        .updateAssignedClientIntakeReview(
+          currentUser(response),
+          request.params.clientId,
+          request.body,
+          response.locals.correlationId,
+        );
+      response.json({ data: { intake: toApiClientIntake(intake) } });
     }),
   );
 
@@ -325,12 +377,12 @@ export function createNotificationApp(
   };
   const client = (response: Response) => {
     const user = currentUser(response);
-    if (user.role !== "client") throw new AuthenticationError("Package selection is available to clients only.", 403);
+    requirePermission(user.role, "manage_own_membership");
     return user.uid;
   };
   const admin = (response: Response) => {
     const user = currentUser(response);
-    if (user.role !== "admin") throw new AuthenticationError("Administrator access is required.", 403);
+    requirePermission(user.role, "manage_business_settings");
     return user;
   };
   app.get("/admin/memberships/pending", asyncRoute(async (_request, response) => {
@@ -391,37 +443,58 @@ export function createNotificationApp(
     return dependencies.privateRecordsStore;
   };
   const recordPath = "/clients/:clientId/records/:category";
+  const recordTarget = (request: Request, response: Response) => {
+    const target = {
+      clientId: parseRecordId(request.params.clientId),
+      category: parseRecordCategory(request.params.category),
+      recordId: request.params.recordId === undefined ? undefined : parseRecordId(request.params.recordId),
+    };
+    // Express restores route params before its error middleware runs.
+    response.locals.healthAuditTarget = healthAuditTarget(target);
+    return target;
+  };
   app.get(recordPath, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const after = request.query.after;
     if (after !== undefined && typeof after !== "string") {
       throw new PrivateRecordsError(400, "Invalid record cursor.");
     }
     const records = await privateRecords().list(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
+      target.clientId,
+      target.category,
       after === undefined ? undefined : parseRecordId(after),
+      response.locals.correlationId,
     );
     response.json({ data: { records, next_cursor: records.length === 50 ? records.at(-1)?.id : null } });
   }));
   app.post(recordPath, express.raw(photoUploadOptions), asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const record = await privateRecords().collect(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
+      target.clientId,
+      target.category,
       request.body,
     );
     response.status(201).json({ data: { record } });
   }));
   app.get(`${recordPath}/:recordId/photo`, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
     const photo = await privateRecords().readPhoto(
       currentUser(response),
-      parseRecordId(request.params.clientId),
-      parseRecordCategory(request.params.category),
-      parseRecordId(request.params.recordId),
+      target.clientId,
+      target.category,
+      target.recordId!,
+      response.locals.correlationId,
     );
     response.set("X-Content-Type-Options", "nosniff");
     response.type(photo.contentType).send(photo.bytes);
+  }));
+  app.get(`${recordPath}/:recordId`, asyncRoute(async (request, response) => {
+    const target = recordTarget(request, response);
+    const record = await privateRecords().read(currentUser(response),
+      target.clientId, target.category, target.recordId!, response.locals.correlationId);
+    response.json({ data: { record } });
   }));
 
   app.get(
@@ -459,9 +532,6 @@ export function createNotificationApp(
   app.get(
     "/packages",
     asyncRoute(async (_request, response) => {
-      if (!roleCanPerformAction(currentUser(response).role, "viewPackageCatalog")) {
-        throw new AuthenticationError("This account cannot view the package catalog.", 403);
-      }
       if (dependencies.packageRepository === undefined) {
         response.json({ data: { packages: await packages().catalog() } });
         return;
@@ -478,9 +548,7 @@ export function createNotificationApp(
     "/admin/packages",
     asyncRoute(async (_request, response) => {
       const user = currentUser(response);
-      if (user.role !== "admin") {
-        throw new PackageAuthorizationError();
-      }
+      requirePermission(user.role, "manage_business_settings");
       const packages = await packageService.listAll();
       response.status(200).json({
         data: { packages: packages.map(toApiPackage) },
@@ -595,39 +663,68 @@ export function createNotificationApp(
     response.status(404).json({ error: "Endpoint not found." });
   });
 
-  app.use((error: unknown, request: Request, response: Response, next: NextFunction) => {
-    const denied = error instanceof PrivacyPreferencesAuthorizationError ||
-      error instanceof PrivateRecordAuthorizationError || error instanceof PackageAuthorizationError ||
-      error instanceof PurchaseAuthorizationError ||
-      (error instanceof AuthenticationError && (error.statusCode === 401 || error.statusCode === 403)) ||
-      (error instanceof PackageError && error.statusCode === 403);
-    if (!denied || !dependencies.auditWriter || !response.locals.user) { next(error); return; }
-    // Route templates contain no query values, tokens, proof bytes or medical answers.
-    const route = typeof request.route?.path === "string" ? request.route.path : "protected-api";
-    void dependencies.auditWriter.append({
-      actor: currentUser(response), action: "access.denied",
-      targetType: "api", targetId: request.method + " " + route,
-      outcome: "denied", correlationId: response.locals.correlationId,
-    }).then(() => next(error), () => next(new AuditUnavailableError()));
-  });
-
   app.use(
     (
       error: unknown,
-      _request: Request,
+      request: Request,
       response: Response,
       _next: NextFunction,
     ) => {
-      if (error instanceof AuditUnavailableError) {
-        response.status(503).json({ error: error.message });
+      if (error instanceof AuthenticationError && error.statusCode === 401 && response.locals.user && dependencies.auditWriter) {
+        void dependencies.auditWriter.append({ actor: response.locals.user, action: "access.denied", targetType: "api",
+          targetId: "protected_endpoint", outcome: "denied", correlationId: response.locals.correlationId }).then(() => {
+            response.status(401).json({ code: error.code, error: "Your session has ended. Sign in again." });
+          }, () => { response.status(503).json({ code: "unavailable", error: "Audit services are unavailable." }); });
         return;
       }
-      if (error instanceof AuthenticationError) {
-        response.status(error.statusCode).json({ error: error.message });
+      const denied = error instanceof PermissionDeniedError ||
+        error instanceof AuthenticationError && error.statusCode === 403 ||
+        error instanceof PackageError && error.statusCode === 403 ||
+        error instanceof PrivacyPreferencesAuthorizationError ||
+        error instanceof PrivateRecordAuthorizationError ||
+        error instanceof PackageAuthorizationError || error instanceof PurchaseAuthorizationError ||
+        error instanceof StaffAccountError && error.status === 403 ||
+        error instanceof ClientAssignmentError && error.statusCode === 403;
+      if (denied) {
+        const user = response.locals.user as AuthenticatedUser | undefined;
+        const identity = error instanceof AuthenticationError ? error.identity : undefined;
+        const access = response.locals.access ?? endpointAccess(request.method, request.path);
+        const attempt = { uid: user?.uid ?? identity?.uid ?? null, role: user?.role ?? identity?.role ?? null,
+          action: access?.permission ?? "access_protected_feature", resource: access?.resource ?? "protected_endpoint",
+          recordId: access?.recordId ?? null,
+          reason: error instanceof PermissionDeniedError ? error.reason : "Authorization denied." };
+        const target = error instanceof PrivateRecordAuthorizationError && response.locals.healthAuditTarget
+          ? response.locals.healthAuditTarget
+          : { targetType: "api" as const, targetId: access?.resource ?? "protected_endpoint" };
+        void Promise.all([
+          dependencies.audit?.denied(attempt),
+          user && dependencies.auditWriter?.append({ actor: user,
+            action: "access.denied", ...target,
+            outcome: "denied", correlationId: response.locals.correlationId }),
+        ]).then(() => {
+          response.status(403).json({ code: "permission-denied", error: "You do not have permission to access this feature." });
+        }).catch(() => {
+          response.status(503).json({ code: "unavailable", error: "Authorization is temporarily unavailable. Try again." });
+        });
+        return;
+      }
+      if (error instanceof AuditUnavailableError) {
+        response.status(503).json({ code: "unavailable", error: "Audit services are temporarily unavailable." });
         return;
       }
       if (error instanceof StaffAccountError) {
-        response.status(error.status).json({ error: error.message });
+        response.status(error.status).json({ error: error.message }); return;
+      }
+      if (error instanceof AccountInputError) {
+        response.status(400).json({ code: "invalid-argument", error: error.message });
+        return;
+      }
+      if (error instanceof BackendUnavailableError) {
+        response.status(503).json({ code: "unavailable", error: "Account services are unavailable. Try again." });
+        return;
+      }
+      if (error instanceof AuthenticationError) {
+        response.status(error.statusCode).json({ code: error.code, error: error.message });
         return;
       }
       if (error instanceof ClientAssignmentError) {
@@ -731,10 +828,7 @@ export function createNotificationApp(
         return;
       }
 
-      console.error("Unhandled FitNEP API error", {
-        correlation_id: response.locals.correlationId,
-        error_type: error instanceof Error ? error.name : "UnknownError",
-      });
+      console.error("Unhandled FitNEP API error", error);
       response.status(500).json({ error: "Internal server error." });
     },
   );
@@ -751,6 +845,27 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
     feature_description: packageRecord.featureDescription,
     is_active: packageRecord.isActive,
     created_at: packageRecord.createdAt,
+  };
+}
+
+function toApiClientIntake(intake: ClientIntakeRecord) {
+  return {
+    client_id: intake.clientId,
+    allergies: intake.allergies,
+    medical_conditions: intake.medicalConditions,
+    sections: intake.sections.map(section => ({
+      title: section.title,
+      fields: section.fields.map(field => ({
+        label: field.label,
+        value: field.value,
+      })),
+    })),
+    submitted_at: intake.submittedAt,
+    updated_at: intake.updatedAt,
+    status: intake.status,
+    review_action: intake.review.action,
+    review_note: intake.review.note,
+    review_updated_at: intake.review.updatedAt,
   };
 }
 
@@ -802,33 +917,14 @@ function toApiPurchase(purchase: PurchaseRecord) {
   };
 }
 
-function toApiStaffAccount(account: StaffAccount) {
-  return {
-    uid: account.uid,
-    name: account.name,
-    email: account.email,
-    role: account.role,
-    is_active: account.isActive,
-  };
-}
-
-function authenticate(authVerifier: AuthVerifier, sessions?: PlatformSessionService): RequestHandler {
+function authenticate(authVerifier: AuthVerifier): RequestHandler {
   return asyncRoute(async (request, response, next) => {
     const authorization = request.header("authorization")?.trim();
     const match = authorization?.match(/^Bearer\s+(.+)$/i);
     if (match?.[1] === undefined || match[1].trim().length === 0) {
       throw new AuthenticationError("A Firebase ID token is required.");
     }
-    const user = await authVerifier.verifyIdToken(match[1].trim());
-    response.locals.user = user;
-    const changingTemporaryPassword = user.mustChangePassword === true &&
-      request.method === "POST" && request.path === temporaryPasswordPath;
-    if (user.mustChangePassword && !changingTemporaryPassword) {
-      throw new AuthenticationError("Change your temporary password before continuing.", 403);
-    }
-    if (sessions && !changingTemporaryPassword) {
-      await sessions.verify(user, request.header(platformSessionHeader));
-    }
+    response.locals.user = await authVerifier.verifyIdToken(match[1].trim());
     next();
   });
 }
@@ -893,4 +989,14 @@ function asyncRoute(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toApiStaffAccount(account: StaffAccount) {
+  return {
+    uid: account.uid,
+    name: account.name,
+    email: account.email,
+    role: account.role,
+    is_active: account.isActive,
+  };
 }

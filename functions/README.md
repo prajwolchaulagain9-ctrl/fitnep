@@ -7,7 +7,9 @@ website or browser UI.
 The shared project stays on **Spark**. These Functions are local emulator
 implementations; they are not deployed. Cloud Functions deployment requires a
 billing-enabled project and is outside the agreed scope. The Flutter API URL
-defaults to empty until a supported backend is supplied.
+defaults to the existing Render service. Local device testing uses the same live
+Firebase project through `node scripts/start-live-local.cjs`; see
+[current auth and navigation fixes](../docs/auth-flow-fixes.md).
 
 Sprint 2 adds a standalone Node 22 runner in src/server.ts. After building,
 npm start runs the same Express API against cloud Firebase Auth/Firestore
@@ -274,6 +276,8 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
 
 - After Firebase verifies their email, clients complete the privacy step before
   continuing. The default app writes its own `privacy_acceptances/{uid}` record.
+  The current policy is version 2 and covers the explicitly assigned FitNEP
+  team. Version 1 acceptance must be renewed before team access is granted.
   Firestore rules validate the entered age, server timestamp and guardian
   confirmation for minors. The optional `registrationPrivacy` callable writes
   the same age and consent fields. Returning clients with current acceptance
@@ -294,12 +298,16 @@ See [free demo](../docs/free-demo.md). No gateway or paid Functions deployment i
   `next_cursor` as `after`. POST accepts a nutrition JSON record
   (`food_name`, `calories`), an activity JSON record (`steps`,
   `active_minutes`), or raw JPEG, PNG, or WebP photo bytes up to 512 KiB.
-  GET `/:recordId/photo` serves photo bytes under the same access check.
+  GET `/:recordId` returns one projected record. GET `/:recordId/photo` serves
+  photo bytes. All three reads share the current assignment/consent guard and
+  commit their metadata audit before returning content.
 - Optional collection must go through this API. Read authorization uses the
   current trusted `client_assignments/{clientId}` document with
-  `active: true` and `dietitian_id`. Clients keep owner access after
-  withdrawal. The admin assignment screen writes this contract through the
-  protected API; future tracker screens can read it through server checks.
+  `active: true`, `dietitian_id` and optional `team_member_ids` for explicitly
+  assigned staff/admin. The target client's current policy and category sharing
+  must both permit internal access. Clients keep owner access after withdrawal.
+  The [Day 2 handoff](../docs/sprint2-day2.md) describes the shared reader,
+  private-file and future resource contracts and remaining hosted proof.
 
 ## US7 staff accounts
 

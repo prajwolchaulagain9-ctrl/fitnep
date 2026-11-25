@@ -9,6 +9,14 @@ import { createNotificationApp } from "../src/http_app";
 import { UnconfiguredNotificationRepository } from "../src/notification_repository";
 import { PrivacyPreferences, defaultSharingChoices } from "../src/privacy_preferences_repository";
 import { PrivacyAcceptanceError, privacyPolicyVersion, validatePrivacyAcceptance } from "../src/privacy_policy_acceptance";
+
+it("defers age while requiring explicit current terms and privacy consent", () => {
+  const consent = { privacy_policy_version: privacyPolicyVersion, privacy_policy_accepted: true,
+    terms_accepted: true, terms_version: "1", guardian_consent_confirmed: false };
+  assert.deepEqual(validatePrivacyAcceptance(consent), { age: undefined, guardianConsentConfirmed: false });
+  assert.throws(() => validatePrivacyAcceptance({ ...consent, terms_accepted: false }), PrivacyAcceptanceError);
+  assert.throws(() => validatePrivacyAcceptance({ ...consent, guardian_consent_confirmed: true }), PrivacyAcceptanceError);
+});
 import { PrivateRecordAccessService, PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
 import {
   NotificationWorkflowService,
@@ -80,8 +88,9 @@ describe("recipient-based notification security", () => {
       .get(`/notifications/${created.notification.id}`)
       .set(bearer("token-client-b"));
 
-    assert.equal(response.status, 404);
-    assert.equal(response.body.error, "Notification not found.");
+    assert.equal(response.status, 403);
+    assert.equal(response.body.code, "permission-denied");
+    assert.equal(response.body.error, "You do not have permission to access this feature.");
   });
 
   it("4. Client B cannot mark Client A's notification as read", async () => {
@@ -91,7 +100,7 @@ describe("recipient-based notification security", () => {
       .patch(`/notifications/${created.notification.id}/read`)
       .set(bearer("token-client-b"));
 
-    assert.equal(response.status, 404);
+    assert.equal(response.status, 403);
     const stored = await repository.getForRecipient(
       created.notification.id,
       clientA.uid,
@@ -111,7 +120,7 @@ describe("recipient-based notification security", () => {
 
     assert.equal(listResponse.status, 200);
     assert.deepEqual(listResponse.body.data.notifications, []);
-    assert.equal(directResponse.status, 404);
+    assert.equal(directResponse.status, 403);
   });
 
   it("6. Mark All as Read updates only the authenticated recipient", async () => {
@@ -358,9 +367,11 @@ it("withdrawing optional consent blocks collection and dietitian access while pr
   let assignedDietitian = dietitian.uid;
   let shareActivityData = false;
   const access = new PrivateRecordAccessService({
-    async getCurrentDietitianId() { return assignedDietitian; },
+    async getCurrentTeam() { return { dietitianId: assignedDietitian, teamMemberIds: [] }; },
   }, {
     async getForClient() { return { ...defaultSharingChoices, shareActivityData, updatedAt: null }; },
+  }, {
+    async hasCurrentAcceptance() { return true; },
   });
   const choice = "shareActivityData";
   await assert.rejects(access.assertCanCollect(clientA, clientA.uid, choice), PrivateRecordAuthorizationError);

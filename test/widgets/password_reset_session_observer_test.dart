@@ -1,3 +1,5 @@
+import '../support/offline_hosted_session.dart';
+
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 
 import 'dart:async';
@@ -63,6 +65,7 @@ Future<ProviderContainer> _open(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        offlineHostedSessionOverride,
         staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
         registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         firebaseInitializationProvider.overrideWith((ref) async {}),

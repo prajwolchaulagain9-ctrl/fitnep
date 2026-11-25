@@ -10,4 +10,11 @@ class ClientIntakeRepositoryImpl implements ClientIntakeRepository {
   @override
   Future<ClientIntake> getAssignedClientIntake(String clientId) =>
       _remote.getAssignedClientIntake(clientId);
+
+  @override
+  Future<ClientIntake> updateReview({
+    required String clientId,
+    required ClientIntakeReviewAction action,
+    String? note,
+  }) => _remote.updateReview(clientId: clientId, action: action, note: note);
 }

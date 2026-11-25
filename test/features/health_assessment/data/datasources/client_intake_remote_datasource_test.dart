@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:fitnep/core/network/api_client.dart';
 import 'package:fitnep/core/storage/token_storage.dart';
 import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -49,6 +50,10 @@ void main() {
                       ],
                       'submitted_at': '2026-11-20T08:00:00.000Z',
                       'updated_at': null,
+                      'status': 'submitted',
+                      'review_action': null,
+                      'review_note': null,
+                      'review_updated_at': null,
                     },
                   },
                 },
@@ -75,6 +80,66 @@ void main() {
         'Restrictions',
       ]);
       expect(intake.sections[1].fields.single.value, 'Improve glucose control');
+      expect(intake.status, ClientIntakeStatus.submitted);
+    },
+  );
+
+  test(
+    'saves the selected review action and parses the updated status',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.fitnep.test/'));
+      addTearDown(dio.close);
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            captured = request;
+            handler.resolve(
+              Response<Object?>(
+                requestOptions: request,
+                data: {
+                  'data': {
+                    'intake': {
+                      'client_id': 'client-1',
+                      'allergies': <String>[],
+                      'medical_conditions': <String>[],
+                      'sections': <Object?>[],
+                      'submitted_at': '2026-11-20T08:00:00.000Z',
+                      'updated_at': null,
+                      'status': 'information_requested',
+                      'review_action': 'missing_information',
+                      'review_note': 'Please provide your medication dosage.',
+                      'review_updated_at': '2026-11-25T10:00:00.000Z',
+                    },
+                  },
+                },
+              ),
+            );
+          },
+        ),
+      );
+      final datasource = ClientIntakeRemoteDatasourceImpl(
+        ApiClient(tokenStorage: const TokenStorage(), dio: dio),
+      );
+
+      final intake = await datasource.updateReview(
+        clientId: 'client-1',
+        action: ClientIntakeReviewAction.missingInformation,
+        note: 'Please provide your medication dosage.',
+      );
+
+      expect(captured.method, 'PATCH');
+      expect(
+        captured.uri.toString(),
+        'https://api.fitnep.test/dietitian/assigned-clients/client-1/intake/review',
+      );
+      expect(captured.data, {
+        'action': 'missing_information',
+        'note': 'Please provide your medication dosage.',
+      });
+      expect(intake.status, ClientIntakeStatus.informationRequested);
+      expect(intake.reviewAction, ClientIntakeReviewAction.missingInformation);
+      expect(intake.reviewNote, 'Please provide your medication dosage.');
     },
   );
 

@@ -1,8 +1,10 @@
+import { requirePermission } from "./authorization_policy";
 import { createHash } from "node:crypto";
-import { Firestore, Timestamp } from "firebase-admin/firestore";
+import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuthenticatedUser } from "./domain";
 
 const day = 86_400_000;
+export const inactivePackageAssignmentMessage = "Only clients with an active package can be assigned.";
 
 export class PackageError extends Error {
   constructor(readonly statusCode: number, message: string) { super(message); }
@@ -46,19 +48,20 @@ export class FirestorePackageService {
     return snapshot.docs.map(doc => parsePackage(doc.id, doc.data())).sort((a, b) => a.price_npr - b.price_npr);
   }
 
-  async memberships(uid: string) {
-    const snapshot = await this.db.collection("package_memberships").where("client_id", "==", uid).get();
+  async memberships(uid: string, transaction?: Transaction) {
+    const query = this.db.collection("package_memberships").where("client_id", "==", uid);
+    const snapshot = transaction ? await transaction.get(query) : await query.get();
     return snapshot.docs.map(doc => this.toApi(doc.data() as MembershipRecord))
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
   /** Effective status used by assignment, including retained legacy purchases. */
-  async assignmentStatus(uid: string): Promise<EffectiveMembershipStatus> {
-    const memberships = await this.memberships(uid);
+  async assignmentStatus(uid: string, transaction?: Transaction): Promise<EffectiveMembershipStatus> {
+    const memberships = await this.memberships(uid, transaction);
     if (memberships.some(member => member.status === "active")) return "active";
 
-    const historical = await this.db.collection("customer_purchases").doc(uid)
-      .collection("purchases").get();
+    const query = this.db.collection("customer_purchases").doc(uid).collection("purchases");
+    const historical = transaction ? await transaction.get(query) : await query.get();
     let historicalStatus: EffectiveMembershipStatus = "none";
     for (const document of historical.docs) {
       if (document.get("is_active") === false) {
@@ -90,7 +93,7 @@ export class FirestorePackageService {
   }
 
   async verifyManually(actor: AuthenticatedUser, membershipId: string, reference: string) {
-    if (actor.role !== "admin") throw new PackageError(403, "Only an administrator can verify a payment.");
+    requirePermission(actor.role, "manage_business_settings");
     if (!/^[a-f0-9]{64}$/.test(membershipId) || reference.trim().length < 3 || reference.length > 200) {
       throw new PackageError(400, "A valid membership and verification reference are required.");
     }

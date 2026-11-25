@@ -10,6 +10,7 @@ import '../../data/repositories/staff_account_repository.dart';
 import '../../domain/entities/staff_account_entity.dart';
 import '../../../authentication/presentation/controllers/authentication_controller.dart';
 import 'client_list_controller.dart';
+import '../../../../app/routes/route_access_gate.dart';
 
 class DietitianAssignmentOption {
   const DietitianAssignmentOption({
@@ -228,8 +229,8 @@ class ClientProfileController extends Notifier<ClientProfileState> {
       await _deactivateClient(
         clientId: client.id,
         reason: reason,
-        adminId: 'admin_001',
-        adminName: 'Admin CEO',
+        adminId: ref.read(routeSessionProvider).requireValue!.uid,
+        adminName: '',
       );
       final updated = await _getClientById(client.id);
       final logs = await _getLogsForClient(client.id);
@@ -259,8 +260,8 @@ class ClientProfileController extends Notifier<ClientProfileState> {
       await repo.reactivateClient(
         client.id,
         'Account reactivated by admin',
-        'admin_001',
-        'Admin CEO',
+        ref.read(routeSessionProvider).requireValue!.uid,
+        '',
       );
       final updated = await _getClientById(client.id);
       final logs = await _getLogsForClient(client.id);
@@ -283,17 +284,7 @@ class ClientProfileController extends Notifier<ClientProfileState> {
 
   void clearMessages() {
     // Clears transient snackbar messages from state
-    state = ClientProfileState(
-      client: state.client,
-      auditLogs: state.auditLogs,
-      isLoading: state.isLoading,
-      isDeactivating: state.isDeactivating,
-      isCheckingAssignmentEligibility: state.isCheckingAssignmentEligibility,
-      canAssignClient: state.canAssignClient,
-      isAssigning: state.isAssigning,
-      packageStatus: state.packageStatus,
-      assignmentMessage: state.assignmentMessage,
-    );
+    state = state.copyWith();
   }
 }
 

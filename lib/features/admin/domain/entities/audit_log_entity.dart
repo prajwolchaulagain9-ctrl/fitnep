@@ -4,6 +4,10 @@ enum AuditActionType {
   packageChanged,
   profileUpdated,
   paymentRecorded,
+  authorizationDenied,
+  userRoleChanged,
+  accountStatusChanged,
+  clientAssignmentChanged,
 }
 
 extension AuditActionTypeExtension on AuditActionType {
@@ -11,6 +15,14 @@ extension AuditActionTypeExtension on AuditActionType {
     switch (this) {
       case AuditActionType.clientDeactivated:
         return 'Client Deactivated';
+      case AuditActionType.authorizationDenied:
+        return 'Authorization denied';
+      case AuditActionType.userRoleChanged:
+        return 'User role changed';
+      case AuditActionType.accountStatusChanged:
+        return 'Account status changed';
+      case AuditActionType.clientAssignmentChanged:
+        return 'Client assignment changed';
       case AuditActionType.clientReactivated:
         return 'Client Reactivated';
       case AuditActionType.packageChanged:
@@ -24,6 +36,14 @@ extension AuditActionTypeExtension on AuditActionType {
 
   String get icon {
     switch (this) {
+      case AuditActionType.authorizationDenied:
+        return '🔒';
+      case AuditActionType.userRoleChanged:
+        return '👤';
+      case AuditActionType.accountStatusChanged:
+        return '✅';
+      case AuditActionType.clientAssignmentChanged:
+        return '👥';
       case AuditActionType.clientDeactivated:
         return '🚫';
       case AuditActionType.clientReactivated:

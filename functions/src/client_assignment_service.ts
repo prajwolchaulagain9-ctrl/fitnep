@@ -1,11 +1,10 @@
 import { Auth } from "firebase-admin/auth";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePackageService } from "./package_membership_service";
+export { inactivePackageAssignmentMessage } from "./package_membership_service";
+import { inactivePackageAssignmentMessage } from "./package_membership_service";
 import { NotificationWorkflowService } from "./notification_service";
 import { StaffAccountRepository } from "./staff_account_repository";
-
-export const inactivePackageAssignmentMessage =
-  "Only clients with an active package can be assigned.";
 
 export type AssignmentPackageStatus =
   | "active"
@@ -30,12 +29,16 @@ export interface ClientAssignmentAuditContext {
 }
 
 export interface ClientAssignmentRepository {
+<<<<<<< HEAD
   assign(
     record: ClientAssignmentRecord,
     audit: ClientAssignmentAuditContext,
   ): Promise<ClientAssignmentRecord>;
+=======
+  assign(record: ClientAssignmentRecord, actor?: AuthenticatedUser): Promise<ClientAssignmentRecord>;
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
   currentClientCounts(): Promise<Record<string, number>>;
-  getCurrent(clientId: string): Promise<ClientAssignmentRecord | null>;
+  getCurrent(clientId: string, actor?: AuthenticatedUser): Promise<ClientAssignmentRecord | null>;
 }
 
 export interface AssignedClientProfile {
@@ -106,6 +109,7 @@ export class ClientAssignmentService {
     const clientProfile = this.clients !== null
       ? await this.clients.getClient(eligibility.clientId)
       : null;
+<<<<<<< HEAD
     const assignment = await this.repository.assign(
       {
         clientId: eligibility.clientId,
@@ -117,6 +121,16 @@ export class ClientAssignmentService {
       },
       { actor, correlationId },
     );
+=======
+    const assignment = await this.repository.assign({
+      clientId: eligibility.clientId,
+      dietitianId,
+      active: true,
+      assignedAt: this.now().toISOString(),
+      assignedById: actor.uid,
+      version: 0,
+    }, actor);
+>>>>>>> c499eb6a8ddbbd3a04b036c74ccf5066f5046e48
     if (this.notifications !== null) {
       await this.notifications.clientAssigned(actor, {
         clientId: assignment.clientId,
@@ -141,7 +155,7 @@ export class ClientAssignmentService {
       );
     }
     const clientId = requiredIdentifier(clientIdInput, "Client id");
-    const assignment = await this.repository.getCurrent(clientId);
+    const assignment = await this.repository.getCurrent(clientId, actor);
     if (assignment === null || assignment.dietitianId !== actor.uid) {
       throw new ClientAssignmentError(
         403,

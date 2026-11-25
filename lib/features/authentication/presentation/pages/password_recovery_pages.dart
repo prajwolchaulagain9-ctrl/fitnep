@@ -9,7 +9,7 @@ import '../../../../shared/widgets/app_page.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../data/password_recovery_service.dart';
 
-// Shared authentication layout, based on the supplied recovery screenshots.
+// One compact layout for login, registration and recovery.
 class RecoveryPage extends StatelessWidget {
   const RecoveryPage({
     super.key,
@@ -29,14 +29,11 @@ class RecoveryPage extends StatelessWidget {
     final base = Theme.of(context);
     return Theme(
       data: base.copyWith(
-        scaffoldBackgroundColor: Colors.white,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFFF5F5F5),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        inputDecorationTheme: base.inputDecorationTheme.copyWith(
+          isDense: true,
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
-            vertical: 16,
+            vertical: 12,
           ),
         ),
         filledButtonTheme: FilledButtonThemeData(
@@ -51,60 +48,42 @@ class RecoveryPage extends StatelessWidget {
         ),
       ),
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.dark.copyWith(
-          statusBarColor: Colors.transparent,
-          systemNavigationBarColor: Colors.white,
-          systemNavigationBarIconBrightness: Brightness.dark,
-        ),
+        value: base.appBarTheme.systemOverlayStyle ?? SystemUiOverlayStyle.dark,
         child: AppPage(
           alignment: Alignment.topCenter,
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (showBackButton) ...[
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.goNamed(AppRoutes.welcome);
-                      }
-                    },
-                    icon: const Icon(Icons.arrow_back, size: 20),
-                    label: const Text('Back'),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              const Center(child: FitNepWordmark()),
-              const SizedBox(height: 32),
-              Text(
-                title,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF102637),
-                ),
+              Row(
+                children: [
+                  if (showBackButton)
+                    TextButton.icon(
+                      onPressed: () {
+                        if (context.canPop()) {
+                          context.pop();
+                        } else {
+                          context.goNamed(AppRoutes.welcome);
+                        }
+                      },
+                      icon: const Icon(Icons.arrow_back, size: 20),
+                      label: const Text('Back'),
+                    ),
+                  const Spacer(),
+                  const FitNepWordmark(width: 40),
+                ],
               ),
+              const SizedBox(height: 12),
+              Text(title, style: base.textTheme.headlineMedium),
               const SizedBox(height: 8),
               Text(
                 description,
-                style: const TextStyle(
-                  fontSize: 16,
-                  height: 1.5,
-                  color: Color(0xFF657A8C),
+                style: base.textTheme.bodyMedium?.copyWith(
+                  color: base.colorScheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               child,
-              const SizedBox(height: 40),
-              const Text(
-                'Move better. Feel stronger. Live healthier.',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 14, color: Color(0xFF657A8C)),
-              ),
             ],
           ),
         ),

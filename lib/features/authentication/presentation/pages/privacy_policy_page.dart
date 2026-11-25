@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/constants/privacy_policy.dart' show PrivacyPolicyText;
+
 import '../../../../shared/widgets/app_page.dart';
+import '../../../../shared/widgets/legal_document.dart';
+import '../../../../app/routes/app_routes.dart';
 import '../../domain/entities/privacy_policy.dart';
 
 class PrivacyPolicyPage extends StatelessWidget {
-  const PrivacyPolicyPage({super.key});
+  const PrivacyPolicyPage({this.anchor = '', super.key});
+  final String anchor;
 
   static Future<bool?> review(BuildContext context, {required int age}) =>
       Navigator.of(context).push<bool>(
@@ -12,10 +17,10 @@ class PrivacyPolicyPage extends StatelessWidget {
       );
 
   @override
-  Widget build(BuildContext context) => const AppPage(
+  Widget build(BuildContext context) => AppPage(
     title: 'Privacy Policy',
     alignment: Alignment.topCenter,
-    child: _PolicyText(),
+    child: _PolicyText(anchor: anchor),
   );
 }
 
@@ -142,7 +147,8 @@ class _PrivacyPolicyAcceptanceState extends State<_PrivacyPolicyAcceptance> {
 }
 
 class _PolicyText extends StatelessWidget {
-  const _PolicyText();
+  const _PolicyText({this.anchor = ''});
+  final String anchor;
 
   @override
   Widget build(BuildContext context) {
@@ -154,43 +160,42 @@ class _PolicyText extends StatelessWidget {
         const SizedBox(height: 8),
         const Text('Version $privacyPolicyVersion'),
         const SizedBox(height: 24),
-        for (final (title, detail) in _sections) ...[
-          Text(title, style: textTheme.titleMedium),
-          const SizedBox(height: 6),
-          Text(detail),
-          const SizedBox(height: 20),
-        ],
+        LegalDocument(
+          path: AppRoutes.privacyPolicyPath,
+          sections: _sections,
+          anchor: anchor,
+        ),
       ],
     );
   }
 }
 
-const _sections = [
+const _sections = <LegalSection>[
   (
-    'Account and consent',
-    'FitNEP uses your name and email to create your account. We ask for your '
-        'age to determine whether you need permission from a parent or '
-        'guardian. We save the age you enter, the date and version of your policy acceptance, '
-        'and record your guardian consent confirmation if you are under 18.',
+    id: 'account',
+    title: 'Account and consent',
+    points: [
+      'FitNEP uses your name and email to create your account.',
+      'We save the date and version of your policy and terms acceptance.',
+      'Age and goals are collected during later onboarding. If you are under 18, parent or guardian permission must be confirmed during that process.',
+    ],
   ),
   (
-    'Who can see your records',
-    'You can view the records saved to your account. Your current assigned '
-        'dietitian can view only the categories you choose to share. Other '
-        'clients, unassigned dietitians, staff and admins do not have access '
-        'to those private records through the app.',
+    id: 'records',
+    title: 'Who can see your records',
+    points: [PrivacyPolicyText.recordAccess],
   ),
   (
-    'Photos and device activity',
-    'Meal photos, progress photos and device activity are optional. FitNEP '
-        'does not collect them unless you enable the matching choice in '
-        'Privacy preferences.',
+    id: 'photos',
+    title: 'Photos and device activity',
+    points: [
+      'Meal photos, progress photos and device activity are optional.',
+      'FitNEP does not collect them unless you enable the matching choice in Privacy preferences.',
+    ],
   ),
   (
-    'Changing your choices',
-    'You can change your choices in Privacy preferences. Turning off a '
-        'photo or activity setting stops new collection and removes your '
-        'dietitian’s access. Your saved records remain available to you. '
-        'Turning off nutrition sharing keeps your manually entered logs private.',
+    id: 'choices',
+    title: 'Changing your choices',
+    points: [PrivacyPolicyText.withdrawal],
   ),
 ];

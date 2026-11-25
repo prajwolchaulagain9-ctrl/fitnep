@@ -1,3 +1,5 @@
+import '../../support/offline_hosted_session.dart';
+
 import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -15,6 +17,9 @@ import 'package:fitnep/features/notifications/presentation/controllers/notificat
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fitnep/features/authorization/data/authorization_repository.dart';
+
+import '../../support/denied_permission_repository.dart';
 
 void main() {
   final cases = <(String, NotificationType, String)>[
@@ -35,6 +40,7 @@ void main() {
       final repository = _FakeDestinationRepository();
       final container = ProviderContainer(
         overrides: [
+          offlineHostedSessionOverride,
           routeSessionProvider.overrideWith(
             (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
           ),
@@ -71,6 +77,7 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final container = ProviderContainer(
         overrides: [
+          offlineHostedSessionOverride,
           routeSessionProvider.overrideWith(
             (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
           ),
@@ -127,10 +134,27 @@ void main() {
     final auth = _RouteAuth();
     addTearDown(auth.users.close);
     final repository = _FakeDestinationRepository();
+    final sessions = StreamProvider<RouteSession?>(
+      (ref) => auth.users.stream.map(
+        (user) => user == null
+            ? null
+            : (uid: user.uid, role: parseRole((user as _RouteUser).role)),
+      ),
+    );
     final container = ProviderContainer(
       overrides: [
+        offlineHostedSessionOverride,
         firebaseInitializationProvider.overrideWith((ref) async {}),
         firebaseAuthProvider.overrideWithValue(auth),
+        authorizationRepositoryProvider.overrideWithValue(
+          DeniedPermissionRepository(),
+        ),
+        routeSessionProvider.overrideWith((ref) async {
+          final state = ref.watch(sessions);
+          return state.isLoading
+              ? await ref.watch(sessions.future)
+              : state.requireValue;
+        }),
         notificationDestinationRepositoryProvider.overrideWithValue(repository),
       ],
     );
@@ -149,12 +173,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Sign in required'), findsOneWidget);
 
-    auth.users.add(_RouteUser('staff'));
+    auth.users.add(_RouteUser('unassigned'));
     await tester.pumpAndSettle();
     expect(find.text('Access denied'), findsOneWidget);
     expect(repository.lastReferenceId, isNull);
 
-    auth.users.add(_RouteUser(' Dietitian '));
+    auth.users.add(_RouteUser('dietitian'));
     await tester.pumpAndSettle();
     expect(find.text('Loaded record'), findsOneWidget);
 
@@ -240,6 +264,13 @@ class _FakeDestinationRepository implements NotificationDestinationRepository {
 }
 
 class _FakeClientIntakeRepository implements ClientIntakeRepository {
+  @override
+  Future<ClientIntake> updateReview({
+    required String clientId,
+    required ClientIntakeReviewAction action,
+    String? note,
+  }) => getAssignedClientIntake(clientId);
+
   @override
   Future<ClientIntake> getAssignedClientIntake(String clientId) async {
     return ClientIntake(

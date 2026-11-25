@@ -1,4 +1,6 @@
 import { AuthenticatedUser } from "./domain";
+import type { Transaction } from "firebase-admin/firestore";
+import type { HealthReadTarget } from "./audited_health_reads";
 
 export const recordSharingChoices = {
   "nutrition-records": "shareNutritionRecords",
@@ -19,9 +21,12 @@ export class PrivateRecordsError extends Error {
 }
 
 export interface PrivateRecordsStore {
-  list(actor: AuthenticatedUser, clientId: string, category: RecordCategory, after?: string): Promise<PrivateRecord[]>;
+  readResource<T>(actor: AuthenticatedUser, target: HealthReadTarget,
+    load: (transaction: Transaction) => Promise<{ data: T; recordIds?: readonly string[] }>, correlationId?: string): Promise<T>;
+  list(actor: AuthenticatedUser, clientId: string, category: RecordCategory, after?: string, correlationId?: string): Promise<PrivateRecord[]>;
+  read(actor: AuthenticatedUser, clientId: string, category: RecordCategory, id: string, correlationId?: string): Promise<PrivateRecord>;
   collect(actor: AuthenticatedUser, clientId: string, category: RecordCategory, body: unknown): Promise<PrivateRecord>;
-  readPhoto(actor: AuthenticatedUser, clientId: string, category: RecordCategory, id: string): Promise<PrivatePhoto>;
+  readPhoto(actor: AuthenticatedUser, clientId: string, category: RecordCategory, id: string, correlationId?: string): Promise<PrivatePhoto>;
 }
 
 export function parseRecordCategory(value: string | undefined): RecordCategory {
@@ -39,8 +44,8 @@ export function parseRecordId(value: string | undefined): string {
 }
 
 const maxPhotoBytes = 512 * 1024;
-const photoTypes = ["image/jpeg", "image/png", "image/webp"];
-export const photoUploadOptions = { limit: maxPhotoBytes, type: photoTypes };
+export const photoContentTypes = ["image/jpeg", "image/png", "image/webp"];
+export const photoUploadOptions = { limit: maxPhotoBytes, type: photoContentTypes };
 
 export function isPhotoCategory(category: RecordCategory): boolean {
   return category === "meal-photos" || category === "progress-photos";

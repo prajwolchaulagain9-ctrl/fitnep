@@ -14,6 +14,49 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 void main() {
+  test(
+    'admin package changes refresh an already loaded client catalog',
+    () async {
+      final repository = _FakePackageRepository();
+      final container = ProviderContainer(
+        overrides: [packageRepositoryProvider.overrideWithValue(repository)],
+      );
+      addTearDown(container.dispose);
+      container.listen(activePackagesProvider, (_, _) {});
+      expect(await container.read(activePackagesProvider.future), isEmpty);
+      final controller = container.read(
+        packageManagementControllerProvider.notifier,
+      );
+      await controller.createPackage(
+        requestId: 'new-package',
+        name: 'Basic',
+        durationMonths: 1,
+        price: 1000,
+        featureDescription: 'Nutrition support',
+      );
+      expect(
+        (await container.read(activePackagesProvider.future)).single.name,
+        'Basic',
+      );
+      await controller.updatePackage(
+        id: 'new-package',
+        name: 'Basic Plus',
+        durationMonths: 2,
+        price: 1500,
+        featureDescription: 'Updated support',
+      );
+      final updated = (await container.read(activePackagesProvider.future))
+          .single;
+      expect(updated.name, 'Basic Plus');
+      expect(updated.price, 1500);
+      await controller.setPackageActiveStatus(
+        id: 'new-package',
+        isActive: false,
+      );
+      expect(await container.read(activePackagesProvider.future), isEmpty);
+    },
+  );
+
   testWidgets('validates every required package field before saving', (
     tester,
   ) async {
@@ -167,7 +210,8 @@ class _FakePackageRepository implements PackageRepository {
   }
 
   @override
-  Future<List<PackageEntity>> getActivePackages() => getPackages();
+  Future<List<PackageEntity>> getActivePackages() async =>
+      (await getPackages()).where((package) => package.isActive).toList();
 
   @override
   Future<List<PackageHistoryEntity>> getPackageHistory() async {

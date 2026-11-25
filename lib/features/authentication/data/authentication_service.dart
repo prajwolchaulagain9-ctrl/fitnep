@@ -19,11 +19,15 @@ class AuthenticationService {
     required this.auth,
     required this.sessionPreferences,
     this.googleCredentials,
+    this.beforeSignOut,
+    this.afterGoogleSignIn,
   });
 
   final FirebaseAuth auth;
   final SessionPreferenceStore sessionPreferences;
   final GoogleCredentialProvider? googleCredentials;
+  final Future<void> Function()? beforeSignOut;
+  final Future<void> Function()? afterGoogleSignIn;
 
   Stream<User?> authStateChanges() => auth.authStateChanges();
 
@@ -34,6 +38,7 @@ class AuthenticationService {
     // A missing preference belongs to a session created before this policy was
     // introduced. Preserve it; every new login writes an explicit preference.
     if (rememberSession == false) {
+      await beforeSignOut?.call();
       await auth.signOut();
     }
   }
@@ -70,6 +75,7 @@ class AuthenticationService {
 
   Future<void> signOut() async {
     try {
+      await beforeSignOut?.call();
       await auth.signOut();
     } on FirebaseAuthException catch (error) {
       throw AuthenticationFailure(
@@ -127,16 +133,40 @@ class AuthenticationService {
 
   Future<bool> signInWithGoogle({required bool rememberSession}) async {
     try {
+      AuthCredential? credential;
       if (kIsWeb) {
         await sessionPreferences.writeRememberSession(rememberSession);
-        await auth.signInWithPopup(GoogleAuthProvider());
+        credential = (await auth.signInWithPopup(GoogleAuthProvider()))
+            .credential;
       } else {
-        final credential =
+        credential =
             await (googleCredentials ?? NativeGoogleCredentialProvider())
                 .authenticate();
         if (credential == null) return false;
         await sessionPreferences.writeRememberSession(rememberSession);
         await auth.signInWithCredential(credential);
+      }
+      if (afterGoogleSignIn != null) {
+        final user = auth.currentUser;
+        final hasPassword =
+            user?.providerData.any(
+              (provider) => provider.providerId == 'password',
+            ) ==
+            true;
+        final temporary = hasPassword
+            ? ((await user!.getIdTokenResult())
+                      .claims?['googleTemporaryPasswordUntil']
+                  is num)
+            : false;
+        if (user != null && (!hasPassword || temporary)) {
+          try {
+            await afterGoogleSignIn!();
+          } finally {
+            // Installing a Firebase password revokes the previous credentials.
+            // Re-exchange the Google credential so its current session survives.
+            if (credential != null) await auth.signInWithCredential(credential);
+          }
+        }
       }
       return true;
     } on AuthenticationFailure {

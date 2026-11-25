@@ -5,99 +5,49 @@ import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
+import '../../../authorization/presentation/role_home_page.dart';
 import '../../../authentication/presentation/sign_out_to_welcome.dart';
 import '../../../admin/domain/entities/package_entity.dart';
-import '../../../admin/domain/repositories/package_repository.dart';
 import '../../../admin/presentation/controllers/package_management_controller.dart';
 import '../../../admin/presentation/widgets/empty_state_widget.dart';
 import '../../../purchases/presentation/controllers/membership_controller.dart';
 
-// ── Customer-facing active-only packages provider ─────────────────────────────
-
 class _ActivePackageState {
+  const _ActivePackageState({
+    required this.packages,
+    required this.isLoading,
+    this.errorMessage,
+  });
   final List<PackageEntity> packages;
   final bool isLoading;
   final String? errorMessage;
-
-  const _ActivePackageState({
-    this.packages = const [],
-    this.isLoading = false,
-    this.errorMessage,
-  });
-
-  _ActivePackageState copyWith({
-    List<PackageEntity>? packages,
-    bool? isLoading,
-    String? errorMessage,
-    bool clearError = false,
-  }) {
-    return _ActivePackageState(
-      packages: packages ?? this.packages,
-      isLoading: isLoading ?? this.isLoading,
-      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
-    );
-  }
 }
-
-class _ActivePackageController extends Notifier<_ActivePackageState> {
-  late PackageRepository _repository;
-  int _generation = 0;
-
-  @override
-  _ActivePackageState build() {
-    _generation++;
-    _repository = ref.watch(packageRepositoryProvider);
-    Future<void>.microtask(refresh);
-    return const _ActivePackageState(isLoading: true);
-  }
-
-  Future<void> refresh() async {
-    if (!ref.mounted) return;
-    final generation = _generation;
-    state = state.copyWith(isLoading: true, clearError: true);
-    try {
-      final packages = await _repository.getActivePackages();
-      if (!ref.mounted || generation != _generation) return;
-      state = state.copyWith(packages: packages, isLoading: false);
-    } catch (error) {
-      if (!ref.mounted || generation != _generation) return;
-      state = state.copyWith(isLoading: false, errorMessage: error.toString());
-    }
-  }
-}
-
-final _activePackageControllerProvider =
-    NotifierProvider<_ActivePackageController, _ActivePackageState>(
-      _ActivePackageController.new,
-    );
-
-// ── Page ──────────────────────────────────────────────────────────────────────
 
 class PackageSelectionPage extends ConsumerWidget {
   const PackageSelectionPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(_activePackageControllerProvider);
-    final controller = ref.read(_activePackageControllerProvider.notifier);
+    final catalog = ref.watch(activePackagesProvider);
+    final state = _ActivePackageState(
+      packages: catalog.value ?? const [],
+      isLoading: catalog.isLoading,
+      errorMessage: catalog.hasError ? catalog.error.toString() : null,
+    );
     final membership = ref.watch(membershipControllerProvider);
     Future<void> refresh() async {
       await Future.wait([
-        controller.refresh(),
+        ref.refresh(activePackagesProvider.future),
         ref.read(membershipControllerProvider.notifier).refresh(),
       ]);
     }
 
     return Scaffold(
+      drawer: const RoleNavigationDrawer(),
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('Choose a Package'),
+        title: const Text('Choose a package'),
         actions: [
-          IconButton(
-            tooltip: 'Privacy preferences',
-            onPressed: () => context.push(AppRoutes.clientPrivacyPreferences),
-            icon: const Icon(Icons.privacy_tip_outlined),
-          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: state.isLoading || membership.isPurchasing
@@ -162,11 +112,13 @@ class _PackageSelectionBody extends StatelessWidget {
       );
     }
     if (state.packages.isEmpty) {
-      return const EmptyStateWidget(
+      return EmptyStateWidget(
         icon: Icons.inventory_2_outlined,
         title: 'No packages available',
         subtitle:
             'No fitness packages are currently available. Check back later.',
+        actionLabel: 'Continue to dashboard',
+        onAction: () => context.go(AppRoutes.clientHome),
       );
     }
 

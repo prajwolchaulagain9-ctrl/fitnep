@@ -45,4 +45,7 @@ class AppConstants {
 
   static String dietitianClientIntakeEndpoint(String clientId) =>
       '${dietitianAssignedClientEndpoint(clientId)}/intake';
+
+  static String dietitianClientIntakeReviewEndpoint(String clientId) =>
+      '${dietitianClientIntakeEndpoint(clientId)}/review';
 }

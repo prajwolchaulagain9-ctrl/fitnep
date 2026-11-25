@@ -8,7 +8,8 @@ class ClientEntity {
   final String email;
   final String phone;
   final Gender gender;
-  final DateTime dateOfBirth;
+  final DateTime? dateOfBirth;
+  final bool hasFinancialSummary;
   final String address;
   final String packageId;
   final String packageName;
@@ -31,6 +32,7 @@ class ClientEntity {
     required this.phone,
     required this.gender,
     required this.dateOfBirth,
+    this.hasFinancialSummary = true,
     required this.address,
     required this.packageId,
     required this.packageName,
@@ -76,6 +78,7 @@ class ClientEntity {
       phone: phone ?? this.phone,
       gender: gender ?? this.gender,
       dateOfBirth: dateOfBirth ?? this.dateOfBirth,
+      hasFinancialSummary: hasFinancialSummary,
       address: address ?? this.address,
       packageId: packageId ?? this.packageId,
       packageName: packageName ?? this.packageName,
@@ -102,11 +105,13 @@ class ClientEntity {
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 
-  int get age {
+  int? get age {
+    final birth = dateOfBirth;
+    if (birth == null) return null;
     final now = DateTime.now();
-    int age = now.year - dateOfBirth.year;
-    if (now.month < dateOfBirth.month ||
-        (now.month == dateOfBirth.month && now.day < dateOfBirth.day)) {
+    int age = now.year - birth.year;
+    if (now.month < birth.month ||
+        (now.month == birth.month && now.day < birth.day)) {
       age--;
     }
     return age;

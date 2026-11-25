@@ -1,6 +1,5 @@
 export const staffAccountRoles = ["admin", "dietitian", "staff"] as const;
 export type StaffAccountRole = (typeof staffAccountRoles)[number];
-
 export const userRoles = [...staffAccountRoles, "client"] as const;
 export type UserRole = (typeof userRoles)[number];
 
@@ -16,25 +15,22 @@ export interface AuthenticatedUser {
   uid: string;
   role: UserRole;
   displayName?: string;
+  emailVerified?: boolean;
+  roleRevision?: number;
   email?: string;
-  passwordAuthenticatedAt?: number;
-  staffRoleVersion?: string;
   roleVersion?: number;
   authTime?: number;
-  emailVerified?: boolean;
+  staffRoleVersion?: string;
+  passwordAuthenticatedAt?: number;
   mustChangePassword?: boolean;
-  permissions?: {
-    auditRead: boolean;
-    paymentsVerify: boolean;
-  };
+  signInProvider?: string;
+  googleTemporaryPassword?: boolean;
+  permissions?: { auditRead: boolean; paymentsVerify: boolean };
 }
 
 export interface StaffAccount {
-  uid: string;
-  name: string | null;
-  email: string | null;
-  role: StaffAccountRole;
-  isActive: boolean;
+  uid: string; name: string | null; email: string | null;
+  role: StaffAccountRole; isActive: boolean;
 }
 
 export const notificationTypes = [

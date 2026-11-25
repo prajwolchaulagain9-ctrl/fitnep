@@ -1,3 +1,11 @@
+enum ClientIntakeStatus { submitted, reviewed, informationRequested }
+
+enum ClientIntakeReviewAction {
+  reviewed,
+  missingInformation,
+  clarificationRequested,
+}
+
 class ClientIntake {
   const ClientIntake({
     required this.clientId,
@@ -6,6 +14,10 @@ class ClientIntake {
     required this.sections,
     required this.submittedAt,
     required this.updatedAt,
+    this.status = ClientIntakeStatus.submitted,
+    this.reviewAction,
+    this.reviewNote,
+    this.reviewUpdatedAt,
   });
 
   final String clientId;
@@ -14,6 +26,10 @@ class ClientIntake {
   final List<ClientIntakeSection> sections;
   final DateTime? submittedAt;
   final DateTime? updatedAt;
+  final ClientIntakeStatus status;
+  final ClientIntakeReviewAction? reviewAction;
+  final String? reviewNote;
+  final DateTime? reviewUpdatedAt;
 }
 
 class ClientIntakeSection {

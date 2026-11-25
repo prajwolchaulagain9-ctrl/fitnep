@@ -14,7 +14,11 @@ import { FirestorePurchaseRepository } from "../src/firestore_purchase_repositor
 import { createNotificationApp } from "../src/http_app";
 import { FirestorePackageService } from "../src/package_membership_service";
 import { FirestorePlatformSessionService, platformSessionHeader } from "../src/platform_sessions";
-import { FirestorePrivacyAcceptanceStore } from "../src/privacy_policy_acceptance";
+import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
+import { FirestoreAccountService, FirestoreAuditStore } from "../src/account_service";
+import { mountHostedAuth } from "../src/hosted_auth";
+import { fork, ChildProcess } from "node:child_process";
+import { join } from "node:path";
 
 const projectId = "demo-fitnep";
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -30,9 +34,11 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
   let audit: FirestoreAuditWriter;
   let api: ReturnType<typeof createNotificationApp>;
   let now: number;
+  let accounts: FirestoreAccountService;
 
   function createApi(writer: AuditWriter = audit) {
     return createNotificationApp({
+      accounts, audit: new FirestoreAuditStore(firestore),
       authVerifier: new FirebaseAuthVerifier(auth),
       notificationRepository: new FirestoreNotificationRepository(firestore),
       packageService: new FirestorePackageService(firestore),
@@ -52,6 +58,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     auth = getAuth(firebase);
     firestore = getFirestore(firebase);
     audit = new FirestoreAuditWriter(firestore);
+    accounts = new FirestoreAccountService(firestore, auth);
   });
 
   beforeEach(async () => {
@@ -63,12 +70,14 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     for (const [uid, role] of [
       ["day1-client-a", "client"], ["day1-client-b", "client"],
       ["day1-admin", "admin"], ["day1-staff", "staff"],
+      ["day1-admin-b", "admin"],
     ]) {
       await auth.createUser({ uid, email: uid + "@fitnep.test", password, emailVerified: true, displayName: uid });
       await auth.setCustomUserClaims(uid!, { role, role_version: 1 });
+      await accounts.provision(await auth.getUser(uid!));
       if (role === "client") {
         await new FirestorePrivacyAcceptanceStore(firestore).recordForClient(uid!, {
-          age: 21, privacy_policy_accepted: true, privacy_policy_version: "1",
+          age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
         });
       }
     }
@@ -170,8 +179,18 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
   it("current role, permission and readiness changes take effect with captured tokens", async () => {
     const admin = await start("day1-admin");
     await request(api).get("/admin/memberships/pending").set(admin.headers).expect(200);
-    await auth.setCustomUserClaims("day1-admin", { role: "staff", role_version: 2 });
+    const operator = { uid: "day1-admin-b", role: "admin" as const };
+    await accounts.change(operator, "day1-admin", { role: "staff" });
     await request(api).get("/admin/memberships/pending").set(admin.headers).expect(401);
+    const old = await request(api).get("/sessions/me").set(admin.headers).expect(401);
+    assert.equal(old.body.code, "session-authority-changed");
+    const replacement = await request(api).post("/sessions/start").set("Authorization", "Bearer " + admin.token).send({}).expect(200);
+    assert.notEqual(replacement.body.data.session_id, admin.sessionId);
+    assert.equal(replacement.body.data.role, "staff");
+    assert.equal(replacement.body.data.permissions.audit_read, false);
+    const newHeaders = { ...admin.headers, [platformSessionHeader]: replacement.body.data.session_id };
+    await request(api).get("/admin/memberships/pending").set(newHeaders).expect(403);
+    await request(api).get("/sessions/me").set(admin.headers).expect(401);
     // The limited legacy adapter also resolves the current role, not old JWT claims.
     const legacy = createNotificationApp({
       authVerifier: new FirebaseAuthVerifier(auth),
@@ -183,6 +202,9 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       role: "staff", role_version: 1, permissions: { audit_read: true },
     });
     const staff = await start("day1-staff");
+    const staffView = await request(api).get("/sessions/me").set(staff.headers).expect(200);
+    assert.equal(staffView.body.data.permissions.audit_read, false);
+    await accounts.change(operator, "day1-staff", { role: "dietitian" });
     await auth.setCustomUserClaims("day1-staff", { role: "staff", role_version: 1 });
     await request(api).get("/sessions/me").set(staff.headers).expect(401);
     await auth.setCustomUserClaims("day1-staff", { role: "staff", role_version: 2, must_change_password: true });
@@ -192,12 +214,75 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     await request(api).get("/packages").set(client.headers).expect(403);
   });
 
+  it("the same session survives an actual local Node process restart without renewing expiry", async () => {
+    const launch = () => new Promise<{ child: ChildProcess; port: number }>((resolve, reject) => {
+      const child = fork(join(__dirname, "fixtures/session_server.js"), [], {
+        env: { ...process.env, FITNEP_TEST_NOW: String(now) }, stdio: ["ignore", "ignore", "ignore", "ipc"],
+      });
+      child.once("error", reject);
+      child.once("message", message => resolve({ child, port: (message as { port: number }).port }));
+      child.once("exit", code => { if (code !== 0) reject(new Error("Synthetic session server did not start.")); });
+    });
+    const stop = async (child: ChildProcess) => {
+      const exited = new Promise<void>(resolve => child.once("exit", () => resolve()));
+      child.kill("SIGTERM"); await exited;
+    };
+    const token = await signIn();
+    let running = await launch();
+    try {
+      const first = await fetch(`http://127.0.0.1:${running.port}/sessions/start`, {
+        method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: "{}",
+      });
+      assert.equal(first.status, 200);
+      const data = (await first.json() as { data: { session_id: string; expires_at: string } }).data;
+      const pid = running.child.pid;
+      await stop(running.child);
+      running = await launch(); assert.notEqual(running.child.pid, pid);
+      const restored = await fetch(`http://127.0.0.1:${running.port}/sessions/me`, {
+        headers: { Authorization: "Bearer " + token, [platformSessionHeader]: data.session_id },
+      });
+      assert.equal(restored.status, 200);
+      const view = (await restored.json() as { data: { expires_at: string; uid: string } }).data;
+      assert.equal(view.uid, "day1-client-a"); assert.equal(view.expires_at, data.expires_at);
+      assert.equal((await firestore.collection("audit_events").where("action", "==", "session.started").get()).size, 1);
+    } finally { await stop(running.child); }
+  });
+
+  it("hosted OTP and consent use the verified owner and preserve onboarding before session start", async () => {
+    await auth.updateUser("day1-client-a", { emailVerified: false });
+    await firestore.doc("privacy_acceptances/day1-client-a").delete();
+    const verifier = new FirebaseAuthVerifier(accounts);
+    let deliveredCode = "";
+    const hosted = mountHostedAuth(auth, firestore, verifier, {
+      BREVO_API_KEY: "synthetic-test-key", SIGNUP_OTP_HASH_SECRET: "synthetic-test-secret-with-32-characters",
+      BREVO_SENDER_EMAIL: "sender@fitnep.test",
+    }, async (_url, init) => {
+      const body = JSON.parse(init?.body as string);
+      assert.equal(body.to[0].email, "day1-client-a@fitnep.test");
+      deliveredCode = body.textContent.match(/\d{6}/)[0];
+      return new Response("{}", { status: 201 });
+    });
+    hosted.use(api);
+    const token = await signIn(); const header = { Authorization: "Bearer " + token };
+    await request(hosted).post("/sessions/start").set(header).send({}).expect(403);
+    await request(hosted).post("/auth/signup/otp/send").set(header).send({ resend: false }).expect(200);
+    await request(hosted).post("/auth/signup/otp/verify").set(header).send({ code: deliveredCode }).expect(200);
+    assert.equal((await auth.getUser("day1-client-a")).emailVerified, true);
+    const verifiedHeader = { Authorization: "Bearer " + await signIn() };
+    await request(hosted).post("/auth/privacy").set(verifiedHeader).send({ action: "accept", uid: "day1-client-b",
+      age: 21, privacy_policy_version: "1", privacy_policy_accepted: true }).expect(403);
+    assert.equal((await firestore.doc("privacy_acceptances/day1-client-b").get()).get("age_at_acceptance"), 21);
+    await request(hosted).post("/auth/privacy").set(verifiedHeader).send({ action: "accept", uid: "day1-client-a",
+      age: 21, privacy_policy_version: privacyPolicyVersion, privacy_policy_accepted: true }).expect(200);
+    await request(hosted).post("/sessions/start").set(verifiedHeader).send({}).expect(200);
+  });
+
   it("saved privacy acceptance and the trusted login lock are required before starting", async () => {
     const token = await signIn();
     const acceptance = firestore.doc("privacy_acceptances/day1-client-a");
     await acceptance.delete();
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + token).send({}).expect(403);
-    await acceptance.set({ policy_version: "1", accepted_at: Timestamp.now(),
+    await acceptance.set({ policy_version: privacyPolicyVersion, accepted_at: Timestamp.now(),
       guardian_consent_confirmed: true });
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + token).send({}).expect(403);
     await acceptance.update({ guardian_consent_confirmed_at: Timestamp.now() });

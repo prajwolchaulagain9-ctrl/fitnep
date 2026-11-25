@@ -1,0 +1,115 @@
+{
+  "date": "2026-11-23",
+  "owner": "Prajwol Chaulagain",
+  "stories": [
+    "US6",
+    "US73"
+  ],
+  "recorded_at": "2026-11-23T14:14:06.743508+00:00",
+  "base_commit": "9052af0c0d88f58463c5f0bb66ad23908c427af0",
+  "source_state": "verified local worktree; not deployed",
+  "source_sha256": {
+    "firestore.rules": "c0a96921e35c71eddc46db838eb9cc7872169e7a4a3e47f9fd7d4022aa902d10",
+    "functions/package.json": "e6a389f54edd5c378a0698a8985c8019e3385df132bcec80079b671f904dc24b",
+    "functions/src/audited_health_reads.ts": "47fbfb1c0fe1174699d11b1cf28d5d1164cf2cc7274d8afdd1b8aa33209797b4",
+    "functions/src/demo_server.ts": "33f5dee59dbfbdeb6ebda302393ad06c08c44cb917d087f76bde33259b5611c7",
+    "functions/src/firestore_private_records_store.ts": "63dd280b528a8b125e3e477bdcabfee5aaaba3f8a2a0a3804d392d8beb901e8a",
+    "functions/src/http_app.ts": "37b7933c846be0533ce84b4759dc042f93c2bdbf1b4c46c54ad01c6e0c83ed28",
+    "functions/src/index.ts": "5f3649afb831a8c9192ec70ea8ee39966e11ccf3e9b3df9d49274b802b139be3",
+    "functions/src/nutrition_record_access_service.ts": "c37257476c25a59fa8367d1029c52c55de8b61db815d52068243ae848320f11c",
+    "functions/src/platform_sessions.ts": "deb2fec92eea7073ee5c18a991f0895a63fe927fdf1673f791497b082a9abd44",
+    "functions/src/privacy_policy_acceptance.ts": "b0576884924ea78b910bbe1dbe2eb27467933b1d5c1433a1d4b616f157a2f8fd",
+    "functions/src/private_records.ts": "e605e6df72e0480ef657e39746884b952865e0541a26e212bfe5a490d34f4271",
+    "functions/src/server.ts": "fa7b6d65e355fae70e3651faeac02d736c315275557747b5e0512a182201122e",
+    "functions/test/audit_session_emulator.test.ts": "4ef6fee2f839f7734077db431765211c409628218a328745e00127f9843b0784",
+    "functions/test/firebase_emulator_security.test.ts": "7509552810c09b525aff49de8c743e3ee5f5e5dd8d7c5cd0f181c946d0059710",
+    "functions/test/health_privacy.test.ts": "84ac041494971589c1e2c8cb6f0dab93483467bc94e16063a8a47d2ace4b243c",
+    "functions/test/notification_security.test.ts": "0fda712e7ce886a4d954871f114cd60f0c879e3144661cfa15b81cabff174959",
+    "lib/app/routes/app_router.dart": "f2b17655e71729de69cdf113d5aeccd14981da3a96445f923759142309e81668",
+    "lib/core/constants/app_assets.dart": "de387b9db93570a95da6b89ceef91d4ed76e08dd013e145a84e6bd6486081968",
+    "lib/core/constants/privacy_policy.dart": "9ca54e408831c85f8ef0956c0a822f276cc3d2e82e62b1153195bd493a1fc048",
+    "lib/features/authentication/domain/entities/privacy_policy.dart": "1b045c47127e42a144be74bd957871b3591df3cc5b6613c4bcd79272d20c34ee",
+    "lib/features/authentication/domain/entities/privacy_preferences.dart": "93873eb123114b771bdc08429718d494af6c7b2fc3a4bca4f6bdde647205b4fc",
+    "lib/features/authentication/presentation/pages/privacy_policy_page.dart": "e8c2af5ea6c00b6eca77247ebf42feb9e00b6dd564696c70250c08048f3ab880",
+    "lib/features/authentication/presentation/pages/privacy_preferences_page.dart": "44af0079f9dfc47b24c7c0ec36fb6d49166f6ebb8fae3d1b09a0d8925d11fe65",
+    "lib/features/authentication/presentation/widgets/google_sign_in_button.dart": "c1e241d1fa65c2fc9f882e788d508f9887f766923e6d55b2adc4020c3fd33a52",
+    "lib/shared/widgets/fitnep_wordmark.dart": "ddbf6885b68f09b9ecc2b6a7a98aaf3c017cf5cfd69c52b74e0eba44c2e05286",
+    "test/features/authentication/privacy_preferences_page_test.dart": "5c49e4c37d3d4279fd66c8a3aef05d36c228fd38cc22bd7d5e1d14bfa1271cb3"
+  },
+  "policy_version": "2",
+  "checks": {
+    "backend-build": {
+      "started_at": "2026-11-23T12:35:37.815446+00:00",
+      "finished_at": "2026-11-23T12:36:15.535312+00:00",
+      "command": [
+        "npm.cmd",
+        "run",
+        "build"
+      ],
+      "exit_code": 0
+    },
+    "backend-tests": {
+      "started_at": "2026-11-23T12:36:15.537857+00:00",
+      "finished_at": "2026-11-23T12:37:32.768854+00:00",
+      "command": [
+        "npm.cmd",
+        "test"
+      ],
+      "exit_code": 0,
+      "tests": 66,
+      "pass": 66,
+      "fail": 0,
+      "skipped": 0,
+      "suites": 7
+    },
+    "emulator-tests": {
+      "started_at": "2026-11-23T14:05:22.658241+00:00",
+      "finished_at": "2026-11-23T14:10:26.963304+00:00",
+      "command": [
+        "C:\\Users\\User\\AppData\\Roaming\\npm\\firebase.CMD",
+        "emulators:exec",
+        "--config",
+        "firebase.json",
+        "--only",
+        "auth,functions,firestore",
+        "--project",
+        "demo-fitnep",
+        "--non-interactive",
+        "npm --prefix functions run test:emulator"
+      ],
+      "exit_code": 0,
+      "tests": 79,
+      "pass": 79,
+      "fail": 0,
+      "skipped": 0,
+      "suites": 7
+    },
+    "flutter-analyze": {
+      "started_at": "2026-11-23T12:45:05.706718+00:00",
+      "finished_at": "2026-11-23T12:48:52.889867+00:00",
+      "command": [
+        "D:\\flutter\\bin\\flutter.bat",
+        "analyze"
+      ],
+      "exit_code": 0
+    },
+    "flutter-tests": {
+      "started_at": "2026-11-23T13:36:06.858524+00:00",
+      "finished_at": "2026-11-23T13:37:37.531992+00:00",
+      "command": [
+        "D:\\flutter\\bin\\flutter.bat",
+        "test"
+      ],
+      "exit_code": 0,
+      "pass": 141,
+      "fail": 0,
+      "tests": 141
+    }
+  },
+  "result": "local checks passed",
+  "hosted_day2_acceptance": "pending",
+  "native_device_acceptance": "pending",
+  "consumer_acknowledgment": "pending",
+  "fixture_scope": "synthetic demo-fitnep emulators; future-resource unit contracts",
+  "functions_discovery_timeout_seconds": 60
+}

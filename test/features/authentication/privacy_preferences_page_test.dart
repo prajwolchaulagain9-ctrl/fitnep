@@ -24,9 +24,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final option = find.widgetWithText(SwitchListTile, 'Share progress photos');
-    await tester.ensureVisible(option);
+    final toggle = find.descendant(of: option, matching: find.byType(Switch));
+    await tester.ensureVisible(toggle);
+    await tester.pumpAndSettle();
     expect(tester.widget<SwitchListTile>(option).value, isTrue);
-    await tester.tap(option);
+    await tester.tap(toggle.hitTestable());
     await tester.pump();
     await tester.pump();
     expect(option, findsNothing);
@@ -34,7 +36,7 @@ void main() {
 
     repository.reload.complete(repository.saved);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(option);
+    await tester.ensureVisible(toggle);
     expect(tester.widget<SwitchListTile>(option).value, isFalse);
   });
 }

@@ -1,3 +1,5 @@
+import { getAuth } from "firebase-admin/auth";
+import { FirestoreAccountService } from "./account_service";
 import { getFirestore } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import {
@@ -13,7 +15,9 @@ export const registrationPrivacy = onCall({ region: "us-central1" }, async (requ
   const data = request.data;
   // A session change while a form is open must never record consent for the next user.
   if (data?.uid !== token.uid) throw new HttpsError("failed-precondition", "Account changed.");
-  if (!requiresClientPrivacyAcceptance(token.role)) return { accepted: true };
+  const account = await new FirestoreAccountService(getFirestore(), getAuth()).current(token.uid);
+  if (account.account_status !== "active") throw new HttpsError("permission-denied", "Account is inactive.");
+  if (!requiresClientPrivacyAcceptance(account.role)) return { accepted: true };
   if (token.email_verified !== true) {
     throw new HttpsError("failed-precondition", "Verify your email before recording privacy consent.");
   }

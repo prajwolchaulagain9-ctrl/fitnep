@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../../shared/widgets/legal_links.dart';
+import '../../../../shared/widgets/password_form_field.dart';
 import '../../data/password_recovery_service.dart';
 import '../controllers/authentication_controller.dart';
 import '../widgets/google_sign_in_button.dart';
@@ -20,7 +22,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  bool _passwordHidden = true;
   bool _rememberMe = false;
 
   @override
@@ -67,7 +68,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     return RecoveryPage(
       title: 'Welcome back',
-      description: 'Your Health Is Your Biggest Asset. Personalized nutrition and fitness support, built around you.',
+      description: 'Log in to your FitNEP account.',
       child: AutofillGroup(
         child: Form(
           key: _formKey,
@@ -76,15 +77,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             children: [
               if (action.errorMessage != null)
                 RecoveryMessage(action.errorMessage!),
-              Text(
-                'YOUR WELLNESS, ELEVATED.',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 1.4,
-                ),
-              ),
-              const SizedBox(height: 16),
               TextFormField(
                 controller: _emailController,
                 readOnly: busy,
@@ -103,39 +95,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                 validator: PasswordRecoveryService.emailError,
                 onChanged: (_) => _clearError(),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
+              const SizedBox(height: 12),
+              PasswordFormField(
                 controller: _passwordController,
-                readOnly: busy,
-                obscureText: _passwordHidden,
-                autocorrect: false,
-                enableSuggestions: false,
-                textInputAction: TextInputAction.done,
+                label: 'Password',
+                enabled: !busy,
                 autofillHints: const [AutofillHints.password],
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  suffixIcon: IconButton(
-                    tooltip: _passwordHidden
-                        ? 'Show password'
-                        : 'Hide password',
-                    onPressed: busy
-                        ? null
-                        : () => setState(
-                            () => _passwordHidden = !_passwordHidden,
-                          ),
-                    icon: Icon(
-                      _passwordHidden
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
-                  ),
-                ),
                 validator: (value) => value == null || value.isEmpty
                     ? 'Enter your password.'
                     : null,
                 onChanged: (_) => _clearError(),
-                onFieldSubmitted: (_) => _submit(),
+                onSubmitted: (_) => _submit(),
               ),
               const SizedBox(height: 8),
               Wrap(
@@ -168,7 +138,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               FilledButton(
                 onPressed: busy ? null : _submit,
                 child: Text(
@@ -202,16 +172,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   ),
                 ],
               ),
-              Center(
-                child: TextButton.icon(
-                  key: const Key('login_privacy_policy_button'),
-                  onPressed: busy
-                      ? null
-                      : () => context.pushNamed(AppRoutes.privacyPolicy),
-                  icon: const Icon(Icons.privacy_tip_outlined, size: 20),
-                  label: const Text('Privacy Policy'),
-                ),
-              ),
+              const LegalLinks(),
             ],
           ),
         ),

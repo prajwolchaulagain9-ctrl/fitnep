@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/core/network/api_client.dart';
+import 'package:fitnep/core/network/backend_resolver.dart';
 import 'package:fitnep/core/storage/token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -40,6 +41,60 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
+  test(
+    'read requests recover on Render after a local connection failure',
+    () async {
+      final auth = _Auth()..user = _User('test-token');
+      final resolver = BackendResolver(
+        candidates: ['http://local.test/', 'https://render.test/'],
+        probe: (_) async => true,
+      );
+      final adapter = _RoutingAdapter();
+      final dio = Dio(BaseOptions(baseUrl: 'https://render.test/'))
+        ..httpClientAdapter = adapter;
+      final client = ApiClient(
+        tokenStorage: TokenStorage(auth: auth),
+        dio: dio,
+        resolveBackend: resolver.resolve,
+        backendUnavailable: resolver.unavailable,
+      );
+      addTearDown(() {
+        dio.close(force: true);
+        resolver.close();
+      });
+      await client.dio.get<void>('notifications');
+      expect(adapter.hosts, ['local.test', 'render.test']);
+    },
+  );
+
+  test('a failed write is not replayed, and authorization denials do not switch hosts', () async {
+    final auth = _Auth()..user = _User('test-token');
+    for (final status in [null, 403]) {
+      final resolver = BackendResolver(
+        candidates: ['http://local.test/', 'https://render.test/'],
+        probe: (_) async => true,
+      );
+      final adapter = _RoutingAdapter(localStatus: status);
+      final dio = Dio(BaseOptions(baseUrl: 'https://render.test/'))
+        ..httpClientAdapter = adapter;
+      final client = ApiClient(
+        tokenStorage: TokenStorage(auth: auth),
+        dio: dio,
+        resolveBackend: resolver.resolve,
+        backendUnavailable: resolver.unavailable,
+      );
+      await expectLater(
+        status == null
+            ? client.dio.post<void>('purchases', data: {'package_id': 'test'})
+            : client.dio.get<void>('notifications'),
+        throwsA(isA<DioException>()),
+      );
+      expect(adapter.hosts, ['local.test']);
+      dio.close(force: true);
+      resolver.close();
+    }
+  });
+
   test(
     'API reads the shared current Firebase session for every request',
     () async {
@@ -92,4 +147,31 @@ void main() {
       expect(adapter.headers, isEmpty);
     },
   );
+}
+
+class _RoutingAdapter implements HttpClientAdapter {
+  _RoutingAdapter({this.localStatus});
+  final int? localStatus;
+  final hosts = <String>[];
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    hosts.add(options.uri.host);
+    if (options.uri.host == 'local.test') {
+      if (localStatus != null) {
+        return ResponseBody.fromString('{}', localStatus!);
+      }
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+      );
+    }
+    return ResponseBody.fromString('', 204);
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

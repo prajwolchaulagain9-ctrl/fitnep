@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/firebase_providers.dart';
 import '../../../core/config/app_config.dart';
 import 'authentication_service.dart';
+import 'hosted_auth_client.dart';
 
 final emailVerificationServiceProvider = Provider<EmailVerificationService>(
   (ref) => EmailVerificationService(
@@ -13,10 +14,14 @@ final emailVerificationServiceProvider = Provider<EmailVerificationService>(
     functions: ref.read(firebaseFunctionsProvider),
     sendUrl: AppConfig.signupOtpSendUrl,
     verifyUrl: AppConfig.signupOtpVerifyUrl,
+    hostedRequest: AppConfig.hostedSessionsEnabled
+        ? ref.read(hostedAuthRequestProvider)
+        : null,
     useLinkByDefault:
         AppConfig.useFirebaseEmulators ||
         !AppConfig.signupEmailOtpEnabled ||
-        (AppConfig.signupOtpSendUrl.isEmpty &&
+        (!AppConfig.hostedSessionsEnabled &&
+            AppConfig.signupOtpSendUrl.isEmpty &&
             AppConfig.signupOtpVerifyUrl.isEmpty &&
             !(kDebugMode && AppConfig.functionsEmulatorHost.isNotEmpty)),
   ),
@@ -49,12 +54,14 @@ class EmailVerificationService {
     this.sendUrl = '',
     this.verifyUrl = '',
     this.useLinkByDefault = false,
+    this.hostedRequest,
   });
   final FirebaseAuth auth;
   final FirebaseFunctions functions;
   final String sendUrl;
   final String verifyUrl;
   final bool useLinkByDefault;
+  final HostedAuthRequest? hostedRequest;
 
   HttpsCallable _callable(String name, String configuredUrl) {
     if (sendUrl.isEmpty != verifyUrl.isEmpty) {
@@ -84,11 +91,12 @@ class EmailVerificationService {
     final user = _signedInUser();
     try {
       // The server derives UID and email from the authenticated session.
-      final result = await _callable(
-        'sendSignupEmailCode',
-        sendUrl,
-      ).call({'resend': resend});
-      final data = result.data;
+      final Object? data = hostedRequest != null
+          ? await hostedRequest!('auth/signup/otp/send', {'resend': resend})
+          : (await _callable(
+              'sendSignupEmailCode',
+              sendUrl,
+            ).call({'resend': resend})).data;
       final seconds = data is Map ? data['resendAfterSeconds'] : null;
       if (seconds is! num || seconds < 0 || seconds > 3600) {
         throw const AuthenticationFailure(
@@ -104,7 +112,13 @@ class EmailVerificationService {
     } on AuthenticationFailure {
       rethrow;
     } on FirebaseFunctionsException catch (error) {
-      if (error.code == 'not-found') return sendVerificationLink();
+      if (const {
+        'not-found',
+        'unimplemented',
+        'failed-precondition',
+      }.contains(error.code)) {
+        return sendVerificationLink();
+      }
       throw _failure(error);
     } catch (_) {
       throw const AuthenticationFailure(
@@ -144,11 +158,15 @@ class EmailVerificationService {
     }
     final user = _signedInUser();
     try {
-      final result = await _callable(
-        'verifySignupEmailCode',
-        verifyUrl,
-      ).call({'code': code.trim()});
-      if (result.data is! Map || result.data['verified'] != true) {
+      final Object? data = hostedRequest != null
+          ? await hostedRequest!('auth/signup/otp/verify', {
+              'code': code.trim(),
+            })
+          : (await _callable(
+              'verifySignupEmailCode',
+              verifyUrl,
+            ).call({'code': code.trim()})).data;
+      if (data is! Map || data['verified'] != true) {
         throw const AuthenticationFailure(
           'We couldn\u2019t confirm email verification. Please try again.',
         );

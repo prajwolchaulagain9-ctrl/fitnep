@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../shared/widgets/password_form_field.dart';
+import '../../../../app/routes/app_router.dart';
+import '../../../../app/routes/app_routes.dart';
 import '../../../../core/network/api_client.dart';
+import '../../../../core/network/backend_resolver.dart';
 import '../../../../core/services/firebase_providers.dart';
 import '../../../../core/storage/token_storage.dart';
 import '../controllers/authentication_controller.dart';
@@ -20,6 +23,8 @@ final changeTemporaryPasswordProvider = Provider<Future<void> Function(String)>(
       if (user == null) throw StateError('Sign in to change your password.');
       final api = ApiClient(
         tokenStorage: TokenStorage(auth: auth, expectedUid: user.uid),
+        resolveBackend: ref.read(backendResolverProvider).resolve,
+        backendUnavailable: ref.read(backendResolverProvider).unavailable,
       );
       try {
         await api.dio.post<void>(
@@ -79,6 +84,7 @@ class _ChangeStaffPasswordPageState
             'Choose a different password that meets the password requirements.',
           401 ||
           403 => 'Sign out and sign in again to finish changing your password.',
+          409 => 'Your temporary password expired. Continue with Google to choose a new password.',
           _ => 'Could not confirm the password change. Try again or sign in again.',
         },
       );
@@ -139,6 +145,25 @@ class _ChangeStaffPasswordPageState
                 child: Text(_saving ? 'Saving…' : 'Change password'),
               ),
             ],
+            if (_error?.contains('expired') == true)
+              TextButton(
+                onPressed: _saving || action.isLoading
+                    ? null
+                    : () async {
+                        final router = ref.read(appRouterProvider);
+                        final auth = ref.read(firebaseAuthProvider);
+                        final expectedUid = auth.currentUser?.uid;
+                        final success = await ref
+                            .read(authenticationControllerProvider.notifier)
+                            .signInWithGoogle(rememberSession: true);
+                        if (success && auth.currentUser?.uid == expectedUid) {
+                          router.go(
+                            '${AppRoutes.changeStaffPasswordPath}?recover=google',
+                          );
+                        }
+                      },
+                child: const Text('Continue with Google'),
+              ),
             TextButton(
               onPressed: _saving || action.isLoading
                   ? null

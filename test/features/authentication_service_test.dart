@@ -11,6 +11,8 @@ class _User extends Fake implements User {
   String? name;
   @override
   String get uid => 'client-1';
+  @override
+  List<UserInfo> get providerData => [];
 
   @override
   Future<void> updateDisplayName(String? displayName) async {
@@ -114,6 +116,23 @@ void main() {
 
   tearDown(() async {
     await auth.changes.close();
+  });
+
+  test('email-password setup restores the Google session after credential installation', () async {
+    var emails = 0;
+    final service = AuthenticationService(
+      auth: auth,
+      sessionPreferences: preferences,
+      googleCredentials: _Google(),
+      afterGoogleSignIn: () async {
+        emails++;
+        auth.user = null;
+      },
+    );
+    expect(await service.signInWithGoogle(rememberSession: true), isTrue);
+    expect(emails, 1);
+    expect(auth.googleSignIns, 2);
+    expect(auth.currentUser?.uid, 'client-1');
   });
 
   test(

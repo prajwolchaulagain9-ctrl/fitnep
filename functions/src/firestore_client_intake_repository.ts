@@ -1,11 +1,23 @@
-import { DocumentData, Firestore, Timestamp } from "firebase-admin/firestore";
+import {
+  DocumentData,
+  DocumentSnapshot,
+  FieldValue,
+  Firestore,
+  Timestamp,
+} from "firebase-admin/firestore";
+
+import { AuditWriter, FirestoreAuditWriter } from "./audit";
 
 import {
   ClientIntakeError,
   ClientIntakeField,
   ClientIntakeRecord,
   ClientIntakeRepository,
+  ClientIntakeReviewAction,
+  ClientIntakeReviewContext,
+  ClientIntakeReviewUpdate,
   ClientIntakeSection,
+  ClientIntakeStatus,
 } from "./client_intake_service";
 
 const reservedKeys = new Set([
@@ -22,11 +34,19 @@ const reservedKeys = new Set([
   "submitted_at",
   "updated_at",
   "status",
+  "review_action",
+  "review_note",
+  "review_updated_at",
+  "reviewed_by_id",
   "version",
 ]);
 
 export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
-  constructor(private readonly firestore: Firestore) {}
+  constructor(
+    private readonly firestore: Firestore,
+    private readonly audit: Pick<AuditWriter, "appendInTransaction"> =
+      new FirestoreAuditWriter(firestore),
+  ) {}
 
   getForAssignedDietitian(
     clientId: string,
@@ -43,18 +63,79 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         transaction.get(assignmentReference),
         transaction.get(intakeReference),
       ]);
-      if (!assignment.exists || assignment.get("active") !== true ||
-          assignment.get("dietitian_id") !== dietitianId) {
-        throw new ClientIntakeError(
-          403,
-          "This client is not currently assigned to you.",
-        );
-      }
+      requireAssignment(assignment, dietitianId);
       if (!intake.exists) {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
       return parseIntake(clientId, intake.data());
     });
+  }
+
+  updateReviewForAssignedDietitian(
+    clientId: string,
+    dietitianId: string,
+    review: ClientIntakeReviewUpdate,
+    context: ClientIntakeReviewContext,
+  ): Promise<ClientIntakeRecord> {
+    return this.firestore.runTransaction(async transaction => {
+      const assignmentReference = this.firestore
+        .collection("client_assignments")
+        .doc(clientId);
+      const intakeReference = this.firestore
+        .collection("client_intakes")
+        .doc(clientId);
+      const [assignment, intake] = await Promise.all([
+        transaction.get(assignmentReference),
+        transaction.get(intakeReference),
+      ]);
+      requireAssignment(assignment, dietitianId);
+      if (!intake.exists) {
+        throw new ClientIntakeError(404, "Client intake form not found.");
+      }
+
+      const updatedAt = Timestamp.now();
+      transaction.update(intakeReference, {
+        status: review.status,
+        review_action: review.action,
+        review_note: review.note ?? FieldValue.delete(),
+        review_updated_at: updatedAt,
+        reviewed_by_id: dietitianId,
+      });
+      this.audit.appendInTransaction(transaction, {
+        actor: context.actor,
+        action: review.action === "reviewed"
+          ? "intake.reviewed"
+          : "intake.information_requested",
+        targetType: "intake",
+        targetId: clientId,
+        clientId,
+        dietitianId,
+        status: review.status,
+        outcome: "succeeded",
+        correlationId: context.correlationId,
+      });
+      return parseIntake(clientId, {
+        ...intake.data(),
+        status: review.status,
+        review_action: review.action,
+        review_note: review.note,
+        review_updated_at: updatedAt,
+        reviewed_by_id: dietitianId,
+      });
+    });
+  }
+}
+
+function requireAssignment(
+  assignment: DocumentSnapshot,
+  dietitianId: string,
+): void {
+  if (!assignment.exists || assignment.get("active") !== true ||
+      assignment.get("dietitian_id") !== dietitianId) {
+    throw new ClientIntakeError(
+      403,
+      "This client is not currently assigned to you.",
+    );
   }
 }
 
@@ -92,7 +173,40 @@ function parseIntake(
     sections,
     submittedAt: dateValue(data.submitted_at),
     updatedAt: dateValue(data.updated_at),
+    status: intakeStatus(data.status, data.review_action),
+    review: {
+      action: reviewAction(data.review_action),
+      note: optionalText(data.review_note),
+      updatedAt: dateValue(data.review_updated_at),
+    },
   };
+}
+
+function intakeStatus(
+  value: unknown,
+  actionValue: unknown,
+): ClientIntakeStatus {
+  if (value === "reviewed" || value === "information_requested") return value;
+  const action = reviewAction(actionValue);
+  if (action === "reviewed") return "reviewed";
+  if (action === "missing_information" ||
+      action === "clarification_requested") {
+    return "information_requested";
+  }
+  return "submitted";
+}
+
+function reviewAction(value: unknown): ClientIntakeReviewAction | null {
+  return value === "reviewed" || value === "missing_information" ||
+      value === "clarification_requested"
+    ? value
+    : null;
+}
+
+function optionalText(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") throw invalidIntake();
+  return value.trim() || null;
 }
 
 function addSection(
