@@ -13,6 +13,7 @@ abstract class ClientIntakeRemoteDatasource {
     required ClientIntakeReviewAction action,
     String? note,
     int? expectedVersion,
+    int? expectedReviewRevision,
   });
 }
 
@@ -50,6 +51,7 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
     required ClientIntakeReviewAction action,
     String? note,
     int? expectedVersion,
+    int? expectedReviewRevision,
   }) async {
     if (_apiClient.dio.options.baseUrl.trim().isEmpty) {
       throw const ClientIntakeException(
@@ -61,6 +63,7 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
       final data = <String, Object?>{
         'action': _reviewActionName(action),
         'expected_version': ?expectedVersion,
+        'expected_review_revision': ?expectedReviewRevision,
       };
       if (note case final reviewNote?) data['note'] = reviewNote;
       final response = await _apiClient.dio.patch<Object?>(
@@ -106,7 +109,7 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
       ),
       403 => const ClientIntakeException(
         ClientIntakeFailure.forbidden,
-        'This client is not currently assigned to you.',
+        'You do not have access to this intake.',
       ),
       404 => const ClientIntakeException(
         ClientIntakeFailure.notFound,
@@ -115,6 +118,10 @@ class ClientIntakeRemoteDatasourceImpl implements ClientIntakeRemoteDatasource {
       400 => ClientIntakeException(
         ClientIntakeFailure.invalidRequest,
         _apiError(error) ?? 'The intake review request is invalid.',
+      ),
+      409 => ClientIntakeException(
+        ClientIntakeFailure.conflict,
+        _apiError(error) ?? 'This intake changed. Review the latest version.',
       ),
       _ when _isNetworkFailure(error) => const ClientIntakeException(
         ClientIntakeFailure.network,
@@ -147,6 +154,7 @@ enum ClientIntakeFailure {
   forbidden,
   notFound,
   invalidRequest,
+  conflict,
   network,
   invalidData,
   server,

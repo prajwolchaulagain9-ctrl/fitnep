@@ -7,6 +7,7 @@ import { Account, AccountInputError, FirestoreAccountService, FirestoreAuditStor
   getCurrentAssignment, sessionPayload } from "./account_service";
 import { canReadWorkflowRecord, permissions, PermissionDeniedError, requirePermission } from "./authorization_policy";
 import { endpointAccess } from "./endpoint_access";
+import { listAssignedDietitianClients } from "./assigned_clients";
 import { listAuditEvents } from "./audit_reader";
 
 export class BackendUnavailableError extends Error {}
@@ -98,7 +99,12 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
     response.set("Cache-Control", "no-store").json({ data: events });
   }));
   router.get("/clients/assigned", wrap(async (request, response) => {
-    response.json({ data: await store().assigned(actor(response), cursor(request)) });
+    const user = actor(response);
+    const after = cursor(request);
+    const data = user.role === "dietitian"
+      ? await listAssignedDietitianClients(store().firestore, user, request.query, after, response.locals.correlationId)
+      : await store().assigned(user, after);
+    response.json({ data });
   }));
   router.get("/clients/:id/profile", wrap(async (request, response) => {
     const user = actor(response); const id = identifier(request.params.id);

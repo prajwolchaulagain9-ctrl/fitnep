@@ -153,6 +153,10 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
 
   it("polling, repeated start and API reconstruction do not reset human inactivity", async () => {
     const session = await start();
+    const account = firestore.doc("users/day1-client-a");
+    const projectedActivity = async () => ((await account.get()).get("last_activity_at") as Timestamp).toMillis();
+    const startedAt = now;
+    assert.equal(await projectedActivity(), startedAt);
     const first = await request(api).get("/sessions/me").set(session.headers).expect(200);
     const replay = await request(api).post("/sessions/start").set("Authorization", "Bearer " + session.token).send({}).expect(200);
     assert(replay.body.data.session_id === session.sessionId);
@@ -164,12 +168,16 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     api = createApi();
     const restored = await request(api).get("/sessions/me").set(session.headers).expect(200);
     assert.equal(restored.body.data.expires_at, first.body.data.expires_at);
+    assert.equal(await projectedActivity(), startedAt);
     const renewed = await request(api).post("/sessions/activity").set(session.headers).send({}).expect(200);
     assert(Date.parse(renewed.body.data.expires_at) > Date.parse(first.body.data.expires_at));
+    assert.equal(await projectedActivity(), now);
+    const renewedAt = now;
     now = Date.parse(renewed.body.data.expires_at);
     await request(api).get("/sessions/me").set(session.headers).expect(401);
     await request(api).post("/sessions/activity").set(session.headers).send({}).expect(401);
     await request(api).post("/sessions/start").set("Authorization", "Bearer " + session.token).send({}).expect(401);
+    assert.equal(await projectedActivity(), renewedAt);
   });
 
   it("another UID cannot reuse a session and forbidden requests audit the real actor", async () => {

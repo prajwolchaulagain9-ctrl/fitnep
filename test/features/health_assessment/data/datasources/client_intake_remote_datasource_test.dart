@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:fitnep/core/network/api_client.dart';
 import 'package:fitnep/core/storage/token_storage.dart';
 import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/repositories/client_intake_repository_impl.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -85,7 +86,7 @@ void main() {
   );
 
   test(
-    'saves the selected review action and parses the updated status',
+    'sends the displayed version with a review and parses the updated status',
     () async {
       late RequestOptions captured;
       final dio = Dio(BaseOptions(baseUrl: 'https://api.fitnep.test/'));
@@ -122,10 +123,12 @@ void main() {
         ApiClient(tokenStorage: const TokenStorage(), dio: dio),
       );
 
-      final intake = await datasource.updateReview(
+      final intake = await ClientIntakeRepositoryImpl(datasource).updateReview(
         clientId: 'client-1',
         action: ClientIntakeReviewAction.missingInformation,
         note: 'Please provide your medication dosage.',
+        expectedVersion: 2,
+        expectedReviewRevision: 0,
       );
 
       expect(captured.method, 'PATCH');
@@ -136,6 +139,8 @@ void main() {
       expect(captured.data, {
         'action': 'missing_information',
         'note': 'Please provide your medication dosage.',
+        'expected_version': 2,
+        'expected_review_revision': 0,
       });
       expect(intake.status, ClientIntakeStatus.informationRequested);
       expect(intake.reviewAction, ClientIntakeReviewAction.missingInformation);

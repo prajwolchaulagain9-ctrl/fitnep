@@ -58,6 +58,8 @@ class _Repository extends AuthorizationRepository {
   final denied = <String>[];
   final updates = <Map<String, dynamic>>[];
   final requestedPaths = <String>[];
+  final assignedQueries = <Map<String, dynamic>>[];
+  bool includeAssignedClients = false;
   final auditQueries = <Map<String, dynamic>>[];
   bool denyRecords = false;
   int recordRequests = 0;
@@ -142,7 +144,40 @@ class _Repository extends AuthorizationRepository {
       updates.add(data!);
       return {'account': _data(FitNepRole.client)};
     }
-    if (path == 'clients/assigned') return {'clients': [], 'next_cursor': null};
+    if (path == 'clients/assigned') {
+      final filters = query ?? {};
+      assignedQueries.add(filters);
+      if (includeAssignedClients && filters['search'] != 'No match') {
+        const asha = {
+          'id': 'asha',
+          'full_name': 'Asha Sharma',
+          'email': 'asha@fitnep.test',
+          'package_status': 'active',
+          'plan_status': 'no_plan',
+          'intake_status': 'submitted',
+          'last_activity_at': '2026-11-24T14:00:00Z',
+        };
+        const hari = {
+          'id': 'hari',
+          'full_name': 'Hari Sharma',
+          'email': 'hari@fitnep.test',
+          'package_status': 'pending',
+          'plan_status': 'published',
+        };
+        if (filters['after'] == 'asha' ||
+            filters['plan_status'] == 'published') {
+          return {
+            'clients': [hari],
+            'next_cursor': null,
+          };
+        }
+        return {
+          'clients': [asha],
+          'next_cursor': 'asha',
+        };
+      }
+      return {'clients': [], 'next_cursor': null};
+    }
     if (path.contains('/records/')) {
       recordRequests++;
       if (denyRecords) {
@@ -315,6 +350,52 @@ void main() {
       },
     );
   }
+  testWidgets('assigned clients use server filters and load subsequent pages', (
+    tester,
+  ) async {
+    final repository = _Repository(FitNepRole.dietitian)
+      ..includeAssignedClients = true;
+    await _open(tester, repository, AppRoutes.assignedClients);
+    expect(find.text('Asha Sharma'), findsOneWidget);
+    expect(find.text('Package: Active'), findsOneWidget);
+    expect(find.text('Plan: No plan yet'), findsOneWidget);
+    expect(find.text('Intake: Submitted'), findsOneWidget);
+    expect(find.textContaining('Last activity:'), findsOneWidget);
+    await tester.tap(find.text('Load more'));
+    await tester.pumpAndSettle();
+    expect(repository.assignedQueries.last['after'], 'asha');
+    expect(find.text('Hari Sharma'), findsOneWidget);
+    expect(find.text('Load more'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), ' Sharma ');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(repository.assignedQueries.last['search'], 'Sharma');
+    expect(repository.assignedQueries.last.containsKey('after'), false);
+    final filter = find.byType(DropdownButtonFormField<String>);
+    await tester.tap(filter);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Published').last);
+    await tester.pumpAndSettle();
+    expect(repository.assignedQueries.last, {
+      'limit': '20',
+      'search': 'Sharma',
+      'plan_status': 'published',
+    });
+    expect(find.text('Plan: Published'), findsOneWidget);
+    expect(find.text('Asha Sharma'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), 'No match');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('No assigned clients match your search and filters.'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'an admin client-list entry point remains guarded for every non-admin role',
     (tester) async {

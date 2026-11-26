@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
+import { DocumentSnapshot, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 
 import { AuditWriter } from "./audit";
 import { AuthenticationError } from "./auth";
@@ -43,7 +43,7 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
     const context = this.context(actor);
     const reference = this.firestore.collection("platform_sessions").doc(randomBytes(32).toString("base64url"));
     return this.firestore.runTransaction(async transaction => {
-      await this.assertCurrentReadiness(transaction, actor);
+      const account = await this.assertCurrentReadiness(transaction, actor);
       const previous = (await transaction.get(context)).data();
       if (previous?.closed === true) throw endedSession();
       if (previous?.session_id !== undefined) {
@@ -76,6 +76,7 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
         payments_verify: actor.permissions?.paymentsVerify === true,
       });
       transaction.create(context, { session_id: reference.id, closed: false });
+      this.recordClientActivity(transaction, account, createdAt);
       this.audit.appendInTransaction(transaction, {
         actor, action: "session.started", targetType: "account", targetId: actor.uid,
         outcome: "succeeded", correlationId,
@@ -104,9 +105,11 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
         return this.view(actor, session.expires_at);
       }
       const expiresAt = Timestamp.fromMillis(now + this.idleTimeoutSeconds * 1000);
+      const activityAt = Timestamp.fromMillis(now);
       transaction.update(this.session(sessionId), {
-        last_activity_at: Timestamp.fromMillis(now), expires_at: expiresAt,
+        last_activity_at: activityAt, expires_at: expiresAt,
       });
+      this.recordClientActivity(transaction, session.account, activityAt);
       return this.view(actor, expiresAt);
     });
   }
@@ -129,7 +132,7 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
   }
 
   private async read(transaction: Transaction, actor: AuthenticatedUser, sessionId: string | undefined) {
-    await this.assertCurrentReadiness(transaction, actor);
+    const account = await this.assertCurrentReadiness(transaction, actor);
     const data = (await transaction.get(this.session(sessionId))).data();
     if (data?.uid !== actor.uid || data.auth_time !== actor.authTime ||
       data.revoked_at !== null || !(data.expires_at instanceof Timestamp) ||
@@ -139,12 +142,13 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
     if (!this.matchesAuthority(actor, data)) {
       throw new AuthenticationError("Your account permissions changed.", 401, undefined, "session-authority-changed");
     }
-    return { expires_at: data.expires_at, last_activity_at: data.last_activity_at };
+    return { account, expires_at: data.expires_at, last_activity_at: data.last_activity_at };
   }
 
   private async assertCurrentReadiness(transaction: Transaction, actor: AuthenticatedUser) {
     assertReady(actor);
-    const current = accountFrom(actor.uid, (await transaction.get(this.firestore.collection("users").doc(actor.uid))).data());
+    const account = await transaction.get(this.firestore.collection("users").doc(actor.uid));
+    const current = accountFrom(actor.uid, account.data());
     if (current.account_status !== "active" || current.role !== actor.role || current.role_revision !== actor.roleRevision) {
       throw new AuthenticationError("Your account permissions changed.", 401, undefined, "session-authority-changed");
     }
@@ -157,11 +161,20 @@ export class FirestorePlatformSessionService implements PlatformSessionService {
         throw new AuthenticationError("This account is temporarily locked. Try again later.", 403);
       }
     }
-    if (actor.role !== "client") return;
-    const acceptance = (await transaction.get(this.firestore.collection("privacy_acceptances").doc(actor.uid))).data();
-    if (!hasValidPrivacyAcceptance(acceptance)) {
-      throw new AuthenticationError("Complete the current privacy onboarding before continuing.", 403);
+    if (actor.role === "client") {
+      const acceptance = (await transaction.get(this.firestore.collection("privacy_acceptances").doc(actor.uid))).data();
+      if (!hasValidPrivacyAcceptance(acceptance)) {
+        throw new AuthenticationError("Complete the current privacy onboarding before continuing.", 403);
+      }
     }
+    return account;
+  }
+
+  private recordClientActivity(transaction: Transaction, account: DocumentSnapshot, activityAt: Timestamp) {
+    if (account.get("role") !== "client") return;
+    const previous = account.get("last_activity_at");
+    if (previous instanceof Timestamp && previous.toMillis() >= activityAt.toMillis()) return;
+    transaction.update(account.ref, { last_activity_at: activityAt });
   }
 
   private session(id: string | undefined) {

@@ -1,3 +1,10 @@
+import {
+  IntakeAnswerError,
+  IntakeAnswers,
+  isObject,
+  parseIntakeAnswers,
+  validateIntakeMeasurements,
+} from "./client_intake_answers";
 import { AuthenticatedUser } from "./domain";
 
 export const clientIntakeReviewActions = [
@@ -11,6 +18,15 @@ export type ClientIntakeReviewAction =
 export type ClientIntakeStatus =
   "submitted" | "reviewed" | "information_requested";
 
+export function submittedIntakeStatus(status: unknown, reviewAction: unknown): ClientIntakeStatus {
+  if (status === "reviewed" || status === "information_requested") return status;
+  if (reviewAction === "reviewed") return "reviewed";
+  if (reviewAction === "missing_information" || reviewAction === "clarification_requested") {
+    return "information_requested";
+  }
+  return "submitted";
+}
+
 export interface ClientIntakeReview {
   action: ClientIntakeReviewAction | null;
   note: string | null;
@@ -19,6 +35,7 @@ export interface ClientIntakeReview {
 
 export interface ClientIntakeReviewUpdate {
   expectedVersion?: number;
+  expectedReviewRevision?: number;
   action: ClientIntakeReviewAction;
   note: string | null;
   status: ClientIntakeStatus;
@@ -41,6 +58,7 @@ export interface ClientIntakeSection {
 
 export interface ClientIntakeRecord {
   version?: number;
+  reviewRevision?: number;
   clientId: string;
   allergies: string[];
   medicalConditions: string[];
@@ -51,6 +69,27 @@ export interface ClientIntakeRecord {
   review: ClientIntakeReview;
 }
 
+export interface IntakeWorkspace {
+  clientId: string;
+  answers: IntakeAnswers;
+  draftRevision: number;
+  version: number;
+  latest: ClientIntakeRecord | null;
+  membershipActive: boolean;
+  guardianConfirmed: boolean;
+}
+
+export interface IntakeDraftWrite {
+  answers: IntakeAnswers;
+  expectedVersion: number;
+  expectedDraftRevision: number;
+  guardianConfirmed: boolean;
+}
+
+export interface IntakeSubmission extends IntakeDraftWrite {
+  requestId: string;
+}
+
 export interface ClientIntakeRepository {
   getForAssignedDietitian(
     clientId: string,
@@ -58,6 +97,12 @@ export interface ClientIntakeRepository {
     context?: ClientIntakeReviewContext,
   ): Promise<ClientIntakeRecord>;
   getForOwner?(actor: AuthenticatedUser, correlationId: string): Promise<ClientIntakeRecord>;
+  getWorkspace?(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace>;
+  saveDraft?(actor: AuthenticatedUser, input: IntakeDraftWrite, correlationId: string): Promise<IntakeWorkspace>;
+  submit?(actor: AuthenticatedUser, input: IntakeSubmission, correlationId: string): Promise<IntakeWorkspace>;
+  getSubmittedIntake?(
+    actor: AuthenticatedUser, clientId: string, correlationId: string, version?: number,
+  ): Promise<ClientIntakeRecord>;
   updateReviewForAssignedDietitian(
     clientId: string,
     dietitianId: string,
@@ -68,7 +113,7 @@ export interface ClientIntakeRepository {
 
 export class ClientIntakeError extends Error {
   constructor(
-    readonly statusCode: 400 | 403 | 404 | 503,
+    readonly statusCode: 400 | 403 | 404 | 409 | 503,
     message: string,
   ) {
     super(message);
@@ -95,9 +140,62 @@ export class ClientIntakeService {
   }
 
   async getOwnIntake(actor: AuthenticatedUser, correlationId: string) {
-    if (actor.role !== "client") throw new ClientIntakeError(403, "Client access is required.");
+    requireVerifiedClient(actor);
     if (!this.repository.getForOwner) throw new ClientIntakeError(503, "Intake storage is unavailable.");
     return this.repository.getForOwner(actor, correlationId);
+  }
+
+  async getOwnWorkspace(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.getWorkspace) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    return this.repository.getWorkspace(actor, correlationId);
+  }
+
+  async saveOwnDraft(actor: AuthenticatedUser, input: unknown, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.saveDraft) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    const draft = parseDraftWrite(input, actor.uid);
+    validateAnswers(() => validateIntakeMeasurements(draft.answers));
+    return this.repository.saveDraft(actor, draft, correlationId);
+  }
+
+  async submitOwnIntake(actor: AuthenticatedUser, input: unknown, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.submit) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    if (!isObject(input)) throw new ClientIntakeError(400, "Supply an intake submission.");
+    const { request_id: requestId, ...fields } = input;
+    if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) {
+      throw new ClientIntakeError(400, "A valid intake request ID is required.");
+    }
+    return this.repository.submit(actor, {
+      ...parseDraftWrite(fields, actor.uid),
+      requestId,
+    }, correlationId);
+  }
+
+  async getSubmittedIntake(
+    actor: AuthenticatedUser, clientIdInput: unknown, correlationId: string, versionInput?: unknown,
+  ): Promise<ClientIntakeRecord> {
+    if (actor.role === "client") requireVerifiedClient(actor);
+    if (!this.repository.getSubmittedIntake) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    const clientId = requiredIdentifier(clientIdInput);
+    let version: number | undefined;
+    if (versionInput !== undefined) {
+      if (typeof versionInput !== "string" || !/^[1-9]\d*$/.test(versionInput) ||
+          !Number.isSafeInteger(Number(versionInput))) {
+        throw new ClientIntakeError(400, "A valid intake version is required.");
+      }
+      version = Number(versionInput);
+    }
+    return this.repository.getSubmittedIntake(actor, clientId, correlationId, version);
   }
 
   async updateAssignedClientIntakeReview(
@@ -125,13 +223,19 @@ export class ClientIntakeService {
 
 function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
   if (!isObject(value) ||
-      Object.keys(value).some(key => !["action", "note", "expected_version"].includes(key)) ||
+      Object.keys(value).some(key => !["action", "note", "expected_version", "expected_review_revision"].includes(key)) ||
       (value.expected_version !== undefined && (!Number.isSafeInteger(value.expected_version) || (value.expected_version as number) < 1)) ||
+      (value.expected_review_revision !== undefined && (value.expected_version === undefined ||
+        !Number.isSafeInteger(value.expected_review_revision) || (value.expected_review_revision as number) < 0)) ||
       typeof value.action !== "string" ||
       !clientIntakeReviewActions.includes(value.action as ClientIntakeReviewAction)) {
     throw new ClientIntakeError(400, "A valid intake review action is required.");
   }
   const action = value.action as ClientIntakeReviewAction;
+  const revision = {
+    expectedVersion: value.expected_version as number | undefined,
+    expectedReviewRevision: value.expected_review_revision as number | undefined,
+  };
   if (action === "reviewed") {
     if (value.note !== undefined && value.note !== null && value.note !== "") {
       throw new ClientIntakeError(
@@ -139,7 +243,7 @@ function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
         "A note is only used when requesting information.",
       );
     }
-    return { action, note: null, status: "reviewed", expectedVersion: value.expected_version as number | undefined };
+    return { action, note: null, status: "reviewed", ...revision };
   }
   if (typeof value.note !== "string" ||
       !value.note.trim() || value.note.trim().length > 1000) {
@@ -152,7 +256,7 @@ function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
     action,
     note: value.note.trim(),
     status: "information_requested",
-    expectedVersion: value.expected_version as number | undefined,
+    ...revision,
   };
 }
 
@@ -163,6 +267,43 @@ function requiredIdentifier(value: unknown): string {
   return value;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function requireVerifiedClient(actor: AuthenticatedUser): void {
+  if (actor.role !== "client" || actor.emailVerified !== true) {
+    throw new ClientIntakeError(403, "A verified client account is required.");
+  }
+}
+
+function parseDraftWrite(value: unknown, uid: string): IntakeDraftWrite {
+  const fields = [
+    "answers", "expected_client_id", "expected_version", "expected_draft_revision",
+    "guardian_consent_confirmed",
+  ];
+  if (!isObject(value) || Object.keys(value).some(key => !fields.includes(key)) ||
+      typeof value.expected_client_id !== "string" ||
+      !isRevision(value.expected_version) || !isRevision(value.expected_draft_revision) ||
+      typeof value.guardian_consent_confirmed !== "boolean") {
+    throw new ClientIntakeError(400, "Supply the current intake version, draft revision and form answers.");
+  }
+  if (value.expected_client_id !== uid) {
+    throw new ClientIntakeError(403, "The signed-in account changed. Reopen the intake form.");
+  }
+  return {
+    answers: validateAnswers(() => parseIntakeAnswers(value.answers)),
+    expectedVersion: value.expected_version,
+    expectedDraftRevision: value.expected_draft_revision,
+    guardianConfirmed: value.guardian_consent_confirmed,
+  };
+}
+
+function validateAnswers<T>(validate: () => T): T {
+  try {
+    return validate();
+  } catch (error) {
+    if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
+    throw error;
+  }
+}
+
+function isRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }

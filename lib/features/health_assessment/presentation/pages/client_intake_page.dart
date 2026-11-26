@@ -12,10 +12,12 @@ class ClientIntakePage extends ConsumerStatefulWidget {
   const ClientIntakePage({
     super.key,
     required this.clientId,
+    required this.viewerId,
     this.readOnly = false,
   });
 
   final String clientId;
+  final String viewerId;
   final bool readOnly;
 
   @override
@@ -23,47 +25,73 @@ class ClientIntakePage extends ConsumerStatefulWidget {
 }
 
 class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
-  ClientIntake? _savedIntake;
+  late final AppLifecycleListener _lifecycleListener;
   bool _isSaving = false;
+
+  FutureProvider<ClientIntake> get _provider => widget.readOnly
+      ? ownClientIntakeProvider(widget.viewerId)
+      : clientIntakeProvider((
+          clientId: widget.clientId,
+          viewerId: widget.viewerId,
+        ));
+
+  @override
+  void initState() {
+    super.initState();
+    _lifecycleListener = AppLifecycleListener(onResume: _reload);
+  }
+
+  @override
+  void dispose() {
+    _lifecycleListener.dispose();
+    super.dispose();
+  }
+
+  void _reload() => ref.invalidate(_provider);
 
   @override
   Widget build(BuildContext context) {
-    final provider = widget.readOnly
-        ? ownClientIntakeProvider(widget.clientId)
-        : clientIntakeProvider(widget.clientId);
-    final intake = ref.watch(provider);
+    final intake = ref.watch(_provider);
     return Scaffold(
       appBar: AppBar(
         title: Text(
           widget.readOnly ? 'Your intake form' : 'Client intake form',
         ),
+        actions: [
+          IconButton(
+            onPressed: _isSaving ? null : _reload,
+            tooltip: 'Refresh intake',
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: SafeArea(
         top: false,
         child: intake.when(
+          skipLoadingOnRefresh: false,
+          skipLoadingOnReload: false,
           data: (value) => _IntakeView(
-            intake: _savedIntake ?? value,
+            intake: value,
             isSaving: _isSaving,
             readOnly: widget.readOnly,
-            onMarkReviewed: _markReviewed,
+            onMarkReviewed: () => _markReviewed(value),
             onRequestMissingInformation: () => _requestInformation(
+              value,
               ClientIntakeReviewAction.missingInformation,
             ),
             onRequestClarification: () => _requestInformation(
+              value,
               ClientIntakeReviewAction.clarificationRequested,
             ),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => _IntakeError(
-            error: error,
-            onRetry: () => ref.invalidate(provider),
-          ),
+          error: (error, _) => _IntakeError(error: error, onRetry: _reload),
         ),
       ),
     );
   }
 
-  Future<void> _markReviewed() async {
+  Future<void> _markReviewed(ClientIntake intake) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -83,39 +111,41 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
         ],
       ),
     );
-    if (confirmed == true) {
-      await _saveReview(ClientIntakeReviewAction.reviewed);
+    if (confirmed == true && mounted) {
+      await _saveReview(intake, ClientIntakeReviewAction.reviewed);
     }
   }
 
-  Future<void> _requestInformation(ClientIntakeReviewAction action) async {
+  Future<void> _requestInformation(
+    ClientIntake intake,
+    ClientIntakeReviewAction action,
+  ) async {
     final note = await showDialog<String>(
       context: context,
       builder: (_) => _RequestInformationDialog(action: action),
     );
-    if (note != null) await _saveReview(action, note: note);
+    if (note != null && mounted) await _saveReview(intake, action, note: note);
   }
 
   Future<void> _saveReview(
+    ClientIntake intake,
     ClientIntakeReviewAction action, {
     String? note,
   }) async {
     if (_isSaving) return;
     setState(() => _isSaving = true);
     try {
-      final saved = await ref
+      await ref
           .read(clientIntakeRepositoryProvider)
           .updateReview(
-            clientId: widget.clientId,
+            clientId: intake.clientId,
             action: action,
             note: note,
-            expectedVersion:
-                (_savedIntake ??
-                        ref.read(clientIntakeProvider(widget.clientId)).value)
-                    ?.version,
+            expectedVersion: intake.version,
+            expectedReviewRevision: intake.reviewRevision,
           );
       if (!mounted) return;
-      setState(() => _savedIntake = saved);
+      _reload();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -127,6 +157,8 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
       );
     } catch (error) {
       if (!mounted) return;
+      // The server may have saved the review before the response was lost.
+      _reload();
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {

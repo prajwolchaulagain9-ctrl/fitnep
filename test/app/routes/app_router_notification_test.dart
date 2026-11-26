@@ -113,6 +113,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Open full intake form'), findsOneWidget);
+      expect(find.text('Open records and diet plans'), findsOneWidget);
       await tester.tap(find.text('Open full intake form'));
       await tester.pumpAndSettle();
 
@@ -282,6 +283,7 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
     required ClientIntakeReviewAction action,
     String? note,
     int? expectedVersion,
+    int? expectedReviewRevision,
   }) => getAssignedClientIntake(clientId);
 
   @override

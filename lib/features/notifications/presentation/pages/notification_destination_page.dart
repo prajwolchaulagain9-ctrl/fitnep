@@ -42,6 +42,12 @@ class NotificationDestinationPage extends ConsumerWidget {
                     pathParameters: {'id': referenceId},
                   )
                 : null,
+            onOpenRecords: type == NotificationType.assignment
+                ? () => context.pushNamed(
+                    AppRoutes.assignedClientRecordsName,
+                    pathParameters: {'id': referenceId},
+                  )
+                : null,
             onRefresh: () async {
               ref.invalidate(notificationDestinationProvider(request));
               await ref.read(notificationDestinationProvider(request).future);
@@ -87,12 +93,14 @@ class _RecordView extends StatelessWidget {
   final NotificationDestinationRecord record;
   final Future<void> Function() onRefresh;
   final VoidCallback? onOpenIntake;
+  final VoidCallback? onOpenRecords;
 
   const _RecordView({
     required this.type,
     required this.record,
     required this.onRefresh,
     required this.onOpenIntake,
+    required this.onOpenRecords,
   });
 
   @override
@@ -175,6 +183,12 @@ class _RecordView extends StatelessWidget {
               label: const Text('Open full intake form'),
             ),
           ],
+          if (onOpenRecords != null)
+            OutlinedButton.icon(
+              onPressed: onOpenRecords,
+              icon: const Icon(Icons.folder_open_outlined),
+              label: const Text('Open records and diet plans'),
+            ),
           if (record.fields.isNotEmpty) ...[
             const SizedBox(height: 18),
             Text('Details', style: Theme.of(context).textTheme.titleLarge),

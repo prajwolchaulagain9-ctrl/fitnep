@@ -193,8 +193,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.dietitianClientIntakeName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: 'view_assigned_client_records',
-          builder: (_) =>
-              ClientIntakePage(clientId: state.pathParameters['id']!),
+          builder: (_) => ClientIntakePage(
+            clientId: state.pathParameters['id']!,
+            viewerId: ref.read(routeSessionProvider).requireValue!.uid,
+          ),
         ),
       ),
       GoRoute(
@@ -204,6 +206,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           requiredPermission: 'view_client_dashboard',
           builder: (_) => ClientIntakePage(
             clientId: ref.read(routeSessionProvider).requireValue!.uid,
+            viewerId: ref.read(routeSessionProvider).requireValue!.uid,
             readOnly: true,
           ),
         ),
@@ -276,6 +279,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.assignedClientRecords,
+        name: AppRoutes.assignedClientRecordsName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: 'view_assigned_client_records',
           builder: (_) =>
