@@ -50,6 +50,8 @@ const endpoints: [string, RegExp, Permission][] = [
   ["GET", /^\/intakes\/me$/, "view_client_records"],
   ["GET", /^\/intakes\/me\/draft$/, "view_own_client_records"],
   ["PUT", /^\/intakes\/me\/draft$/, "view_own_client_records"],
+  ["POST", /^\/intakes\/me\/submit$/, "view_own_client_records"],
+  ["GET", /^\/clients\/([^/]+)\/intake(?:\/versions\/[^/]+)?$/, "view_client_records"],
   ["PATCH", /^\/privacy\/preferences$/, "manage_own_privacy"],
   ["GET", /^\/packages$/, "view_packages"],
   ["GET", /^\/admin\/(?:packages|package-history|memberships\/pending)$/, "manage_business_settings"],

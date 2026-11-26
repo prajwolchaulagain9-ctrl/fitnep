@@ -72,18 +72,36 @@ export class HostedWorkflowDelivery {
               eventKey: `client:${event.client_id}:assigned:${recipientId}:v${event.version}`,
               title: "New client assigned", message: "A client has been assigned to you. Open their profile to continue." });
             const intake = await tx.get(this.db.doc(`client_intakes/${event.client_id}`));
-            if (intake.exists && intake.get("status") !== "draft") notifications.push({ ...base,
-              recipientId, type: "intake", referenceId: event.client_id,
-              eventKey: `intake:${event.client_id}:available:${recipientId}:assignment-${event.version}`,
-              title: "Client intake available", message: "The assigned client's intake is ready for review." });
+            if (intake.exists && intake.get("status") !== "draft") {
+              notifications.push(intakeAvailableNotification(
+                base, event.client_id, recipientId, event.version, intake.get("version") ?? 1,
+              ));
+            }
           }
         } else if (event.event_type.startsWith("intake.")) {
-          const intake = await tx.get(this.db.doc(`client_intakes/${event.client_id}`));
-          if (intake.exists && (intake.get("version") ?? 1) === event.version) {
-            const recipientId = event.event_type === "intake.information_requested" ? event.client_id : assignment?.team.dietitianId;
-            if (recipientId) notifications.push({ ...base, recipientId, type: "intake", referenceId: event.client_id,
-              eventKey: `outbox:${id}:${recipientId}`, title: event.event_type === "intake.information_requested" ? "Intake update requested" : "Client intake available",
-              message: "Open the intake form to view the update securely." });
+          const intakeRef = this.db.doc(`client_intakes/${event.client_id}`);
+          const intake = await tx.get(intakeRef);
+          const latestVersion = intake.get("version") ?? 1;
+          if (intake.exists && intake.get("status") !== "draft") {
+            if (event.event_type === "intake.information_requested") {
+              if (latestVersion === event.version) {
+                notifications.push({ ...base, recipientId: event.client_id, type: "intake", referenceId: event.client_id,
+                  eventKey: `outbox:${id}:${event.client_id}`, title: "Intake update requested",
+                  message: "Open the intake form to view the update securely." });
+              }
+            } else if (assignment) {
+              const recipientId = assignment.team.dietitianId;
+              // An older event can still reach the dietitian assigned when it
+              // was saved, provided that dietitian is still the current one.
+              const available = latestVersion === event.version ||
+                (recipientId === event.dietitian_id &&
+                  (await tx.get(intakeRef.collection("versions").doc(String(event.version)))).exists);
+              if (available) {
+                notifications.push(intakeAvailableNotification(
+                  base, event.client_id, recipientId, assignment.data.version ?? 1, event.version,
+                ));
+              }
+            }
           }
         } else if (event.event_type === "membership.activated") {
           const membership = await tx.get(this.db.doc(`package_memberships/${event.target_id}`));
@@ -109,6 +127,25 @@ export class HostedWorkflowDelivery {
         next_attempt_at: FieldValue.delete(), lease_id: FieldValue.delete(), last_error: FieldValue.delete() });
     });
   }
+}
+
+function intakeAvailableNotification(
+  base: Pick<NewNotification, "id" | "createdAt">,
+  clientId: string,
+  recipientId: string,
+  assignmentVersion: number,
+  intakeVersion: number,
+): NewNotification {
+  return {
+    ...base,
+    recipientId,
+    type: "intake",
+    referenceId: clientId,
+    // Assignment and intake events may both discover the same submission.
+    eventKey: `intake:${clientId}:available:${recipientId}:assignment-${assignmentVersion}:v${intakeVersion}`,
+    title: "Client intake available",
+    message: "Open FitNEP for an update to your assigned client's intake.",
+  };
 }
 
 /** No timer can guarantee delivery while a free instance is asleep. */

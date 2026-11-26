@@ -17,5 +17,10 @@ class ClientIntakeRepositoryImpl implements ClientIntakeRepository {
     required ClientIntakeReviewAction action,
     String? note,
     int? expectedVersion,
-  }) => _remote.updateReview(clientId: clientId, action: action, note: note);
+  }) => _remote.updateReview(
+    clientId: clientId,
+    action: action,
+    note: note,
+    expectedVersion: expectedVersion,
+  );
 }

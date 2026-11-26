@@ -8,7 +8,10 @@ import {
 } from "firebase-admin/firestore";
 
 import { AuditWriter, FirestoreAuditWriter } from "./audit";
-import { ageRequiresGuardian, IntakeAnswerError, parseIntakeAnswers } from "./client_intake_answers";
+import { getCurrentAssignment } from "./account_service";
+import {
+  ageRequiresGuardian, IntakeAnswerError, IntakeAnswers, parseIntakeAnswers, validateIntakeSubmission,
+} from "./client_intake_answers";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
@@ -27,10 +30,12 @@ import {
   ClientIntakeSection,
   ClientIntakeStatus,
   IntakeDraftWrite,
+  IntakeSubmission,
   IntakeWorkspace,
 } from "./client_intake_service";
 
 const reservedKeys = new Set([
+  "answers",
   "client_id",
   "allergies",
   "food_allergies",
@@ -75,6 +80,10 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return this.readFor(actor, actor.uid, correlationId);
   }
 
+  getSubmittedIntake(actor: AuthenticatedUser, clientId: string, correlationId: string, version?: number) {
+    return this.readFor(actor, clientId, correlationId, version);
+  }
+
   getWorkspace(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace> {
     return this.reads.readResource(actor, {
       clientId: actor.uid, category: "intakes", recordId: "draft", ownerOnly: true,
@@ -89,21 +98,14 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       clientId: actor.uid, category: "intakes", recordId: "draft", ownerOnly: true,
     }, async transaction => {
       const { workspace, draft, acceptance } = await this.loadWorkspace(transaction, actor);
-      if (workspace.version !== input.expectedVersion) {
-        throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
-      }
       // A response can be lost after the transaction commits. Return the
       // saved answers only when they match the very next draft revision.
-      if (draft.exists && workspace.draftRevision === input.expectedDraftRevision + 1 &&
+      if (draft.exists && workspace.version === input.expectedVersion &&
+          workspace.draftRevision === input.expectedDraftRevision + 1 &&
           JSON.stringify(workspace.answers) === JSON.stringify(input.answers)) {
         return { data: workspace };
       }
-      if (workspace.draftRevision !== input.expectedDraftRevision) {
-        throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
-      }
-      if (!workspace.membershipActive) {
-        throw new ClientIntakeError(409, "An active membership is required to update the intake form.");
-      }
+      requireEditableWorkspace(workspace, input);
       const guardianConfirmed = this.confirmGuardian(transaction, actor, acceptance, input, correlationId);
       const revision = workspace.draftRevision + 1;
       transaction.set(draft.ref, {
@@ -114,6 +116,66 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       });
       return { data: {
         ...workspace, answers: input.answers, draftRevision: revision, guardianConfirmed,
+      } };
+    }, correlationId);
+  }
+
+  submit(actor: AuthenticatedUser, input: IntakeSubmission, correlationId: string): Promise<IntakeWorkspace> {
+    return this.reads.readResource(actor, {
+      clientId: actor.uid, category: "intakes", recordId: "submitted", ownerOnly: true,
+    }, async transaction => {
+      const { workspace, intake, draft, acceptance } = await this.loadWorkspace(transaction, actor);
+      const operationId = createHash("sha256").update(input.requestId).digest("hex");
+      const receiptRef = intake.ref.collection("submissions").doc(operationId);
+      const receipt = await transaction.get(receiptRef);
+      const fingerprint = createHash("sha256").update(JSON.stringify([
+        input.expectedVersion, input.expectedDraftRevision, input.guardianConfirmed, input.answers,
+      ])).digest("hex");
+      if (receipt.exists) {
+        if (receipt.get("fingerprint") !== fingerprint) {
+          throw new ClientIntakeError(409, "This request ID was used for different intake answers.");
+        }
+        return { data: workspace };
+      }
+
+      requireEditableWorkspace(workspace, input);
+      const now = Timestamp.now();
+      let bmi: number;
+      try {
+        bmi = validateIntakeSubmission(input.answers, now.toDate());
+      } catch (error) {
+        if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
+        throw error;
+      }
+      const versions = intake.ref.collection("versions");
+      const [previous, assignment] = await Promise.all([
+        workspace.version === 0 ? null : transaction.get(versions.doc(String(workspace.version))),
+        getCurrentAssignment(this.firestore, actor.uid, transaction),
+      ]);
+      const guardianConfirmed = this.confirmGuardian(transaction, actor, acceptance, input, correlationId);
+      const version = workspace.version + 1;
+      const submitted = submittedData(actor.uid, input.answers, version, bmi, now);
+      // Preserve records written before immutable version documents existed.
+      if (previous && !previous.exists) {
+        transaction.create(previous.ref, {
+          ...intake.data(),
+          client_id: actor.uid,
+          version: workspace.version,
+        });
+      }
+      transaction.create(versions.doc(String(version)), submitted);
+      transaction.set(intake.ref, submitted);
+      if (draft.exists) transaction.delete(draft.ref);
+      transaction.create(receiptRef, { version, fingerprint });
+      const action = workspace.version === 0 ? "intake.submitted" : "intake.revised";
+      this.audit.appendWithEvent(transaction, {
+        actor, action, targetType: "intake", targetId: actor.uid, clientId: actor.uid,
+        ...(assignment ? { dietitianId: assignment.team.dietitianId } : {}),
+        version, status: "submitted", outcome: "succeeded", correlationId, operationId,
+      }, action);
+      return { data: {
+        ...workspace, answers: input.answers, version, draftRevision: 0,
+        latest: parseIntake(actor.uid, submitted), guardianConfirmed,
       } };
     }, correlationId);
   }
@@ -156,7 +218,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       membershipActive: membership === "active",
       guardianConfirmed: acceptance.get("guardian_consent_confirmed") === true,
     };
-    return { workspace, draft, acceptance };
+    return { workspace, intake, draft, acceptance };
   }
 
   private confirmGuardian(
@@ -189,9 +251,15 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return true;
   }
 
-  private readFor(actor: AuthenticatedUser, clientId: string, correlationId?: string) {
-    return this.reads.readResource(actor, { clientId, category: "intakes", recordId: "submitted" }, async transaction => {
-      const intake = await transaction.get(this.firestore.doc(`client_intakes/${clientId}`));
+  private readFor(actor: AuthenticatedUser, clientId: string, correlationId?: string, version?: number) {
+    return this.reads.readResource(actor, {
+      clientId, category: "intakes", recordId: "submitted", version,
+    }, async transaction => {
+      const reference = this.firestore.doc(`client_intakes/${clientId}`);
+      const current = await transaction.get(reference);
+      const intake = version === undefined || (current.get("version") ?? 1) === version
+        ? current
+        : await transaction.get(reference.collection("versions").doc(String(version)));
       if (!intake.exists) {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
@@ -225,7 +293,8 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       if (!Number.isSafeInteger(version) || version < 1 || !Number.isSafeInteger(intake.get("review_revision") ?? 0)) {
         throw new ClientIntakeError(503, "Intake version metadata needs attention.");
       }
-      if (review.expectedVersion !== undefined && review.expectedVersion !== version) {
+      const needsVersion = intake.get("answers") !== undefined;
+      if ((needsVersion || review.expectedVersion !== undefined) && review.expectedVersion !== version) {
         throw new ClientIntakeError(400, "The intake version changed. Reload before reviewing.");
       }
       if (intake.get("status") === "draft") throw new ClientIntakeError(400, "Only submitted intake versions can be reviewed.");
@@ -273,6 +342,52 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       }) };
     }, context.correlationId);
   }
+}
+
+function requireEditableWorkspace(workspace: IntakeWorkspace, input: IntakeDraftWrite): void {
+  if (workspace.version !== input.expectedVersion || workspace.draftRevision !== input.expectedDraftRevision) {
+    throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
+  }
+  if (!workspace.membershipActive) {
+    throw new ClientIntakeError(409, "An active membership is required to update the intake form.");
+  }
+}
+
+function submittedData(
+  clientId: string, answers: IntakeAnswers, version: number, bmi: number, now: Timestamp,
+): DocumentData {
+  return {
+    client_id: clientId,
+    answers,
+    version,
+    status: "submitted",
+    submitted_at: now,
+    updated_at: now,
+    health_information: {
+      age: Number(answers.age),
+      date_of_birth: answers.date_of_birth,
+      height_cm: Number(answers.height_cm),
+      weight_kg: Number(answers.weight_kg),
+      ...(answers.waist_cm ? { waist_cm: Number(answers.waist_cm) } : {}),
+      ...(answers.hip_cm ? { hip_cm: Number(answers.hip_cm) } : {}),
+      ...(answers.chest_cm ? { chest_cm: Number(answers.chest_cm) } : {}),
+      BMI: bmi,
+    },
+    allergies: reportedItems(answers.allergies!),
+    medical_conditions: reportedItems(answers.medical_history!),
+    goals: { fitness_goals: answers.fitness_goals },
+    restrictions: { dietary_restrictions: answers.dietary_restrictions },
+    responses: {
+      full_name: answers.full_name,
+      ...(answers.contact_email ? { contact_email: answers.contact_email } : {}),
+      ...(answers.contact_phone ? { contact_phone: answers.contact_phone } : {}),
+      food_preferences: answers.food_preferences,
+    },
+  };
+}
+
+function reportedItems(answer: string): string[] {
+  return answer.toLowerCase() === "none" ? [] : [answer];
 }
 
 function requireAssignment(

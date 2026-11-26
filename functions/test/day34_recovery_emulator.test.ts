@@ -225,6 +225,139 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert(auditTrail.docs.some(doc => doc.get("target_id") === "client/intakes/draft"));
     assert(!JSON.stringify(auditTrail.docs.map(doc => doc.data())).includes("Synthetic draft allergy"));
   });
+
+  async function submissionFixture() {
+    const api = request(createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(accounts),
+      notificationRepository: new InMemoryNotificationRepository(),
+      clientIntakeService: new ClientIntakeService(new FirestoreClientIntakeRepository(db)),
+    }));
+    await new FirestorePrivacyAcceptanceStore(db).recordForClient("client", {
+      age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
+    });
+    await db.doc("customer_purchases/client/purchases/intake-membership").set({
+      purchased_at: Timestamp.fromMillis(now - 60_000),
+      expires_at: Timestamp.fromMillis(now + 86_400_000),
+    });
+    const owner = await intakeTestToken(auth, "client");
+    const draft = {
+      expected_client_id: "client", expected_version: 0, expected_draft_revision: 0,
+      guardian_consent_confirmed: false,
+      answers: {
+        full_name: "Test Client", age: "21",
+        date_of_birth: `${new Date().getUTCFullYear() - 21}-01-01`,
+        contact_email: "client@fitnep.test", height_cm: "175", weight_kg: "70",
+        fitness_goals: "Build endurance", medical_history: "None",
+        allergies: "Synthetic allergy", dietary_restrictions: "None",
+        food_preferences: "Rice",
+      },
+    };
+    const submit = (payload: object) =>
+      api.post("/intakes/me/submit").auth(owner, { type: "bearer" }).send(payload);
+    return { api, draft, owner, submit };
+  }
+
+  it("submits one version per operation, preserves history, and blocks stale review", async () => {
+    const { api, draft, owner, submit } = await submissionFixture();
+    const dietitian = await intakeTestToken(auth, "dietitian");
+    const replacement = await intakeTestToken(auth, "replacement");
+    const unrelated = await intakeTestToken(auth, "other-client");
+    const legacyInput = { ...draft, expected_version: 1 };
+    await api.put("/intakes/me/draft").auth(owner, { type: "bearer" }).send(legacyInput).expect(200);
+    const input = { ...legacyInput, expected_draft_revision: 1, request_id: "submit-intake-version-two" };
+    await submit({ ...input, answers: { ...input.answers, allergies: "" } }).expect(400);
+    await submit({ ...input, answers: { ...input.answers, weight_kg: "0" } }).expect(400);
+    await api.post("/intakes/me/submit").auth(unrelated, { type: "bearer" }).send(input).expect(403);
+
+    const [saved, replay] = await Promise.all([submit(input).expect(200), submit(input).expect(200)]);
+    assert.equal(saved.body.data.version, 2);
+    assert.equal(replay.body.data.version, 2);
+    assert.equal(saved.body.data.draft_revision, 0);
+    assert.equal((await db.doc("client_intakes/client/private/draft").get()).exists, false);
+    assert.equal((await db.collection("workflow_outbox").get()).size, 1);
+    const preserved = db.doc("client_intakes/client/versions/1");
+    const original = (await preserved.get()).data();
+    assert.deepEqual(original?.allergies, ["Private allergy"]);
+    const v2 = db.doc("client_intakes/client/versions/2");
+    const frozen = (await v2.get()).data();
+    assert.equal(frozen?.health_information.BMI, 22.9);
+    assert(frozen?.submitted_at instanceof Timestamp);
+    await submit({ ...input, answers: { ...input.answers, weight_kg: "71" } }).expect(409);
+    await submit({ ...input, request_id: "different-stale-request" }).expect(409);
+
+    const oldVersion = "/clients/client/intake/versions/1";
+    await api.get(oldVersion).auth(owner, { type: "bearer" }).expect(200);
+    await api.get(oldVersion).auth(unrelated, { type: "bearer" }).expect(403);
+    await api.get(oldVersion).auth(dietitian, { type: "bearer" }).expect(403);
+    const sharing = new FirestorePrivacyPreferencesRepository(db);
+    await sharing.updateSharing("client", { shareNutritionRecords: true });
+    const historical = await api.get(oldVersion).auth(dietitian, { type: "bearer" }).expect(200);
+    assert.deepEqual(historical.body.data.intake.allergies, ["Private allergy"]);
+
+    const review = (body: object) => api.patch("/dietitian/assigned-clients/client/intake/review")
+      .auth(dietitian, { type: "bearer" }).send(body);
+    await review({ action: "reviewed" }).expect(400);
+    await review({ action: "reviewed", expected_version: 1 }).expect(400);
+    await review({ action: "missing_information", expected_version: 2, note: "Private clarification" }).expect(200);
+    assert.deepEqual((await v2.get()).data(), frozen);
+    const revised = await submit({
+      ...input, expected_version: 2, expected_draft_revision: 0, request_id: "submit-intake-version-three",
+      answers: { ...input.answers, allergies: "None", weight_kg: "71" },
+    }).expect(200);
+    assert.equal(revised.body.data.version, 3);
+    assert.equal(revised.body.data.latest.status, "submitted");
+    assert.equal(revised.body.data.latest.review_note, null);
+    assert.deepEqual(revised.body.data.latest.allergies, []);
+    assert.deepEqual((await preserved.get()).data(), original);
+    assert.deepEqual((await v2.get()).data(), frozen);
+    const olderRetry = await submit(input).expect(200);
+    assert.equal(olderRetry.body.data.version, 3);
+    const events = await db.collection("workflow_outbox").get();
+    assert.equal(events.size, 3);
+    assert(!JSON.stringify(events.docs.map(doc => doc.data())).includes("Synthetic allergy"));
+    await new HostedWorkflowDelivery(db, () => Date.now() + 1000).drain();
+    const notices = await db.collection("notifications").get();
+    assert.equal(notices.size, 2);
+    assert(notices.docs.every(doc => doc.get("recipient_id") === "dietitian"));
+    assert(!JSON.stringify(notices.docs.map(doc => doc.data())).includes("Synthetic allergy"));
+    await db.doc("client_assignments/client").update({ dietitian_id: "replacement", version: 2 });
+    await api.get(oldVersion).auth(dietitian, { type: "bearer" }).expect(403);
+    await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(200);
+    await sharing.updateSharing("client", { shareNutritionRecords: false });
+    await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(403);
+  });
+
+  it("sends one intake notice when a client submits before assignment", async () => {
+    const { draft, submit } = await submissionFixture();
+    const assignment = db.doc("client_assignments/client");
+    const savedAssignment = (await assignment.get()).data()!;
+    await assignment.delete();
+    await db.doc("client_intakes/client").delete();
+    const first = await submit({ ...draft, request_id: "submit-before-assignment" }).expect(200);
+    assert.equal(first.body.data.version, 1);
+    const submitted = await db.collection("workflow_outbox").get();
+    assert.equal(submitted.size, 1);
+    assert.equal(submitted.docs[0]!.get("event_type"), "intake.submitted");
+    const worker = new HostedWorkflowDelivery(db, () => Date.now() + 1000);
+    await worker.drain();
+    assert.equal((await db.collection("notifications").get()).size, 0);
+
+    await submit({
+      ...draft, expected_version: 1, request_id: "revise-before-assignment",
+      answers: { ...draft.answers, fitness_goals: "Update my training goal" },
+    }).expect(200);
+    await assignment.set(savedAssignment);
+    await enqueue();
+    await worker.drain();
+    await worker.drain();
+    const notices = await db.collection("notifications").get();
+    assert.equal(notices.size, 2);
+    assert(notices.docs.every(doc => doc.get("recipient_id") === "dietitian"));
+    const intake = notices.docs.filter(doc => doc.get("type") === "intake");
+    assert.equal(intake.length, 1);
+    assert.equal(intake[0]!.get("reference_id"), "client");
+    assert(intake[0]!.get("event_key").endsWith(":v2"));
+  });
 });
 
 async function intakeTestToken(auth: Auth, uid: string): Promise<string> {

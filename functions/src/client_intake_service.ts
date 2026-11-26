@@ -75,6 +75,10 @@ export interface IntakeDraftWrite {
   guardianConfirmed: boolean;
 }
 
+export interface IntakeSubmission extends IntakeDraftWrite {
+  requestId: string;
+}
+
 export interface ClientIntakeRepository {
   getForAssignedDietitian(
     clientId: string,
@@ -84,6 +88,10 @@ export interface ClientIntakeRepository {
   getForOwner?(actor: AuthenticatedUser, correlationId: string): Promise<ClientIntakeRecord>;
   getWorkspace?(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace>;
   saveDraft?(actor: AuthenticatedUser, input: IntakeDraftWrite, correlationId: string): Promise<IntakeWorkspace>;
+  submit?(actor: AuthenticatedUser, input: IntakeSubmission, correlationId: string): Promise<IntakeWorkspace>;
+  getSubmittedIntake?(
+    actor: AuthenticatedUser, clientId: string, correlationId: string, version?: number,
+  ): Promise<ClientIntakeRecord>;
   updateReviewForAssignedDietitian(
     clientId: string,
     dietitianId: string,
@@ -139,7 +147,43 @@ export class ClientIntakeService {
     if (!this.repository.saveDraft) {
       throw new ClientIntakeError(503, "Intake storage is unavailable.");
     }
-    return this.repository.saveDraft(actor, parseDraftWrite(input, actor.uid), correlationId);
+    const draft = parseDraftWrite(input, actor.uid);
+    validateAnswers(() => validateIntakeMeasurements(draft.answers));
+    return this.repository.saveDraft(actor, draft, correlationId);
+  }
+
+  async submitOwnIntake(actor: AuthenticatedUser, input: unknown, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.submit) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    if (!isObject(input)) throw new ClientIntakeError(400, "Supply an intake submission.");
+    const { request_id: requestId, ...fields } = input;
+    if (typeof requestId !== "string" || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) {
+      throw new ClientIntakeError(400, "A valid intake request ID is required.");
+    }
+    return this.repository.submit(actor, {
+      ...parseDraftWrite(fields, actor.uid),
+      requestId,
+    }, correlationId);
+  }
+
+  async getSubmittedIntake(
+    actor: AuthenticatedUser, clientIdInput: unknown, correlationId: string, versionInput?: unknown,
+  ): Promise<ClientIntakeRecord> {
+    if (!this.repository.getSubmittedIntake) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    const clientId = requiredIdentifier(clientIdInput);
+    let version: number | undefined;
+    if (versionInput !== undefined) {
+      if (typeof versionInput !== "string" || !/^[1-9]\d*$/.test(versionInput) ||
+          !Number.isSafeInteger(Number(versionInput))) {
+        throw new ClientIntakeError(400, "A valid intake version is required.");
+      }
+      version = Number(versionInput);
+    }
+    return this.repository.getSubmittedIntake(actor, clientId, correlationId, version);
   }
 
   async updateAssignedClientIntakeReview(
@@ -225,15 +269,17 @@ function parseDraftWrite(value: unknown, uid: string): IntakeDraftWrite {
   if (value.expected_client_id !== uid) {
     throw new ClientIntakeError(403, "The signed-in account changed. Reopen the intake form.");
   }
+  return {
+    answers: validateAnswers(() => parseIntakeAnswers(value.answers)),
+    expectedVersion: value.expected_version,
+    expectedDraftRevision: value.expected_draft_revision,
+    guardianConfirmed: value.guardian_consent_confirmed,
+  };
+}
+
+function validateAnswers<T>(validate: () => T): T {
   try {
-    const answers = parseIntakeAnswers(value.answers);
-    validateIntakeMeasurements(answers);
-    return {
-      answers,
-      expectedVersion: value.expected_version,
-      expectedDraftRevision: value.expected_draft_revision,
-      guardianConfirmed: value.guardian_consent_confirmed,
-    };
+    return validate();
   } catch (error) {
     if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
     throw error;

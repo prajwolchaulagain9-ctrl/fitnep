@@ -395,6 +395,20 @@ export function createNotificationApp(
     );
     response.json({ data: toApiIntakeWorkspace(workspace) });
   }));
+  app.post("/intakes/me/submit", asyncRoute(async (request, response) => {
+    const workspace = await clientIntake().submitOwnIntake(
+      currentUser(response), request.body, response.locals.correlationId,
+    );
+    response.json({ data: toApiIntakeWorkspace(workspace) });
+  }));
+  const getSubmittedIntake = asyncRoute(async (request, response) => {
+    const intake = await clientIntake().getSubmittedIntake(
+      currentUser(response), request.params.clientId, response.locals.correlationId, request.params.version,
+    );
+    response.json({ data: { intake: toApiClientIntake(intake) } });
+  });
+  app.get("/clients/:clientId/intake", getSubmittedIntake);
+  app.get("/clients/:clientId/intake/versions/:version", getSubmittedIntake);
 
   const packages = () => {
     if (!dependencies.packageService) throw new PackageError(503, "Package storage has not been configured yet.");
