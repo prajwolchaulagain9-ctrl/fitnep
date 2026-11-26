@@ -79,6 +79,11 @@ export interface IntakeWorkspace {
   guardianConfirmed: boolean;
 }
 
+export interface IntakeVersionIndex {
+  versions: { version: number; submittedAt: string | null }[];
+  nextBefore: number | null;
+}
+
 export interface IntakeDraftWrite {
   answers: IntakeAnswers;
   expectedVersion: number;
@@ -103,6 +108,9 @@ export interface ClientIntakeRepository {
   getSubmittedIntake?(
     actor: AuthenticatedUser, clientId: string, correlationId: string, version?: number,
   ): Promise<ClientIntakeRecord>;
+  listSubmittedVersions?(
+    actor: AuthenticatedUser, clientId: string, correlationId: string, before?: number,
+  ): Promise<IntakeVersionIndex>;
   updateReviewForAssignedDietitian(
     clientId: string,
     dietitianId: string,
@@ -187,15 +195,17 @@ export class ClientIntakeService {
       throw new ClientIntakeError(503, "Intake storage is unavailable.");
     }
     const clientId = requiredIdentifier(clientIdInput);
-    let version: number | undefined;
-    if (versionInput !== undefined) {
-      if (typeof versionInput !== "string" || !/^[1-9]\d*$/.test(versionInput) ||
-          !Number.isSafeInteger(Number(versionInput))) {
-        throw new ClientIntakeError(400, "A valid intake version is required.");
-      }
-      version = Number(versionInput);
-    }
-    return this.repository.getSubmittedIntake(actor, clientId, correlationId, version);
+    return this.repository.getSubmittedIntake(actor, clientId, correlationId, optionalVersion(versionInput));
+  }
+
+  async listSubmittedVersions(
+    actor: AuthenticatedUser, clientIdInput: unknown, correlationId: string, beforeInput?: unknown,
+  ): Promise<IntakeVersionIndex> {
+    if (actor.role === "client") requireVerifiedClient(actor);
+    if (!this.repository.listSubmittedVersions) throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    return this.repository.listSubmittedVersions(
+      actor, requiredIdentifier(clientIdInput), correlationId, optionalVersion(beforeInput),
+    );
   }
 
   async updateAssignedClientIntakeReview(
@@ -265,6 +275,15 @@ function requiredIdentifier(value: unknown): string {
     throw new ClientIntakeError(400, "Client id is invalid.");
   }
   return value;
+}
+
+function optionalVersion(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^[1-9]\d*$/.test(value) ||
+      !Number.isSafeInteger(Number(value))) {
+    throw new ClientIntakeError(400, "A valid intake version is required.");
+  }
+  return Number(value);
 }
 
 function requireVerifiedClient(actor: AuthenticatedUser): void {

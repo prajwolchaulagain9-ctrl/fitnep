@@ -189,13 +189,17 @@ function intakeAvailableNotification(
 }
 
 /** No timer can guarantee delivery while a free instance is asleep. */
-export function startWorkflowRecovery(db: Firestore, auth: Auth) {
+export function startWorkflowRecovery(db: Firestore, auth: Auth, recoverPhotos?: () => Promise<void>) {
   const worker = new HostedWorkflowDelivery(db);
   let recovering = false;
   const drain = () => {
     if (recovering) return;
     recovering = true;
-    void (async () => { await reconcileAccountAuth(auth, db); await worker.drain(); })()
+    void (async () => {
+      await reconcileAccountAuth(auth, db);
+      await worker.drain();
+      await recoverPhotos?.();
+    })()
       .catch(() => console.error("Workflow recovery unavailable; persisted events will retry."))
       .finally(() => { recovering = false; });
   };

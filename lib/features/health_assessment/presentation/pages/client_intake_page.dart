@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../app/theme/app_theme.dart';
+import '../../../../app/routes/app_routes.dart';
 import '../../data/datasources/client_intake_remote_datasource.dart';
+import '../../data/repositories/intake_history_repository.dart';
 import '../../domain/entities/client_intake.dart';
 import '../controllers/client_intake_controller.dart';
 import '../widgets/intake_priority_card.dart';
@@ -14,11 +17,13 @@ class ClientIntakePage extends ConsumerStatefulWidget {
     required this.clientId,
     required this.viewerId,
     this.readOnly = false,
+    this.version,
   });
 
   final String clientId;
   final String viewerId;
   final bool readOnly;
+  final int? version;
 
   @override
   ConsumerState<ClientIntakePage> createState() => _ClientIntakePageState();
@@ -28,12 +33,18 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
   late final AppLifecycleListener _lifecycleListener;
   bool _isSaving = false;
 
-  FutureProvider<ClientIntake> get _provider => widget.readOnly
-      ? ownClientIntakeProvider(widget.viewerId)
-      : clientIntakeProvider((
-          clientId: widget.clientId,
-          viewerId: widget.viewerId,
-        ));
+  FutureProvider<ClientIntake> get _provider => switch (widget.version) {
+    final version? => intakeVersionProvider((
+      clientId: widget.clientId,
+      viewerId: widget.viewerId,
+      version: version,
+    )),
+    _ when widget.readOnly => ownClientIntakeProvider(widget.viewerId),
+    _ => clientIntakeProvider((
+      clientId: widget.clientId,
+      viewerId: widget.viewerId,
+    )),
+  };
 
   @override
   void initState() {
@@ -52,12 +63,31 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
   @override
   Widget build(BuildContext context) {
     final intake = ref.watch(_provider);
+    final version = widget.version;
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          widget.readOnly ? 'Your intake form' : 'Client intake form',
+          version != null
+              ? 'Intake version $version'
+              : widget.readOnly
+              ? 'Your intake form'
+              : 'Client intake form',
         ),
         actions: [
+          if (version == null &&
+              intake.hasValue &&
+              !intake.isLoading &&
+              !intake.hasError)
+            IconButton(
+              tooltip: 'Intake history',
+              icon: const Icon(Icons.history),
+              onPressed: () => context.pushNamed(
+                widget.readOnly
+                    ? AppRoutes.ownIntakeHistoryName
+                    : AppRoutes.dietitianIntakeHistoryName,
+                pathParameters: {if (!widget.readOnly) 'id': widget.clientId},
+              ),
+            ),
           IconButton(
             onPressed: _isSaving ? null : _reload,
             tooltip: 'Refresh intake',
@@ -74,6 +104,12 @@ class _ClientIntakePageState extends ConsumerState<ClientIntakePage> {
             intake: value,
             isSaving: _isSaving,
             readOnly: widget.readOnly,
+            onOpenEditor: widget.readOnly && version == null
+                ? () async {
+                    await context.pushNamed(AppRoutes.intakeEditorName);
+                    if (mounted) _reload();
+                  }
+                : null,
             onMarkReviewed: () => _markReviewed(value),
             onRequestMissingInformation: () => _requestInformation(
               value,
@@ -172,6 +208,7 @@ class _IntakeView extends StatelessWidget {
     required this.intake,
     required this.isSaving,
     this.readOnly = false,
+    this.onOpenEditor,
     required this.onMarkReviewed,
     required this.onRequestMissingInformation,
     required this.onRequestClarification,
@@ -180,6 +217,7 @@ class _IntakeView extends StatelessWidget {
   final ClientIntake intake;
   final bool readOnly;
   final bool isSaving;
+  final VoidCallback? onOpenEditor;
   final VoidCallback onMarkReviewed;
   final VoidCallback onRequestMissingInformation;
   final VoidCallback onRequestClarification;
@@ -195,6 +233,18 @@ class _IntakeView extends StatelessWidget {
       ),
       children: [
         _ReviewStatusCard(intake: intake),
+        if (onOpenEditor case final edit?) ...[
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: edit,
+            icon: const Icon(Icons.edit_outlined),
+            label: Text(
+              intake.status == ClientIntakeStatus.informationRequested
+                  ? 'Respond to request'
+                  : 'Edit intake',
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         IntakePriorityCard(
           title: 'Allergies',

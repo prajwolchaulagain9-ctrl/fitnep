@@ -278,6 +278,11 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const replacement = await intakeTestToken(auth, "replacement");
     const unrelated = await intakeTestToken(auth, "other-client");
     const legacyInput = { ...draft, expected_version: 1 };
+    const index = (token: string) => api.get("/clients/client/intake/versions").auth(token, { type: "bearer" });
+    const legacyList = await index(owner).expect(200);
+    assert.deepEqual(legacyList.body.data, {
+      client_id: "client", versions: [{ version: 1, submitted_at: null }], next_before: null,
+    });
     await api.put("/intakes/me/draft").auth(owner, { type: "bearer" }).send(legacyInput).expect(200);
     const input = { ...legacyInput, expected_draft_revision: 1, request_id: "submit-intake-version-two" };
     await submit({ ...input, answers: { ...input.answers, allergies: "" } }).expect(400);
@@ -329,6 +334,13 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert.equal(revised.body.data.latest.status, "submitted");
     assert.equal(revised.body.data.latest.review_note, null);
     assert.equal(revised.body.data.latest.review_revision, 0);
+    const versions = await index(dietitian).expect("Cache-Control", "no-store").expect(200);
+    assert.deepEqual(versions.body.data.versions.map((row: { version: number }) => row.version), [3, 2, 1]);
+    assert(!JSON.stringify(versions.body).includes("Synthetic allergy"));
+    const olderVersions = await index(owner).query({ before: 3 }).expect(200);
+    assert.deepEqual(olderVersions.body.data.versions.map((row: { version: number }) => row.version), [2, 1]);
+    await index(owner).query({ before: "invalid" }).expect(400);
+    await index(unrelated).expect(403);
     await review({ action: "reviewed", expected_version: 2, expected_review_revision: 1 }).expect(409);
     assert.deepEqual(revised.body.data.latest.allergies, []);
     assert.deepEqual((await preserved.get()).data(), original);
@@ -345,9 +357,11 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert(!JSON.stringify(notices.docs.map(doc => doc.data())).includes("Synthetic allergy"));
     await db.doc("client_assignments/client").update({ dietitian_id: "replacement", version: 2 });
     await api.get(oldVersion).auth(dietitian, { type: "bearer" }).expect(403);
+    await index(dietitian).expect(403);
     await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(200);
     await sharing.updateSharing("client", { shareNutritionRecords: false });
     await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(403);
+    await index(replacement).expect(403);
     await api.get(oldVersion).auth(owner, { type: "bearer" }).expect(200);
   });
 

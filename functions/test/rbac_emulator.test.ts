@@ -11,6 +11,7 @@ import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/pr
 import { AuditUnavailableError } from "../src/audit";
 import { UserRole } from "../src/domain";
 import { createFitnepApi, createFitnepDependencies } from "../src/api_factory";
+import { PrivateRecordsError } from "../src/private_records";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -71,6 +72,64 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
       await db.collection("users").doc("client").update({ role });
       denied(await request(api).get("/session").set(bearer("client")));
     }
+  });
+
+  it("keeps all hosted photo uploads private and recovers an upload after a lost response", async () => {
+    const assets = new Map<string, Buffer>();
+    let reads = 0;
+    let loseResponse = false;
+    const deps = createFitnepDependencies(auth, db, {
+      async write(id, bytes) {
+        assets.set(id, bytes);
+        if (loseResponse) throw new Error("Lost provider response.");
+      },
+      async read(id) {
+        reads++;
+        const bytes = assets.get(id);
+        if (!bytes) throw new PrivateRecordsError(404, "Photo not found.");
+        return bytes;
+      },
+    });
+    const media = request(createNotificationApp(deps));
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kMR8AAAAASUVORK5CYII=", "base64");
+    const meal = "/clients/client/records/meal-photos";
+    const progress = "/clients/client/records/progress-photos";
+    await media.post(meal).set(bearer("client")).type("png").send(png).expect(403);
+    assert.equal(assets.size, 0);
+    await deps.privacyPreferencesRepository.updateSharing("client", { shareMealPhotos: true, shareProgressPhotos: true });
+    await media.put("/admin/clients/client/assignment").set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian", staff_ids: [] }).expect(200);
+    await media.post(meal).set(bearer("other")).type("png").send(png).expect(403);
+    await media.post(meal).set(bearer("client")).type("png").send(Buffer.from("not an image")).expect(400);
+    assert.equal(assets.size, 0);
+
+    const first = await media.post(meal).set(bearer("client")).type("png").send(png).expect(201);
+    const id: string = first.body.data.record.id;
+    assert.deepEqual(first.body.data.record.details, { content_type: "image/png" });
+    const stored = await db.doc(`client_records/client/meal-photos/${id}`).get();
+    assert.equal(stored.get("photo_storage"), "cloudinary");
+    assert.equal(stored.get("photo"), undefined);
+    assert.deepEqual(assets.get(id), png);
+    await media.get(`${meal}/${id}/photo`).set(bearer("other")).expect(403);
+    assert.equal(reads, 0);
+    const photo = await media.get(`${meal}/${id}/photo`).set(bearer("dietitian"))
+      .expect("Cache-Control", "no-store").expect("Content-Type", /image\/png/).expect(200);
+    assert.deepEqual(photo.body, png);
+    await deps.privacyPreferencesRepository.updateSharing("client", { shareMealPhotos: false });
+    await media.get(`${meal}/${id}/photo`).set(bearer("dietitian")).expect(403);
+    assert.equal(reads, 1);
+
+    loseResponse = true;
+    await media.post(progress).set(bearer("client")).type("png").send(png).expect(503);
+    const pending = await db.collection("private_photo_uploads").get();
+    assert.equal(pending.size, 1);
+    const upload = pending.docs[0]!;
+    assert.equal((await media.get(progress).set(bearer("client")).expect(200)).body.data.records.length, 0);
+    await upload.ref.update({ retry_at: Timestamp.fromMillis(Date.now() - 1_000) });
+    await deps.privateRecordsStore.recoverPhotoUploads();
+    assert.equal((await upload.ref.get()).exists, false);
+    const recovered = await media.get(`${progress}/${upload.id}/photo`).set(bearer("client")).expect(200);
+    assert.deepEqual(recovered.body, png);
   });
   it("rejects clients, staff and dietitians at administrative endpoints and logs all attempts", async () => {
     for (const uid of ["client", "staff", "dietitian"]) {

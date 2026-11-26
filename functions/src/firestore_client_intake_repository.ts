@@ -30,6 +30,7 @@ import {
   ClientIntakeSection,
   IntakeDraftWrite,
   IntakeSubmission,
+  IntakeVersionIndex,
   IntakeWorkspace,
   submittedIntakeStatus,
 } from "./client_intake_service";
@@ -82,6 +83,49 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
 
   getSubmittedIntake(actor: AuthenticatedUser, clientId: string, correlationId: string, version?: number) {
     return this.readFor(actor, clientId, correlationId, version);
+  }
+
+  listSubmittedVersions(
+    actor: AuthenticatedUser, clientId: string, correlationId: string, before?: number,
+  ): Promise<IntakeVersionIndex> {
+    return this.reads.readResource(actor, { clientId, category: "intakes" }, async transaction => {
+      if (actor.role === "client") await this.currentAcceptance(transaction, clientId);
+      const intake = this.firestore.doc(`client_intakes/${clientId}`);
+      const limit = 20;
+      const versions = intake.collection("versions")
+        .select("client_id", "version", "submitted_at", "status")
+        .orderBy("version", "desc");
+      const [[head], snapshots] = await Promise.all([
+        transaction.getAll(intake, { fieldMask: ["client_id", "version", "submitted_at", "status"] }),
+        transaction.get((before === undefined ? versions : versions.startAfter(before)).limit(limit + 1)),
+      ]);
+      const indexed = new Map<number, string | null>();
+      for (const snapshot of snapshots.docs) {
+        const data = snapshot.data();
+        if (data.client_id !== clientId || data.status === "draft" ||
+            !Number.isSafeInteger(data.version) || data.version < 1 || snapshot.id !== String(data.version)) {
+          throw invalidIntake();
+        }
+        indexed.set(data.version, dateValue(data.submitted_at));
+      }
+      // A legacy intake may be the only stored record before the first revision.
+      if (head?.exists && head.get("status") !== "draft") {
+        const owner = head.get("client_id");
+        const version = head.get("version") ?? 1;
+        if ((owner !== undefined && owner !== clientId) || !Number.isSafeInteger(version) || version < 1) {
+          throw invalidIntake();
+        }
+        if (!indexed.has(version) && (before === undefined || version < before)) {
+          indexed.set(version, dateValue(head.get("submitted_at")));
+        }
+      }
+      const ordered = [...indexed].sort(([left], [right]) => right - left);
+      const page = ordered.slice(0, limit).map(([version, submittedAt]) => ({ version, submittedAt }));
+      return {
+        data: { versions: page, nextBefore: ordered.length > limit ? page.at(-1)!.version : null },
+        recordIds: page.map(item => String(item.version)),
+      };
+    }, correlationId);
   }
 
   getWorkspace(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace> {

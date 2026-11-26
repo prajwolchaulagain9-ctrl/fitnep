@@ -19,5 +19,7 @@ services:
         sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
+      - key: CLOUDINARY_URL
+        sync: false
       - key: SESSION_IDLE_TIMEOUT_SECONDS
         value: '900'

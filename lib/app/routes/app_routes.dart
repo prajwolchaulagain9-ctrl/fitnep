@@ -53,6 +53,15 @@ abstract final class AppRoutes {
   static const clientMembership = '/client/membership';
   static const clientIntake = '/client/intake';
   static const clientIntakeName = 'client-intake';
+  static const intakeEditor = '/client/intake/edit';
+  static const intakeEditorName = 'intake-editor';
+  static const ownIntakeHistory = '/client/intake/history';
+  static const ownIntakeHistoryName = 'own-intake-history';
+  static const ownIntakeVersionName = 'own-intake-version';
+  static const dietitianIntakeHistory =
+      '/dietitian/assigned-clients/:id/intake/history';
+  static const dietitianIntakeHistoryName = 'dietitian-intake-history';
+  static const dietitianIntakeVersionName = 'dietitian-intake-version';
 
   static const dietPlanDetailsName = 'diet-plan-details';
   static const messageThreadName = 'message-thread';

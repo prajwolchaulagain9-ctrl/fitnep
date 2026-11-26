@@ -8,6 +8,7 @@ import { HostedConfigurationError, readHostedConfig } from "./hosted_config";
 import { createNotificationApp } from "./http_app";
 import { FirestorePlatformSessionService } from "./platform_sessions";
 import { startWorkflowRecovery } from "./workflow_delivery";
+import { CloudinaryPhotoConfigError } from "./cloudinary_photo_storage";
 
 function start() {
   const config = readHostedConfig(process.env);
@@ -18,7 +19,7 @@ function start() {
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
   const dependencies = createFitnepDependencies(auth, firestore);
-  const recovery = startWorkflowRecovery(firestore, auth);
+  const recovery = startWorkflowRecovery(firestore, auth, () => dependencies.privateRecordsStore.recoverPhotoUploads());
   const authAdapter = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
   const api = createNotificationApp({
     ...dependencies,
@@ -51,7 +52,7 @@ function start() {
 }
 
 try { start(); } catch (error) {
-  console.error(error instanceof HostedConfigurationError
+  console.error(error instanceof HostedConfigurationError || error instanceof CloudinaryPhotoConfigError
     ? error.message
     : "The FitNEP API could not initialize. Check the host's Firebase credentials.");
   process.exitCode = 1;

@@ -1,4 +1,6 @@
 import '../../features/health_assessment/presentation/pages/client_intake_page.dart';
+import '../../features/health_assessment/presentation/pages/intake_editor_page.dart';
+import '../../features/health_assessment/presentation/pages/intake_history_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -211,6 +213,73 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
+      GoRoute(
+        path: AppRoutes.intakeEditor,
+        name: AppRoutes.intakeEditorName,
+        builder: (context, state) => RouteAccessGate(
+          requiredPermission: 'view_own_client_records',
+          builder: (_) => IntakeEditorPage(
+            clientId: ref.read(routeSessionProvider).requireValue!.uid,
+          ),
+        ),
+      ),
+      for (final own in [true, false])
+        GoRoute(
+          path: own
+              ? AppRoutes.ownIntakeHistory
+              : AppRoutes.dietitianIntakeHistory,
+          name: own
+              ? AppRoutes.ownIntakeHistoryName
+              : AppRoutes.dietitianIntakeHistoryName,
+          builder: (context, state) => RouteAccessGate(
+            requiredPermission: permissionForRoute(state.uri.path)!,
+            builder: (_) => IntakeHistoryPage(
+              clientId: own
+                  ? ref.read(routeSessionProvider).requireValue!.uid
+                  : state.pathParameters['id']!,
+              openVersion: (context, version) => context.pushNamed<void>(
+                own
+                    ? AppRoutes.ownIntakeVersionName
+                    : AppRoutes.dietitianIntakeVersionName,
+                pathParameters: {
+                  if (!own) 'id': state.pathParameters['id']!,
+                  'version': version.toString(),
+                },
+              ),
+            ),
+          ),
+          routes: [
+            GoRoute(
+              path: ':version',
+              name: own
+                  ? AppRoutes.ownIntakeVersionName
+                  : AppRoutes.dietitianIntakeVersionName,
+              builder: (context, state) => RouteAccessGate(
+                requiredPermission: permissionForRoute(state.uri.path)!,
+                builder: (_) {
+                  final viewer = ref
+                      .read(routeSessionProvider)
+                      .requireValue!
+                      .uid;
+                  final version = int.tryParse(
+                    state.pathParameters['version']!,
+                  );
+                  if (version == null || version < 1) {
+                    return const Scaffold(
+                      body: Center(child: Text('Intake version unavailable.')),
+                    );
+                  }
+                  return ClientIntakePage(
+                    clientId: own ? viewer : state.pathParameters['id']!,
+                    viewerId: viewer,
+                    readOnly: true,
+                    version: version,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       GoRoute(
         path: AppRoutes.adminStaffAccounts,
         builder: (_, _) => RouteAccessGate(

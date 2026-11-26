@@ -108,6 +108,9 @@ String? permissionForRoute(String path) {
   }
   if (path.startsWith('/care/clients/')) return 'view_assigned_client_records';
   if (path == '/client/records') return 'view_own_client_records';
+  if (path == '/client/intake' || path.startsWith('/client/intake/')) {
+    return 'view_own_client_records';
+  }
   if (path == '/client/packages') return 'manage_own_membership';
   if (path == '/client/membership') return 'manage_own_membership';
   if (path == '/client/privacy-preferences') return 'manage_own_privacy';
