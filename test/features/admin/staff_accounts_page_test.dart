@@ -19,7 +19,8 @@ void main() {
       overrides: [
         offlineHostedSessionOverride,
         routeSessionProvider.overrideWith(
-          (ref) async => (uid: 'admin-1', role: FitNepRole.admin),
+          (ref) async =>
+              (uid: 'admin-1', role: FitNepRole.admin, auditRead: false),
         ),
         staffAccountRepositoryProvider('admin-1')
             .overrideWithValue(StaffAccountRepository(api.dio)),

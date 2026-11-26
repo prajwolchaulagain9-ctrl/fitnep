@@ -60,6 +60,7 @@ class _Repository extends AuthorizationRepository {
   final requestedPaths = <String>[];
   final assignedQueries = <Map<String, dynamic>>[];
   bool includeAssignedClients = false;
+  final auditQueries = <Map<String, dynamic>>[];
   bool denyRecords = false;
   int recordRequests = 0;
   @override
@@ -71,9 +72,20 @@ class _Repository extends AuthorizationRepository {
     changes.add(account);
   }
 
+  void changeAuditRead(bool granted) {
+    account = FitNepAccount.fromJson({
+      ..._data(account.role),
+      'audit_read': granted,
+    });
+    changes.add(account);
+  }
+
   @override
   Future<void> checkPermission(String permission) async {
-    if (!AuthorizationService(account.role).hasPermission(permission)) {
+    if (!AuthorizationService(
+      account.role,
+      auditRead: account.auditRead,
+    ).hasPermission(permission)) {
       denied.add(permission);
       throw const AuthorizationFailure(
         'You do not have permission to access this feature.',
@@ -89,6 +101,31 @@ class _Repository extends AuthorizationRepository {
     Map<String, dynamic>? query,
   }) async {
     requestedPaths.add(path);
+    if (path == 'admin/audit-events') {
+      final filters = query ?? const <String, dynamic>{};
+      auditQueries.add(filters);
+      final nextPage = filters['after'] != null;
+      return {
+        'events': [
+          {
+            'id': nextPage ? 'event-1' : 'event-2',
+            'action': nextPage ? 'plan.created' : 'plan.revised',
+            'actor_id': 'dietitian-1',
+            'actor_name': 'Synthetic reviewer',
+            'actor_role': 'dietitian',
+            'outcome': 'succeeded',
+            'target_type': 'plan',
+            'target_id': 'plan-1',
+            'status': 'draft',
+            'version': nextPage ? 1 : 2,
+            'occurred_at': '2026-11-26T18:15:00Z',
+          },
+        ],
+        'next_cursor': nextPage || filters.containsKey('plan_id')
+            ? null
+            : 'event-2',
+      };
+    }
     if (path == 'admin/users' && method == 'GET') {
       return {
         'users': [
@@ -199,6 +236,59 @@ Future<ProviderContainer> _open(
 }
 
 void main() {
+  testWidgets(
+    'staff audit grants govern navigation, filtering and revocation',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repository = _Repository(FitNepRole.staff);
+      await _open(tester, repository, AppRoutes.staffHome);
+      expect(find.text('Audit logs'), findsNothing);
+
+      repository.changeAuditRead(true);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Audit logs'));
+      await tester.pumpAndSettle();
+      expect(find.text('Audit log'), findsOneWidget);
+      expect(find.byTooltip('Audit history'), findsNothing);
+      expect(find.textContaining('27 Nov 2026, 00:00:00 NPT'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Filter audit events'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Actor ID'),
+        'dietitian-1',
+      );
+      await tester.tap(find.text('Apply filters'));
+      await tester.pumpAndSettle();
+      expect(repository.auditQueries.last, {'actor_id': 'dietitian-1'});
+      await tester.tap(find.text('Load more'));
+      await tester.pumpAndSettle();
+      expect(repository.auditQueries.last, {
+        'actor_id': 'dietitian-1',
+        'after': 'event-2',
+      });
+      expect(find.text('plan.created'), findsOneWidget);
+
+      await tester.tap(find.text('plan.revised'));
+      await tester.pumpAndSettle();
+      expect(find.text('Version  2'), findsOneWidget);
+      await tester.ensureVisible(find.text('View plan timeline'));
+      await tester.tap(find.text('View plan timeline'));
+      await tester.pumpAndSettle();
+      expect(repository.auditQueries.last, {'plan_id': 'plan-1'});
+      expect(find.text('Plan timeline'), findsOneWidget);
+
+      repository.changeAuditRead(false);
+      await tester.pumpAndSettle();
+      expect(find.text('Plan timeline'), findsNothing);
+      expect(find.text('plan.revised'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('every role has only its permitted menu items and valid canonical identifiers', () {
     for (final role in FitNepRole.values) {
       final menu = menusForRole(role).map((item) => item.label).toSet();

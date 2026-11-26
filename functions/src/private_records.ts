@@ -43,7 +43,7 @@ export function parseRecordId(value: string | undefined): string {
   return value;
 }
 
-const maxPhotoBytes = 512 * 1024;
+export const maxPhotoBytes = 512 * 1024;
 export const photoContentTypes = ["image/jpeg", "image/png", "image/webp"];
 export const photoUploadOptions = { limit: maxPhotoBytes, type: photoContentTypes };
 

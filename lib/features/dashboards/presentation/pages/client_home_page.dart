@@ -88,6 +88,16 @@ class ClientHomePage extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
             const _MembershipActions(),
+            const SizedBox(height: 12),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.assignment_outlined),
+                title: const Text('Health intake'),
+                subtitle: const Text('Fill in or update your intake form'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => context.pushNamed(AppRoutes.intakeEditorName),
+              ),
+            ),
             const SizedBox(height: 20),
             Text(
               'Your FitNep updates',

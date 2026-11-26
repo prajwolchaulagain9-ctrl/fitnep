@@ -106,9 +106,12 @@ const roleMenuItems = <RoleMenuItem>[
     icon: Icons.policy_outlined,
   ),
 ];
-List<RoleMenuItem> menusForRole(FitNepRole? role) => roleMenuItems
-    .where((item) => AuthorizationService(role).hasPermission(item.permission))
-    .toList();
+List<RoleMenuItem> menusForRole(FitNepRole? role, {bool auditRead = false}) {
+  final authorization = AuthorizationService(role, auditRead: auditRead);
+  return roleMenuItems
+      .where((item) => authorization.hasPermission(item.permission))
+      .toList();
+}
 
 class RoleHomePage extends ConsumerWidget {
   const RoleHomePage({required this.role, super.key});
@@ -132,7 +135,10 @@ class RoleHomePage extends ConsumerWidget {
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 20),
-        for (final item in menusForRole(role))
+        for (final item in menusForRole(
+          role,
+          auditRead: ref.watch(routeSessionProvider).value?.auditRead ?? false,
+        ))
           Card(
             child: ListTile(
               leading: Icon(item.icon),
@@ -150,7 +156,8 @@ class RoleNavigationDrawer extends ConsumerWidget {
   const RoleNavigationDrawer({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(routeSessionProvider).value?.role;
+    final session = ref.watch(routeSessionProvider).value;
+    final role = session?.role;
     final action = ref.watch(authenticationControllerProvider);
     return Drawer(
       child: SafeArea(
@@ -176,7 +183,10 @@ class RoleNavigationDrawer extends ConsumerWidget {
                 title: const Text('Dashboard'),
                 onTap: () => context.go(dashboardForRole(role)),
               ),
-            for (final item in menusForRole(role))
+            for (final item in menusForRole(
+              role,
+              auditRead: session?.auditRead ?? false,
+            ))
               ListTile(
                 leading: Icon(item.icon),
                 title: Text(item.label),

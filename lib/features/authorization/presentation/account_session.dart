@@ -31,6 +31,7 @@ final accountSessionProvider = StreamProvider<FitNepAccount?>((ref) async* {
         published?.roleRevision != account?.roleRevision ||
         published?.id != account?.id ||
         published?.role != account?.role ||
+        published?.auditRead != account?.auditRead ||
         published?.isActive != account?.isActive ||
         (published == null) != (account == null);
     published = account;

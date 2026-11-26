@@ -20,6 +20,7 @@ import { FirestoreClientAssignmentRepository } from "./firestore_client_assignme
 import { NotificationWorkflowService } from "./notification_service";
 import { ClientIntakeService } from "./client_intake_service";
 import { FirestoreClientIntakeRepository } from "./firestore_client_intake_repository";
+import { cloudinaryPhotoStorageFromEnv } from "./cloudinary_photo_storage";
 
 // Reusable Express handler for the existing Firebase function or a Node serverless
 // host. Credentials come from that host's trusted environment, never Flutter.
@@ -28,7 +29,7 @@ export function createFitnepApi() {
   return createNotificationApp(createFitnepDependencies(getAuth(), getFirestore()));
 }
 
-export function createFitnepDependencies(auth: Auth, db: Firestore) {
+export function createFitnepDependencies(auth: Auth, db: Firestore, photoStorage = cloudinaryPhotoStorageFromEnv()) {
   const accounts = new FirestoreAccountService(db, auth);
   const preferences = new FirestorePrivacyPreferencesRepository(db);
   const auditWriter = new FirestoreAuditWriter(db);
@@ -38,7 +39,7 @@ export function createFitnepDependencies(auth: Auth, db: Firestore) {
   return { accounts, audit: new FirestoreAuditStore(db),
     auditWriter,
     authVerifier: new FirebaseAuthVerifier(accounts), notificationRepository, staffAccountRepository,
-    privacyPreferencesRepository: preferences, privateRecordsStore: new FirestorePrivateRecordsStore(db, preferences, auditWriter),
+    privacyPreferencesRepository: preferences, privateRecordsStore: new FirestorePrivateRecordsStore(db, preferences, auditWriter, photoStorage),
     packageService, packageRepository: new FirestorePackageRepository(db),
     purchaseRepository: new FirestorePurchaseRepository(db),
     googlePasswordService: new GooglePasswordService(auth, db, new BrevoMailer(process.env), process.env.SIGNUP_OTP_HASH_SECRET || ""),

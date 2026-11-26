@@ -63,7 +63,11 @@ void main() {
             }),
             routeSessionProvider.overrideWith((ref) async {
               await ref.watch(authenticationSettledProvider.future);
-              return (uid: 'client-1', role: FitNepRole.client);
+              return (
+                uid: 'client-1',
+                role: FitNepRole.client,
+                auditRead: false,
+              );
             }),
             registrationAcceptedProvider.overrideWith(
               (ref, uid) async => false,

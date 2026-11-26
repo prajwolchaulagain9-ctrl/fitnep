@@ -42,7 +42,11 @@ void main() {
         overrides: [
           offlineHostedSessionOverride,
           routeSessionProvider.overrideWith(
-            (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
+            (ref) async => (
+              uid: 'dietitian-1',
+              role: FitNepRole.dietitian,
+              auditRead: false,
+            ),
           ),
           notificationDestinationRepositoryProvider.overrideWithValue(
             repository,
@@ -79,7 +83,11 @@ void main() {
         overrides: [
           offlineHostedSessionOverride,
           routeSessionProvider.overrideWith(
-            (ref) async => (uid: 'dietitian-1', role: FitNepRole.dietitian),
+            (ref) async => (
+              uid: 'dietitian-1',
+              role: FitNepRole.dietitian,
+              auditRead: false,
+            ),
           ),
           notificationDestinationRepositoryProvider.overrideWithValue(
             _FakeDestinationRepository(),
@@ -139,7 +147,11 @@ void main() {
       (ref) => auth.users.stream.map(
         (user) => user == null
             ? null
-            : (uid: user.uid, role: parseRole((user as _RouteUser).role)),
+            : (
+                uid: user.uid,
+                role: parseRole((user as _RouteUser).role),
+                auditRead: false,
+              ),
       ),
     );
     final container = ProviderContainer(

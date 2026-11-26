@@ -177,7 +177,7 @@ export function createNotificationApp(
     response.locals.access = access;
     if (access) {
       const user = currentUser(response);
-      requirePermission(user.role, access.permission);
+      requirePermission(user.role, access.permission, user.permissions?.auditRead);
       if (user.emailVerified === false &&
           !["view_dashboard", "view_own_profile", "edit_own_profile"].includes(access.permission)) {
         throw new PermissionDeniedError("Email verification is required.");
@@ -408,6 +408,16 @@ export function createNotificationApp(
     response.json({ data: { intake: toApiClientIntake(intake) } });
   });
   app.get("/clients/:clientId/intake", getSubmittedIntake);
+  app.get("/clients/:clientId/intake/versions", asyncRoute(async (request, response) => {
+    const index = await clientIntake().listSubmittedVersions(
+      currentUser(response), request.params.clientId, response.locals.correlationId, request.query.before,
+    );
+    response.json({ data: {
+      client_id: request.params.clientId,
+      versions: index.versions.map(item => ({ version: item.version, submitted_at: item.submittedAt })),
+      next_before: index.nextBefore,
+    } });
+  }));
   app.get("/clients/:clientId/intake/versions/:version", getSubmittedIntake);
 
   const packages = () => {

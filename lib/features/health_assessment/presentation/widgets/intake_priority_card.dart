@@ -31,10 +31,12 @@ class IntakePriorityCard extends StatelessWidget {
             children: [
               Icon(icon, color: color),
               const SizedBox(width: 10),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium
-                    ?.copyWith(color: color, fontWeight: FontWeight.w800),
+              Expanded(
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(color: color, fontWeight: FontWeight.w800),
+                ),
               ),
             ],
           ),

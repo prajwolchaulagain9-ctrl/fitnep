@@ -104,6 +104,25 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
     return { token, sessionId, headers: { Authorization: "Bearer " + token, [platformSessionHeader]: sessionId } };
   }
 
+  it("rotates a hosted staff session when its audit grant changes", async () => {
+    const admin = await start("day1-admin");
+    const staff = await start("day1-staff");
+    const auditPath = "/admin/audit-events";
+    await request(api).get(auditPath).set(staff.headers).expect(403);
+    await request(api).patch("/admin/users/day1-staff").set(admin.headers).send({ audit_read: true }).expect(200);
+    const stale = await request(api).get(auditPath).set(staff.headers).expect(401);
+    assert.equal(stale.body.code, "session-authority-changed");
+    const refreshed = await request(api).post("/sessions/start")
+      .set("Authorization", staff.headers.Authorization).send({}).expect(200);
+    assert.equal(refreshed.body.data.permissions.audit_read, true);
+    assert.equal(refreshed.body.data.permissions.payments_verify, false);
+    assert.notEqual(refreshed.body.data.session_id, staff.sessionId);
+    const headers = { ...staff.headers, [platformSessionHeader]: refreshed.body.data.session_id };
+    await request(api).get(auditPath).set(headers).expect(200);
+    await request(api).patch("/admin/users/day1-staff").set(admin.headers).send({ audit_read: false }).expect(200);
+    await request(api).get(auditPath).set(headers).expect(401);
+  });
+
   it("a verified session persists server-owned audit metadata and cannot be forged or reopened after logout", async () => {
     await request(api).get("/healthz").expect(200);
     await request(api).post("/sessions/start").send({}).expect(401);

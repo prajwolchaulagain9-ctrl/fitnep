@@ -11,6 +11,7 @@ import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/pr
 import { AuditUnavailableError } from "../src/audit";
 import { UserRole } from "../src/domain";
 import { createFitnepApi, createFitnepDependencies } from "../src/api_factory";
+import { PrivateRecordsError } from "../src/private_records";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -72,6 +73,64 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
       denied(await request(api).get("/session").set(bearer("client")));
     }
   });
+
+  it("keeps all hosted photo uploads private and recovers an upload after a lost response", async () => {
+    const assets = new Map<string, Buffer>();
+    let reads = 0;
+    let loseResponse = false;
+    const deps = createFitnepDependencies(auth, db, {
+      async write(id, bytes) {
+        assets.set(id, bytes);
+        if (loseResponse) throw new Error("Lost provider response.");
+      },
+      async read(id) {
+        reads++;
+        const bytes = assets.get(id);
+        if (!bytes) throw new PrivateRecordsError(404, "Photo not found.");
+        return bytes;
+      },
+    });
+    const media = request(createNotificationApp(deps));
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+kMR8AAAAASUVORK5CYII=", "base64");
+    const meal = "/clients/client/records/meal-photos";
+    const progress = "/clients/client/records/progress-photos";
+    await media.post(meal).set(bearer("client")).type("png").send(png).expect(403);
+    assert.equal(assets.size, 0);
+    await deps.privacyPreferencesRepository.updateSharing("client", { shareMealPhotos: true, shareProgressPhotos: true });
+    await media.put("/admin/clients/client/assignment").set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian", staff_ids: [] }).expect(200);
+    await media.post(meal).set(bearer("other")).type("png").send(png).expect(403);
+    await media.post(meal).set(bearer("client")).type("png").send(Buffer.from("not an image")).expect(400);
+    assert.equal(assets.size, 0);
+
+    const first = await media.post(meal).set(bearer("client")).type("png").send(png).expect(201);
+    const id: string = first.body.data.record.id;
+    assert.deepEqual(first.body.data.record.details, { content_type: "image/png" });
+    const stored = await db.doc(`client_records/client/meal-photos/${id}`).get();
+    assert.equal(stored.get("photo_storage"), "cloudinary");
+    assert.equal(stored.get("photo"), undefined);
+    assert.deepEqual(assets.get(id), png);
+    await media.get(`${meal}/${id}/photo`).set(bearer("other")).expect(403);
+    assert.equal(reads, 0);
+    const photo = await media.get(`${meal}/${id}/photo`).set(bearer("dietitian"))
+      .expect("Cache-Control", "no-store").expect("Content-Type", /image\/png/).expect(200);
+    assert.deepEqual(photo.body, png);
+    await deps.privacyPreferencesRepository.updateSharing("client", { shareMealPhotos: false });
+    await media.get(`${meal}/${id}/photo`).set(bearer("dietitian")).expect(403);
+    assert.equal(reads, 1);
+
+    loseResponse = true;
+    await media.post(progress).set(bearer("client")).type("png").send(png).expect(503);
+    const pending = await db.collection("private_photo_uploads").get();
+    assert.equal(pending.size, 1);
+    const upload = pending.docs[0]!;
+    assert.equal((await media.get(progress).set(bearer("client")).expect(200)).body.data.records.length, 0);
+    await upload.ref.update({ retry_at: Timestamp.fromMillis(Date.now() - 1_000) });
+    await deps.privateRecordsStore.recoverPhotoUploads();
+    assert.equal((await upload.ref.get()).exists, false);
+    const recovered = await media.get(`${progress}/${upload.id}/photo`).set(bearer("client")).expect(200);
+    assert.deepEqual(recovered.body, png);
+  });
   it("rejects clients, staff and dietitians at administrative endpoints and logs all attempts", async () => {
     for (const uid of ["client", "staff", "dietitian"]) {
       denied(await request(api).get("/admin/users").set(bearer(uid)));
@@ -113,6 +172,81 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     assert(logs.docs.some(log => log.get("action") === "view_audit_logs" && log.get("resource") === "authorization_audit"));
     for (const path of paths) await request(api).get(path).set(bearer("ceo")).expect(200);
     await request(api).head("/ADMIN/USERS/").set(bearer("ceo")).expect(200);
+  });
+  it("allows only admins and explicitly granted staff to read audit metadata", async () => {
+    const path = "/admin/audit-events";
+    await request(api).get(path).expect(401);
+    for (const uid of ["staff", "dietitian", "client"]) {
+      await request(api).get(path).set(bearer(uid)).expect(403);
+    }
+    await request(api).patch("/admin/users/staff").set(bearer("staff")).send({ audit_read: true }).expect(403);
+    await request(api).patch("/admin/users/dietitian").set(bearer("ceo")).send({ audit_read: true }).expect(403);
+    await request(api).patch("/admin/users/staff").set(bearer("ceo")).send({ audit_read: true }).expect(200);
+    await request(api).patch("/admin/users/staff").set(bearer("ceo")).send({ audit_read: true }).expect(200);
+    const response = await request(api).get(path).set(bearer("staff")).expect(200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.equal(response.body.data.events.filter((event: { status?: string }) => event.status === "audit_read_granted").length, 1);
+    const current = await request(api).get("/session").set(bearer("staff")).expect(200);
+    assert.equal(current.body.data.account.audit_read, true);
+    assert(current.body.data.permissions.includes("view_audit_logs"));
+    await request(api).get("/admin/audit-logs").set(bearer("staff")).expect(403);
+    await request(api).get("/admin/memberships/pending").set(bearer("staff")).expect(403);
+    await request(api).get("/clients/client/records/nutrition-records").set(bearer("staff")).expect(403);
+    await request(api).patch("/admin/users/staff").set(bearer("ceo")).send({ audit_read: false }).expect(200);
+    await request(api).get(path).set(bearer("staff")).expect(403);
+    await request(api).get(path).set(bearer("ceo")).expect(200);
+  });
+  it("combines audit filters across tied timestamps and sparse pages in Nepal time", async () => {
+    const collection = db.collection("audit_events");
+    const batch = db.batch();
+    const event = {
+      actor_id: "dietitian", actor_name: "Synthetic reviewer", actor_role: "dietitian",
+      action: "plan.revised", target_id: "plan-filter-fixture", target_type: "plan",
+      client_id: "client", dietitian_id: "dietitian", status: "draft", version: 2,
+      outcome: "succeeded", occurred_at: Timestamp.fromDate(new Date("2026-11-26T18:15:00Z")),
+      private_fixture_field: "synthetic clinical value",
+    };
+    const ids = Array.from({ length: 51 }, (_, index) => "event-" + String(index).padStart(3, "0"));
+    for (const id of ids) batch.create(collection.doc(id), event);
+    for (let i = 0; i < 100; i++) {
+      batch.create(collection.doc("distractor-" + String(i).padStart(3, "0")), {
+        ...event, actor_id: "other", target_id: "different-plan",
+        occurred_at: Timestamp.fromDate(new Date("2026-11-26T19:00:00Z")),
+      });
+    }
+    batch.create(collection.doc("before-boundary"), {
+      ...event, occurred_at: Timestamp.fromMillis(event.occurred_at.toMillis() - 1),
+    });
+    batch.create(collection.doc("after-boundary"), {
+      ...event, occurred_at: Timestamp.fromDate(new Date("2026-11-27T18:15:00Z")),
+    });
+    batch.create(collection.doc("non-plan-target"), {
+      ...event, actor_id: "other", target_type: "intake", action: "intake.reviewed",
+    });
+    await batch.commit();
+    const filters = {
+      actor_id: "dietitian", client_id: "client", dietitian_id: "dietitian",
+      action: "plan.revised", status: "draft", from: "2026-11-27", through: "2026-11-27",
+    };
+    const search = (query = {}) => request(api).get("/admin/audit-events").set(bearer("ceo")).query(query);
+    const sparse = (await search(filters).expect(200)).body.data;
+    assert.deepEqual(sparse.events, []);
+    assert.equal(sparse.next_cursor, "distractor-000");
+    const first = (await search({ ...filters, after: sparse.next_cursor }).expect(200)).body.data;
+    const second = (await search({ ...filters, after: first.next_cursor }).expect(200)).body.data;
+    const results = [...first.events, ...second.events];
+    assert.equal(first.events.length, 50);
+    assert.equal(second.next_cursor, null);
+    assert.deepEqual(results.map(row => row.id), ids.reverse());
+    assert.equal(results[0].occurred_at, "2026-11-26T18:15:00.000Z");
+    assert.equal(results[0].actor_name, event.actor_name);
+    assert.equal(results[0].version, 2);
+    assert(!Object.hasOwn(results[0], "private_fixture_field"));
+    const timeline = (await search({
+      plan_id: event.target_id, from: filters.from, through: filters.through,
+    }).expect(200)).body.data;
+    assert.deepEqual(timeline.events.map((row: { target_type: string }) => row.target_type), Array(50).fill("plan"));
+    await search({ from: "2026-02-30" }).expect(400);
   });
   it("blocks self escalation and ordinary profile role/status edits", async () => {
     denied(await request(api).patch("/profile/me").set(bearer("client")).send({ role: "admin" }));

@@ -11,6 +11,7 @@ export interface Account {
   id: string; full_name: string; email: string; role: UserRole; role_revision: number;
   account_status: "active" | "inactive"; created_at: string; updated_at: string;
   deactivated_at?: string | null; deactivation_reason?: string | null;
+  audit_read?: true;
 }
 export class AccountInputError extends Error {}
 export function identifier(value: unknown): string {
@@ -28,7 +29,9 @@ export function accountFrom(id: string, data: Record<string, unknown> | undefine
     throw new PermissionDeniedError("The account has no valid role revision.");
   }
   return { id, full_name: typeof data.full_name === "string" ? data.full_name : "",
-    email: typeof data.email === "string" ? data.email : "", role: data.role,
+        email: typeof data.email === "string" ? data.email : "", role: data.role,
+        ...(data.role === "staff" && (data.permissions as { audit_read?: unknown } | undefined)?.audit_read === true
+          ? { audit_read: true as const } : {}),
     role_revision: typeof data.role_revision === "number" ? data.role_revision : 0,
     account_status: data.account_status as Account["account_status"],
     created_at: data.created_at.toDate().toISOString(), updated_at: data.updated_at.toDate().toISOString(),
@@ -175,6 +178,12 @@ export class FirestoreAccountService {
   async change(actor: AuthenticatedUser, uid: string, body: Record<string, unknown>): Promise<Account> {
     identifier(uid);
     if (actor.uid === uid) throw new PermissionDeniedError("Administrators cannot change their own role or status.");
+    if (Object.hasOwn(body, "audit_read")) {
+      if (Object.keys(body).length !== 1 || typeof body.audit_read !== "boolean") {
+        throw new AccountInputError("Supply one boolean audit_read permission.");
+      }
+      return this.changeAuditRead(actor, uid, body.audit_read);
+    }
     const isRole = Object.hasOwn(body, "role");
     if (Object.keys(body).some(key => ![isRole ? "role" : "account_status", "reason"].includes(key)) ||
         (!isRole && !Object.hasOwn(body, "account_status")) ||
@@ -197,6 +206,8 @@ export class FirestoreAccountService {
       if (role === target.role && status === target.account_status) return;
       // Assignment versions prevent old team grants returning after a later promotion.
       transaction.update(targetRef, { role, account_status: status, role_revision: target.role_revision + 1,
+        ...(target.audit_read && (role !== target.role || status === "inactive")
+          ? { "permissions.audit_read": FieldValue.delete() } : {}),
         ...(!isRole ? { deactivated_at: status === "inactive" ? FieldValue.serverTimestamp() : FieldValue.delete(),
           deactivation_reason: status === "inactive" && typeof body.reason === "string" ? body.reason.trim() : FieldValue.delete() } : {}),
         updated_at: FieldValue.serverTimestamp() });
@@ -223,6 +234,33 @@ export class FirestoreAccountService {
       });
     });
     // Old ID tokens cannot retain privileges: requests always reread users/{uid}.
+    return this.get(uid);
+  }
+  private async changeAuditRead(actor: AuthenticatedUser, uid: string, enabled: boolean): Promise<Account> {
+    await this.firestore.runTransaction(async transaction => {
+      const targetRef = this.firestore.collection("users").doc(uid);
+      const [admin, staff] = await Promise.all([
+        transaction.get(this.firestore.collection("users").doc(actor.uid)),
+        transaction.get(targetRef),
+      ]);
+      const operator = accountFrom(admin.id, admin.data());
+      const target = accountFrom(staff.id, staff.data());
+      if (!accountMatchesActor(operator, actor) || target.role !== "staff" || target.account_status !== "active") {
+        throw new PermissionDeniedError();
+      }
+      requirePermission(operator.role, "manage_user_roles");
+      if ((target.audit_read === true) === enabled) return;
+      transaction.update(targetRef, { "permissions.audit_read": enabled, updated_at: FieldValue.serverTimestamp() });
+      transaction.set(this.firestore.collection("account_access").doc(uid), {
+        revision: target.role_revision, updated_at: FieldValue.serverTimestamp(),
+      });
+      new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+        actor: { uid: operator.id, role: operator.role, displayName: operator.full_name || operator.id },
+        action: "account.updated", targetType: "account", targetId: uid,
+        status: enabled ? "audit_read_granted" : "audit_read_revoked",
+        outcome: "succeeded", correlationId: randomUUID(),
+      });
+    });
     return this.get(uid);
   }
   async assertAssigned(actor: AuthenticatedUser, clientId: string, transaction?: Transaction) {
@@ -312,5 +350,7 @@ export function accountManagementPermission(role: UserRole): Permission {
     "manage_dietitian_accounts" : role === "admin" ? "manage_user_roles" : "manage_client_accounts";
 }
 export function sessionPayload(account: Account) {
-  return { account, permissions: [...rolePermissions[account.role]] };
+  const permissions: Permission[] = [...rolePermissions[account.role]];
+  if (account.role === "staff" && account.audit_read) permissions.push("view_audit_logs");
+  return { account, permissions };
 }
