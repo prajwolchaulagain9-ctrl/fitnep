@@ -1,3 +1,10 @@
+import {
+  IntakeAnswerError,
+  IntakeAnswers,
+  isObject,
+  parseIntakeAnswers,
+  validateIntakeMeasurements,
+} from "./client_intake_answers";
 import { AuthenticatedUser } from "./domain";
 
 export const clientIntakeReviewActions = [
@@ -51,6 +58,23 @@ export interface ClientIntakeRecord {
   review: ClientIntakeReview;
 }
 
+export interface IntakeWorkspace {
+  clientId: string;
+  answers: IntakeAnswers;
+  draftRevision: number;
+  version: number;
+  latest: ClientIntakeRecord | null;
+  membershipActive: boolean;
+  guardianConfirmed: boolean;
+}
+
+export interface IntakeDraftWrite {
+  answers: IntakeAnswers;
+  expectedVersion: number;
+  expectedDraftRevision: number;
+  guardianConfirmed: boolean;
+}
+
 export interface ClientIntakeRepository {
   getForAssignedDietitian(
     clientId: string,
@@ -58,6 +82,8 @@ export interface ClientIntakeRepository {
     context?: ClientIntakeReviewContext,
   ): Promise<ClientIntakeRecord>;
   getForOwner?(actor: AuthenticatedUser, correlationId: string): Promise<ClientIntakeRecord>;
+  getWorkspace?(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace>;
+  saveDraft?(actor: AuthenticatedUser, input: IntakeDraftWrite, correlationId: string): Promise<IntakeWorkspace>;
   updateReviewForAssignedDietitian(
     clientId: string,
     dietitianId: string,
@@ -68,7 +94,7 @@ export interface ClientIntakeRepository {
 
 export class ClientIntakeError extends Error {
   constructor(
-    readonly statusCode: 400 | 403 | 404 | 503,
+    readonly statusCode: 400 | 403 | 404 | 409 | 503,
     message: string,
   ) {
     super(message);
@@ -98,6 +124,22 @@ export class ClientIntakeService {
     if (actor.role !== "client") throw new ClientIntakeError(403, "Client access is required.");
     if (!this.repository.getForOwner) throw new ClientIntakeError(503, "Intake storage is unavailable.");
     return this.repository.getForOwner(actor, correlationId);
+  }
+
+  async getOwnWorkspace(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.getWorkspace) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    return this.repository.getWorkspace(actor, correlationId);
+  }
+
+  async saveOwnDraft(actor: AuthenticatedUser, input: unknown, correlationId: string): Promise<IntakeWorkspace> {
+    requireVerifiedClient(actor);
+    if (!this.repository.saveDraft) {
+      throw new ClientIntakeError(503, "Intake storage is unavailable.");
+    }
+    return this.repository.saveDraft(actor, parseDraftWrite(input, actor.uid), correlationId);
   }
 
   async updateAssignedClientIntakeReview(
@@ -163,6 +205,41 @@ function requiredIdentifier(value: unknown): string {
   return value;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function requireVerifiedClient(actor: AuthenticatedUser): void {
+  if (actor.role !== "client" || actor.emailVerified !== true) {
+    throw new ClientIntakeError(403, "A verified client account is required.");
+  }
+}
+
+function parseDraftWrite(value: unknown, uid: string): IntakeDraftWrite {
+  const fields = [
+    "answers", "expected_client_id", "expected_version", "expected_draft_revision",
+    "guardian_consent_confirmed",
+  ];
+  if (!isObject(value) || Object.keys(value).some(key => !fields.includes(key)) ||
+      typeof value.expected_client_id !== "string" ||
+      !isRevision(value.expected_version) || !isRevision(value.expected_draft_revision) ||
+      typeof value.guardian_consent_confirmed !== "boolean") {
+    throw new ClientIntakeError(400, "Supply the current intake version, draft revision and form answers.");
+  }
+  if (value.expected_client_id !== uid) {
+    throw new ClientIntakeError(403, "The signed-in account changed. Reopen the intake form.");
+  }
+  try {
+    const answers = parseIntakeAnswers(value.answers);
+    validateIntakeMeasurements(answers);
+    return {
+      answers,
+      expectedVersion: value.expected_version,
+      expectedDraftRevision: value.expected_draft_revision,
+      guardianConfirmed: value.guardian_consent_confirmed,
+    };
+  } catch (error) {
+    if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
+    throw error;
+  }
+}
+
+function isRevision(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }

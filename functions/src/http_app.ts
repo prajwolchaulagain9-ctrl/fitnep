@@ -85,6 +85,7 @@ import {
 } from "./purchase_service";
 import {
   ClientIntakeError,
+  IntakeWorkspace,
   ClientIntakeRecord,
   ClientIntakeService,
 } from "./client_intake_service";
@@ -376,10 +377,23 @@ export function createNotificationApp(
       response.json({ data: { intake: toApiClientIntake(intake) } });
     }),
   );
-  app.get("/intakes/me", asyncRoute(async (_request, response) => {
+  const clientIntake = () => {
     if (!dependencies.clientIntakeService) throw new ClientIntakeError(503, "Intake storage is unavailable.");
-    const intake = await dependencies.clientIntakeService.getOwnIntake(currentUser(response), response.locals.correlationId);
+    return dependencies.clientIntakeService;
+  };
+  app.get("/intakes/me", asyncRoute(async (_request, response) => {
+    const intake = await clientIntake().getOwnIntake(currentUser(response), response.locals.correlationId);
     response.json({ data: { intake: toApiClientIntake(intake) } });
+  }));
+  app.get("/intakes/me/draft", asyncRoute(async (_request, response) => {
+    const workspace = await clientIntake().getOwnWorkspace(currentUser(response), response.locals.correlationId);
+    response.json({ data: toApiIntakeWorkspace(workspace) });
+  }));
+  app.put("/intakes/me/draft", asyncRoute(async (request, response) => {
+    const workspace = await clientIntake().saveOwnDraft(
+      currentUser(response), request.body, response.locals.correlationId,
+    );
+    response.json({ data: toApiIntakeWorkspace(workspace) });
   }));
 
   const packages = () => {
@@ -856,6 +870,18 @@ function toApiPackage(packageRecord: import("./domain").PackageRecord) {
     feature_description: packageRecord.featureDescription,
     is_active: packageRecord.isActive,
     created_at: packageRecord.createdAt,
+  };
+}
+
+function toApiIntakeWorkspace(workspace: IntakeWorkspace) {
+  return {
+    client_id: workspace.clientId,
+    answers: workspace.answers,
+    version: workspace.version,
+    draft_revision: workspace.draftRevision,
+    membership_active: workspace.membershipActive,
+    guardian_consent_confirmed: workspace.guardianConfirmed,
+    latest: workspace.latest && toApiClientIntake(workspace.latest),
   };
 }
 

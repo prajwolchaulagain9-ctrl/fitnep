@@ -4,12 +4,16 @@ import {
   FieldValue,
   Firestore,
   Timestamp,
+  Transaction,
 } from "firebase-admin/firestore";
 
 import { AuditWriter, FirestoreAuditWriter } from "./audit";
+import { ageRequiresGuardian, IntakeAnswerError, parseIntakeAnswers } from "./client_intake_answers";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
 import { FirestorePrivacyPreferencesRepository } from "./firestore_privacy_preferences_repository";
+import { FirestorePackageService } from "./package_membership_service";
+import { hasValidPrivacyAcceptance } from "./privacy_policy_acceptance";
 import { createHash } from "node:crypto";
 
 import {
@@ -22,6 +26,8 @@ import {
   ClientIntakeReviewUpdate,
   ClientIntakeSection,
   ClientIntakeStatus,
+  IntakeDraftWrite,
+  IntakeWorkspace,
 } from "./client_intake_service";
 
 const reservedKeys = new Set([
@@ -53,6 +59,8 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       new FirestoreAuditWriter(firestore),
     private readonly reads: Pick<FirestorePrivateRecordsStore, "readResource"> =
       new FirestorePrivateRecordsStore(firestore, new FirestorePrivacyPreferencesRepository(firestore), audit),
+    private readonly membership: Pick<FirestorePackageService, "assignmentStatus"> =
+      new FirestorePackageService(firestore),
   ) {}
 
   getForAssignedDietitian(
@@ -65,6 +73,120 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
 
   getForOwner(actor: AuthenticatedUser, correlationId: string) {
     return this.readFor(actor, actor.uid, correlationId);
+  }
+
+  getWorkspace(actor: AuthenticatedUser, correlationId: string): Promise<IntakeWorkspace> {
+    return this.reads.readResource(actor, {
+      clientId: actor.uid, category: "intakes", recordId: "draft", ownerOnly: true,
+    }, async transaction => {
+      const { workspace } = await this.loadWorkspace(transaction, actor);
+      return { data: workspace };
+    }, correlationId);
+  }
+
+  saveDraft(actor: AuthenticatedUser, input: IntakeDraftWrite, correlationId: string): Promise<IntakeWorkspace> {
+    return this.reads.readResource(actor, {
+      clientId: actor.uid, category: "intakes", recordId: "draft", ownerOnly: true,
+    }, async transaction => {
+      const { workspace, draft, acceptance } = await this.loadWorkspace(transaction, actor);
+      if (workspace.version !== input.expectedVersion) {
+        throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
+      }
+      // A response can be lost after the transaction commits. Return the
+      // saved answers only when they match the very next draft revision.
+      if (draft.exists && workspace.draftRevision === input.expectedDraftRevision + 1 &&
+          JSON.stringify(workspace.answers) === JSON.stringify(input.answers)) {
+        return { data: workspace };
+      }
+      if (workspace.draftRevision !== input.expectedDraftRevision) {
+        throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
+      }
+      if (!workspace.membershipActive) {
+        throw new ClientIntakeError(409, "An active membership is required to update the intake form.");
+      }
+      const guardianConfirmed = this.confirmGuardian(transaction, actor, acceptance, input, correlationId);
+      const revision = workspace.draftRevision + 1;
+      transaction.set(draft.ref, {
+        client_id: actor.uid,
+        revision,
+        answers: input.answers,
+        updated_at: FieldValue.serverTimestamp(),
+      });
+      return { data: {
+        ...workspace, answers: input.answers, draftRevision: revision, guardianConfirmed,
+      } };
+    }, correlationId);
+  }
+
+  private async loadWorkspace(transaction: Transaction, actor: AuthenticatedUser) {
+    const acceptance = await transaction.get(this.firestore.doc(`privacy_acceptances/${actor.uid}`));
+    if (!hasValidPrivacyAcceptance(acceptance.data())) {
+      throw new ClientIntakeError(403, "A current privacy acceptance is required to open intake.");
+    }
+    const intakeRef = this.firestore.doc(`client_intakes/${actor.uid}`);
+    const [intake, draft, membership] = await Promise.all([
+      transaction.get(intakeRef),
+      transaction.get(intakeRef.collection("private").doc("draft")),
+      this.membership.assignmentStatus(actor.uid, transaction),
+    ]);
+    if ((draft.exists && draft.get("client_id") !== actor.uid) ||
+        (intake.get("client_id") !== undefined && intake.get("client_id") !== actor.uid)) {
+      throw invalidIntake();
+    }
+    const latest = !intake.exists || intake.get("status") === "draft"
+      ? null : parseIntake(actor.uid, intake.data());
+    const revision = draft.exists ? draft.get("revision") : 0;
+    if (!Number.isSafeInteger(revision) || revision < 0 || (draft.exists && draft.get("answers") === undefined)) {
+      throw invalidIntake();
+    }
+    const savedAnswers = draft.exists ? draft.get("answers") : intake.get("answers");
+    const displayName = actor.displayName?.trim();
+    const email = actor.email?.trim();
+    const workspace: IntakeWorkspace = {
+      clientId: actor.uid,
+      latest,
+      version: latest?.version ?? 0,
+      draftRevision: revision,
+      answers: savedAnswers === undefined
+        ? {
+          ...(displayName && displayName !== email ? { full_name: displayName.slice(0, 160) } : {}),
+          ...(email ? { contact_email: email.slice(0, 254) } : {}),
+        }
+        : parseSavedAnswers(savedAnswers),
+      membershipActive: membership === "active",
+      guardianConfirmed: acceptance.get("guardian_consent_confirmed") === true,
+    };
+    return { workspace, draft, acceptance };
+  }
+
+  private confirmGuardian(
+    transaction: Transaction,
+    actor: AuthenticatedUser,
+    acceptance: DocumentSnapshot,
+    input: IntakeDraftWrite,
+    correlationId: string,
+  ): boolean {
+    const existing = acceptance.get("guardian_consent_confirmed") === true;
+    let minor: boolean;
+    try {
+      minor = ageRequiresGuardian(input.answers, new Date());
+    } catch (error) {
+      if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
+      throw error;
+    }
+    if (!minor || existing) return existing;
+    if (!input.guardianConfirmed) {
+      throw new ClientIntakeError(400, "Confirm permission from a parent or guardian before saving.");
+    }
+    transaction.update(acceptance.ref, {
+      guardian_consent_confirmed: true,
+      guardian_consent_confirmed_at: FieldValue.serverTimestamp(),
+    });
+    this.audit.appendInTransaction(transaction, {
+      actor, action: "privacy.accepted", targetType: "account", targetId: actor.uid,
+      clientId: actor.uid, status: "guardian_confirmed", outcome: "succeeded", correlationId,
+    });
+    return true;
   }
 
   private readFor(actor: AuthenticatedUser, clientId: string, correlationId?: string) {
@@ -323,4 +445,13 @@ function invalidIntake(): ClientIntakeError {
     503,
     "The saved client intake form needs attention.",
   );
+}
+
+function parseSavedAnswers(value: unknown) {
+  try {
+    return parseIntakeAnswers(value);
+  } catch (error) {
+    if (error instanceof IntakeAnswerError) throw invalidIntake();
+    throw error;
+  }
 }

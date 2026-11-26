@@ -3,8 +3,12 @@ import { after, before, beforeEach, describe, it } from "node:test";
 import { App, deleteApp, initializeApp } from "firebase-admin/app";
 import { Auth, getAuth } from "firebase-admin/auth";
 import { Firestore, getFirestore, Timestamp } from "firebase-admin/firestore";
+import request from "supertest";
 import { FirestoreAuditWriter } from "../src/audit";
 import { FirestoreAccountService } from "../src/account_service";
+import { FirebaseAuthVerifier } from "../src/auth";
+import { ClientIntakeService } from "../src/client_intake_service";
+import { createNotificationApp } from "../src/http_app";
 import { HostedWorkflowDelivery } from "../src/workflow_delivery";
 import { reconcileAccountAuth } from "../src/account_auth_recovery";
 import { PlanAuditContract, planEvents } from "../src/plan_audit_contract";
@@ -12,6 +16,7 @@ import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/pr
 import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
 import { FirestoreClientIntakeRepository } from "../src/firestore_client_intake_repository";
 import { PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
+import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
 
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
@@ -147,4 +152,94 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await assert.rejects(repository.getForAssignedDietitian("client", dietitian.uid, { actor: dietitian, correlationId: "old-team" }), PrivateRecordAuthorizationError);
     assert(!JSON.stringify((await db.collection("audit_events").get()).docs.map(doc => doc.data())).includes("Private request"));
   });
+
+  it("resumes verified owner drafts without exposing them to the assigned dietitian", async () => {
+    const api = request(createNotificationApp({
+      authVerifier: new FirebaseAuthVerifier(accounts),
+      notificationRepository: new InMemoryNotificationRepository(),
+      clientIntakeService: new ClientIntakeService(new FirestoreClientIntakeRepository(db)),
+    }));
+    const path = "/intakes/me/draft";
+    const [owner, other, dietitian] = await Promise.all(
+      ["client", "other-client", "dietitian"].map(uid => intakeTestToken(auth, uid)),
+    );
+    const save = (payload: object) => api.put(path).auth(owner!, { type: "bearer" }).send(payload);
+    const load = (token: string) => api.get(path).auth(token, { type: "bearer" });
+    const input = {
+      expected_client_id: "client",
+      expected_version: 1,
+      expected_draft_revision: 0,
+      guardian_consent_confirmed: false,
+      answers: { age: "17", weight_kg: "62.5", allergies: "Synthetic draft allergy" },
+    };
+    await load(owner!).expect(403);
+
+    const privacy = new FirestorePrivacyAcceptanceStore(db);
+    for (const uid of ["client", "other-client"]) {
+      await privacy.recordForClient(uid, {
+        age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
+      });
+    }
+    await load(dietitian!).expect(403);
+    await api.put(path).auth(other!, { type: "bearer" }).send(input).expect(403);
+    await save(input).expect(409);
+    await db.doc("customer_purchases/client/purchases/intake-membership").set({
+      purchased_at: Timestamp.fromMillis(now - 60_000),
+      expires_at: Timestamp.fromMillis(now + 86_400_000),
+    });
+    await save({ ...input, answers: { ...input.answers, weight_kg: "0" } }).expect(400);
+    await save(input).expect(400);
+    const draft = db.doc("client_intakes/client/private/draft");
+    assert.equal((await draft.get()).exists, false);
+
+    const acceptance = db.doc("privacy_acceptances/client");
+    const before = (await acceptance.get()).get("accepted_at") as Timestamp;
+    const confirmed = { ...input, guardian_consent_confirmed: true };
+    const saved = await save(confirmed).expect(200);
+    const replay = await save(confirmed).expect(200);
+    assert.equal(saved.body.data.draft_revision, 1);
+    assert.equal(replay.body.data.draft_revision, 1);
+    assert.equal(saved.body.data.guardian_consent_confirmed, true);
+    assert.equal((await draft.get()).get("client_id"), "client");
+    assert((await draft.get()).get("updated_at") instanceof Timestamp);
+    const policy = await acceptance.get();
+    assert(before.isEqual(policy.get("accepted_at")));
+    assert(policy.get("guardian_consent_confirmed_at") instanceof Timestamp);
+
+    const resumed = await load(owner!).expect("Cache-Control", "no-store").expect(200);
+    assert.deepEqual(resumed.body.data.answers, input.answers);
+    assert.equal((await load(other!).expect(200)).body.data.answers.weight_kg, undefined);
+    await auth.updateUser("other-client", { emailVerified: false });
+    await load(await intakeTestToken(auth, "other-client")).expect(403);
+    await save({ ...confirmed, answers: { ...input.answers, weight_kg: "63" } }).expect(409);
+    await new FirestorePrivacyPreferencesRepository(db).updateSharing("client", { shareNutritionRecords: true });
+    const team = await api.get("/dietitian/assigned-clients/client/intake")
+      .auth(dietitian!, { type: "bearer" }).expect(200);
+    assert.deepEqual(team.body.data.intake.allergies, ["Private allergy"]);
+    const direct = await fetch(
+      `http://${firestoreHost}/v1/projects/demo-fitnep/databases/(default)/documents/${draft.path}`,
+      { headers: { Authorization: `Bearer ${owner}` } },
+    );
+    assert.equal(direct.status, 403);
+    const auditTrail = await db.collection("audit_events").get();
+    assert(auditTrail.docs.some(doc => doc.get("target_id") === "client/intakes/draft"));
+    assert(!JSON.stringify(auditTrail.docs.map(doc => doc.data())).includes("Synthetic draft allergy"));
+  });
 });
+
+async function intakeTestToken(auth: Auth, uid: string): Promise<string> {
+  const password = "FitNEP-emulator-test-123!";
+  await auth.updateUser(uid, { password });
+  const response = await fetch(
+    `http://${authHost}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: `${uid}@fitnep.test`, password, returnSecureToken: true }),
+    },
+  );
+  assert(response.ok);
+  const token = (await response.json() as { idToken: unknown }).idToken;
+  assert(typeof token === "string");
+  return token;
+}

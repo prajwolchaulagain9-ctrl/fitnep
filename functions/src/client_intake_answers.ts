@@ -88,6 +88,12 @@ export function validateIntakeSubmission(answers: IntakeAnswers, today = new Dat
       !/^\d{7,15}$/.test(phone.replace(/\D/g, "")))) {
     throw new IntakeAnswerError("Enter a phone number with 7 to 15 digits.");
   }
+  validateIntakeMeasurements(answers);
+  const bmi = Number(answers.weight_kg) / (Number(answers.height_cm) / 100) ** 2;
+  return Math.round(bmi * 10) / 10;
+}
+
+export function validateIntakeMeasurements(answers: IntakeAnswers): void {
   for (const field of ["height_cm", "weight_kg", "waist_cm", "hip_cm", "chest_cm"] as const) {
     const value = answers[field];
     if (value === undefined) continue;
@@ -97,8 +103,6 @@ export function validateIntakeSubmission(answers: IntakeAnswers, today = new Dat
       throw new IntakeAnswerError(`${label} must be between ${minValue} and ${maxValue}.`);
     }
   }
-  const bmi = Number(answers.weight_kg) / (Number(answers.height_cm) / 100) ** 2;
-  return Math.round(bmi * 10) / 10;
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {
