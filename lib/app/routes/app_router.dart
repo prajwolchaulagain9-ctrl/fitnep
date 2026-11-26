@@ -276,6 +276,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: AppRoutes.assignedClientRecords,
+        name: AppRoutes.assignedClientRecordsName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: 'view_assigned_client_records',
           builder: (_) =>

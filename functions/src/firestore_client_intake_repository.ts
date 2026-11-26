@@ -28,10 +28,10 @@ import {
   ClientIntakeReviewContext,
   ClientIntakeReviewUpdate,
   ClientIntakeSection,
-  ClientIntakeStatus,
   IntakeDraftWrite,
   IntakeSubmission,
   IntakeWorkspace,
+  submittedIntakeStatus,
 } from "./client_intake_service";
 
 const reservedKeys = new Set([
@@ -438,27 +438,13 @@ function parseIntake(
     sections,
     submittedAt: dateValue(data.submitted_at),
     updatedAt: dateValue(data.updated_at),
-    status: intakeStatus(data.status, data.review_action),
+    status: submittedIntakeStatus(data.status, data.review_action),
     review: {
       action: reviewAction(data.review_action),
       note: optionalText(data.review_note),
       updatedAt: dateValue(data.review_updated_at),
     },
   };
-}
-
-function intakeStatus(
-  value: unknown,
-  actionValue: unknown,
-): ClientIntakeStatus {
-  if (value === "reviewed" || value === "information_requested") return value;
-  const action = reviewAction(actionValue);
-  if (action === "reviewed") return "reviewed";
-  if (action === "missing_information" ||
-      action === "clarification_requested") {
-    return "information_requested";
-  }
-  return "submitted";
 }
 
 function reviewAction(value: unknown): ClientIntakeReviewAction | null {

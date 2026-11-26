@@ -18,6 +18,15 @@ export type ClientIntakeReviewAction =
 export type ClientIntakeStatus =
   "submitted" | "reviewed" | "information_requested";
 
+export function submittedIntakeStatus(status: unknown, reviewAction: unknown): ClientIntakeStatus {
+  if (status === "reviewed" || status === "information_requested") return status;
+  if (reviewAction === "reviewed") return "reviewed";
+  if (reviewAction === "missing_information" || reviewAction === "clarification_requested") {
+    return "information_requested";
+  }
+  return "submitted";
+}
+
 export interface ClientIntakeReview {
   action: ClientIntakeReviewAction | null;
   note: string | null;

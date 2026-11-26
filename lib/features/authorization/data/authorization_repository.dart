@@ -6,6 +6,7 @@ import '../../../core/config/app_config.dart';
 import '../../../core/network/api_client_provider.dart';
 import '../../../core/services/firebase_providers.dart';
 import '../domain/account.dart';
+import '../domain/assigned_client.dart';
 
 final authorizationRepositoryProvider = Provider<AuthorizationRepository>(
   (ref) => AuthorizationRepository(
@@ -77,6 +78,35 @@ class AuthorizationRepository {
       'authorization/check',
       method: 'POST',
       data: {'permission': permission},
+    );
+  }
+
+  Future<AssignedClientPage> assignedClients({
+    String? search,
+    AssignedClientPlanStatus? planStatus,
+    String? after,
+  }) async {
+    final page = await request(
+      'clients/assigned',
+      query: {
+        'limit': '20',
+        'search': ?search,
+        'plan_status': ?planStatus?.apiValue,
+        'after': ?after,
+      },
+    );
+    final next = page['next_cursor'] as String?;
+    if (next != null && next == after) {
+      throw const AuthorizationFailure('Could not load the next page.');
+    }
+    return (
+      clients: (page['clients'] as List)
+          .map(
+            (row) =>
+                AssignedClient.fromJson(Map<String, dynamic>.from(row as Map)),
+          )
+          .toList(),
+      nextCursor: next,
     );
   }
 

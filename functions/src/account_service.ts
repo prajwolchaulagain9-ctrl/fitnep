@@ -57,7 +57,7 @@ export async function getCurrentAssignment(firestore: Firestore, clientId: strin
         dietitianAccount.role !== "dietitian" || dietitianAccount.account_status !== "active" ||
         (data!.client_role_revision ?? 0) !== clientAccount.role_revision ||
         (data!.dietitian_role_revision ?? 0) !== dietitianAccount.role_revision) return null;
-    return { data: data!, team };
+    return { data: data!, team, client: clientAccount, lastActivityAt: client.get("last_activity_at") };
   } catch (error) {
     if (error instanceof PermissionDeniedError || error instanceof AccountInputError) return null;
     throw error;

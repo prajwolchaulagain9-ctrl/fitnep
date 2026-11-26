@@ -33,6 +33,7 @@ abstract final class AppRoutes {
   static const assignedClients = '/care/clients';
   static const clientRecords = '/client/records';
   static const assignedClientRecords = '/care/clients/:id/records';
+  static const assignedClientRecordsName = 'assigned-client-records';
   static const accessDenied = '/access-denied';
 
   // Shared
