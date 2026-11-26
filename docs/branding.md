@@ -4,8 +4,9 @@ The original image fill was exported from Figma node `4:994`:
 https://www.figma.com/design/LFz2aFEFAJjVBlVjrnEsFW/Untitled?node-id=4-994
 The supplied `146:2` link is a separate 100×100 vector, not the auth logo.
 The source asset is `assets/images/fitnep_logo.png` (641×615).
-`FitNepWordmark` displays the original image with the reference's rounded shape
-and aspect ratio on startup, welcome, recovery, and the client header.
+`FitNepWordmark` displays the original symbol and FitNEP name with the
+**Your Health Partner** tagline on startup, welcome, recovery, and the client
+header.
 
 The light theme pairs cool ivory surfaces and slate text with muted lavender
 actions. The dark theme uses charcoal surfaces, soft lavender, and muted sage.

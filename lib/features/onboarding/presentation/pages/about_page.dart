@@ -36,10 +36,7 @@ class AboutPage extends StatelessWidget {
           const SizedBox(height: 32),
           Text('About FitNEP', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 8),
-          Text(
-            'Nutrition shaped around you.',
-            style: theme.textTheme.bodyMedium,
-          ),
+          Text(FitNepWordmark.tagline, style: theme.textTheme.bodyMedium),
           const SizedBox(height: 24),
           Text(
             'FitNEP brings clients and their nutrition team into one place, '

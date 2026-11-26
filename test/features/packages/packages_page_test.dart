@@ -2,9 +2,15 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/theme/app_theme.dart';
+import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
+import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart'
+    show activePackagesProvider;
 import 'package:fitnep/features/packages/data/package_repository.dart';
 import 'package:fitnep/features/packages/domain/package_models.dart';
+import 'package:fitnep/features/packages/presentation/pages/package_selection_page.dart';
 import 'package:fitnep/features/packages/presentation/pages/packages_page.dart';
+import 'package:fitnep/features/purchases/domain/entities/package_purchase_entity.dart';
+import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -27,6 +33,22 @@ class _User extends Fake implements User {
   _User(this.uid);
   @override
   final String uid;
+}
+
+class _BasicMembership extends MembershipController {
+  @override
+  MembershipState build() => const MembershipState(
+    purchase: PackagePurchaseEntity(
+      id: 'membership-basic',
+      packageId: 'Basic',
+      packageName: 'Basic',
+      pricePaid: 2500,
+      durationMonths: 1,
+      featureDescription: 'Nutrition support',
+      purchasedAt: null,
+      expiresAt: null,
+    ),
+  );
 }
 
 class _Repository extends Fake implements PackageRepository {
@@ -87,6 +109,68 @@ Future<void> choose(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('each package keeps its tier icon when selected', (tester) async {
+    const tiers = {
+      'Basic': Icons.spa_outlined,
+      'Standard': Icons.insights_rounded,
+      'Premium': Icons.diamond_outlined,
+      'Elite Plus': Icons.emoji_events_outlined,
+      'Custom': Icons.inventory_2_outlined,
+    };
+    tester.view.physicalSize = const Size(430, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          activePackagesProvider.overrideWith(
+            (ref) async => [
+              for (final name in tiers.keys)
+                PackageEntity(
+                  id: name,
+                  name: name,
+                  durationMonths: 1,
+                  price: 2500,
+                  featureDescription: 'Nutrition support',
+                  isActive: true,
+                  createdAt: DateTime.utc(2026),
+                ),
+            ],
+          ),
+          membershipControllerProvider.overrideWith(_BasicMembership.new),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const PackageSelectionPage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    for (final entry in tiers.entries) {
+      final card = find.ancestor(
+        of: find.text(entry.key),
+        matching: find.byType(Card),
+      );
+      expect(
+        find.descendant(of: card, matching: find.byIcon(entry.value)),
+        findsOneWidget,
+      );
+    }
+    final selectedCard = find.ancestor(
+      of: find.text('Selected'),
+      matching: find.byType(Card),
+    );
+    expect(
+      find.descendant(
+        of: selectedCard,
+        matching: find.byIcon(Icons.check_circle_rounded),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
     'catalog fields, confirmation and repeated taps result in a saved Pending membership',
     (tester) async {

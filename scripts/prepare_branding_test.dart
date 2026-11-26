@@ -9,6 +9,7 @@ import 'package:fitnep/app/theme/app_theme.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _logoWidth = 180.0;
@@ -29,6 +30,11 @@ void main() {
       tester,
     ) async {
       final dark = brightness == Brightness.dark;
+      await tester.runAsync(() async {
+        await (FontLoader(
+          'Inter',
+        )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
+      });
       final captureKey = GlobalKey();
       await tester.pumpWidget(
         Theme(

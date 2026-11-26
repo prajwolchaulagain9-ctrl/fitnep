@@ -150,8 +150,10 @@ void main() {
       matching: find.byType(ColorFiltered),
     );
     await render(AppTheme.light);
+    expect(find.text('Your Health Partner'), findsOneWidget);
     final light = tester.widget<ColorFiltered>(filter).colorFilter;
     await render(AppTheme.dark);
+    expect(find.text('Your Health Partner'), findsOneWidget);
     expect(tester.widget<ColorFiltered>(filter).colorFilter, isNot(light));
     final image = tester.widget<Image>(
       find.descendant(of: logo, matching: find.byType(Image)),

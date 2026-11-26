@@ -13,6 +13,7 @@ import '../../../admin/domain/entities/package_entity.dart';
 import '../../../admin/presentation/controllers/package_management_controller.dart';
 import '../../../admin/presentation/widgets/empty_state_widget.dart';
 import '../../../purchases/presentation/controllers/membership_controller.dart';
+import '../widgets/package_card_header.dart';
 
 class _ActivePackageState {
   const _ActivePackageState({
@@ -303,39 +304,18 @@ class _CustomerPackageCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: colors.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    isSelected
-                        ? Icons.check_rounded
-                        : Icons.fitness_center_rounded,
-                    color: colors.primary,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    package.name,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                if (isSelected)
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    color: AppColors.statusActive,
-                    size: 22,
-                  ),
-              ],
+            PackageCardHeader(
+              packageName: package.name,
+              titleStyle: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+              trailing: isSelected
+                  ? const Icon(
+                      Icons.check_circle_rounded,
+                      color: AppColors.statusActive,
+                      size: 22,
+                    )
+                  : null,
             ),
             const SizedBox(height: 20),
             Wrap(

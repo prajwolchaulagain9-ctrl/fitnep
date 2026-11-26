@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../../app/routes/app_routes.dart';
 import '../../../../app/theme/app_theme.dart';
+import '../../../packages/presentation/widgets/package_card_header.dart';
 import '../../domain/entities/package_entity.dart';
 import '../controllers/package_management_controller.dart';
 import '../widgets/empty_state_widget.dart';
@@ -147,83 +148,50 @@ class _PackageCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: package.isActive
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.fitness_center_rounded,
-                      color: package.isActive
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                package.name,
-                                style: Theme.of(context).textTheme.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700),
-                              ),
-                            ),
-                            // Active / Inactive badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 3,
-                              ),
-                              decoration: BoxDecoration(
-                                color: package.isActive
-                                    ? AppColors.statusActiveContainer
-                                    : AppColors.statusInactiveContainer,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                package.isActive ? 'Active' : 'Inactive',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: package.isActive
-                                      ? AppColors.statusActive
-                                      : AppColors.statusInactive,
-                                ),
-                              ),
-                            ),
-                          ],
+              PackageCardHeader(
+                packageName: package.name,
+                active: package.isActive,
+                titleStyle: Theme.of(context).textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+                subtitle: Text(
+                  '${package.durationMonths} ${package.durationMonths == 1 ? 'month' : 'months'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                trailing: Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: package.isActive
+                            ? AppColors.statusActiveContainer
+                            : AppColors.statusInactiveContainer,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        package.isActive ? 'Active' : 'Inactive',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: package.isActive
+                              ? AppColors.statusActive
+                              : AppColors.statusInactive,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${package.durationMonths} ${package.durationMonths == 1 ? 'month' : 'months'}',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    currency.format(package.price),
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w800,
+                    Text(
+                      currency.format(package.price),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 14),
               const Divider(),

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../../../shared/widgets/app_page.dart';
 import '../../data/package_repository.dart';
 import '../../domain/package_models.dart';
+import '../widgets/package_card_header.dart';
 
 class PackagesPage extends ConsumerWidget {
   const PackagesPage({super.key});
@@ -190,10 +191,7 @@ class _PackageContentState extends ConsumerState<_PackageContent> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  Text(
-                                    item.name,
-                                    style: theme.textTheme.titleLarge,
-                                  ),
+                                  PackageCardHeader(packageName: item.name),
                                   const SizedBox(height: 12),
                                   Text(
                                     _price(item.priceNpr),

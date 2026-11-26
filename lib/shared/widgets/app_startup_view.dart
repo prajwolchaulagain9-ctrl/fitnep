@@ -27,7 +27,7 @@ class AppStartupView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Move better. Feel stronger. Live healthier.',
+              FitNepWordmark.tagline,
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
