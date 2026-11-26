@@ -228,7 +228,7 @@ class _ReviewStatusCard extends StatelessWidget {
         AppColors.statusActiveContainer,
       ),
       ClientIntakeStatus.informationRequested => (
-        'More information required',
+        'Pending Information',
         _requestDescription,
         Icons.info_outline_rounded,
         AppColors.warning,

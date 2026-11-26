@@ -55,8 +55,18 @@ describe("Firestore client intake review persistence", () => {
       fixture.firestore.savedUpdate?.review_note,
       "Please provide the current medication dosage.",
     );
+    assert.equal(fixture.firestore.savedUpdate?.reviewed_by_id, "dietitian-1");
     assert.equal(fixture.auditInput?.action, "intake.information_requested");
+    assert.equal(fixture.auditInput?.clientId, "client-1");
+    assert.equal(fixture.auditInput?.status, "information_requested");
+    assert.equal(
+      fixture.firestore.createdRecords[
+        "intake_review_history/client-1_v1_r1"
+      ]?.client_id,
+      "client-1",
+    );
     assert.equal(intake.review.action, "missing_information");
+    assert.equal(intake.status, "information_requested");
   });
 });
 
@@ -89,6 +99,7 @@ function createFixture() {
 
 class FakeFirestore {
   savedUpdate: Record<string, unknown> | null = null;
+  createdRecords: Record<string, Record<string, unknown>> = {};
 
   collection(name: string) {
     return {
@@ -129,7 +140,12 @@ class FakeTransaction {
   update(_reference: { path: string }, data: Record<string, unknown>): void {
     this.firestore.savedUpdate = data;
   }
-  create(_reference: unknown, _data: unknown): void {}
+  create(
+    reference: { path: string },
+    data: Record<string, unknown>,
+  ): void {
+    this.firestore.createdRecords[reference.path] = data;
+  }
 }
 
 class FakeSnapshot {
