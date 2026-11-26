@@ -30,6 +30,7 @@ const endpoints: [string, RegExp, Permission][] = [
   ["PUT", /^\/admin\/clients\/([^/]+)\/assignment$/, "manage_client_assignments"],
   ["GET", /^\/admin\/clients\/([^/]+)\/assignment$/, "manage_client_assignments"],
   ["GET", /^\/admin\/audit-logs$/, "view_audit_logs"],
+  ["GET", /^\/admin\/audit-events$/, "view_audit_logs"],
   ["GET", /^\/clients\/assigned$/, "view_assigned_clients"],
   ["GET", /^\/clients\/([^/]+)\/profile$/, "view_assigned_clients"],
   ["GET", /^\/clients\/([^/]+)\/diet-plans$/, "view_own_diet_plans"],

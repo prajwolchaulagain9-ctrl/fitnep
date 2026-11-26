@@ -176,7 +176,7 @@ export function createNotificationApp(
     response.locals.access = access;
     if (access) {
       const user = currentUser(response);
-      requirePermission(user.role, access.permission);
+      requirePermission(user.role, access.permission, user.permissions?.auditRead);
       if (user.emailVerified === false &&
           !["view_dashboard", "view_own_profile", "edit_own_profile"].includes(access.permission)) {
         throw new PermissionDeniedError("Email verification is required.");

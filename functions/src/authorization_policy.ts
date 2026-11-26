@@ -15,8 +15,9 @@ export const rolePermissions = {
 } as const satisfies Record<UserRole, readonly string[]>;
 export type Permission = typeof rolePermissions[UserRole][number];
 export const permissions = [...new Set(Object.values(rolePermissions).flat())] as Permission[];
-export function hasPermission(role: UserRole, permission: string): boolean {
-  return (rolePermissions[role] as readonly string[]).includes(permission);
+export function hasPermission(role: UserRole, permission: string, auditRead = false): boolean {
+  return (rolePermissions[role] as readonly string[]).includes(permission) ||
+    (role === "staff" && permission === "view_audit_logs" && auditRead);
 }
 export class PermissionDeniedError extends Error {
   readonly code = "permission-denied";
@@ -24,8 +25,8 @@ export class PermissionDeniedError extends Error {
     super("You do not have permission to access this feature.");
   }
 }
-export function requirePermission(role: UserRole, permission: Permission): void {
-  if (!hasPermission(role, permission)) throw new PermissionDeniedError();
+export function requirePermission(role: UserRole, permission: Permission, auditRead = false): void {
+  if (!hasPermission(role, permission, auditRead)) throw new PermissionDeniedError();
 }
 
 export function canReadWorkflowRecord(actor: AuthenticatedUser,

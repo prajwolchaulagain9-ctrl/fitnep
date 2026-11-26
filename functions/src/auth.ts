@@ -69,7 +69,7 @@ export class FirebaseAuthVerifier implements AuthVerifier {
         signInProvider: decodedToken.firebase?.sign_in_provider,
         googleTemporaryPassword,
         mustChangePassword: (googleTemporaryPassword && decodedToken.firebase?.sign_in_provider === "password") || identity.customClaims?.mustChangePassword === true || identity.customClaims?.must_change_password === true,
-        permissions: { auditRead: hasPermission(account.role, "view_audit_logs"),
+        permissions: { auditRead: hasPermission(account.role, "view_audit_logs", account.audit_read),
           paymentsVerify: hasPermission(account.role, "manage_business_settings") },
         ...(displayName === null ? {} : { displayName }),
       };

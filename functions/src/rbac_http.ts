@@ -7,6 +7,7 @@ import { Account, AccountInputError, FirestoreAccountService, FirestoreAuditStor
   getCurrentAssignment, sessionPayload } from "./account_service";
 import { canReadWorkflowRecord, permissions, PermissionDeniedError, requirePermission } from "./authorization_policy";
 import { endpointAccess } from "./endpoint_access";
+import { listAuditEvents } from "./audit_reader";
 
 export class BackendUnavailableError extends Error {}
 export function createRbacRouter(accounts?: FirestoreAccountService, audit?: FirestoreAuditStore, healthReads?: PrivateRecordsStore): Router {
@@ -35,7 +36,8 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
       throw new AccountInputError("Unknown permission.");
     }
     response.locals.access = { permission: submitted.permission, resource: "feature:" + submitted.permission };
-    requirePermission(actor(response).role, submitted.permission as typeof permissions[number]);
+    const user = actor(response);
+    requirePermission(user.role, submitted.permission as typeof permissions[number], user.permissions?.auditRead);
     response.json({ data: { allowed: true } });
   }));
   router.get("/profile/me", wrap(async (_request, response) => {
@@ -85,9 +87,15 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
     } : null } });
   }));
   router.get("/admin/audit-logs", wrap(async (request, response) => {
+    requirePermission(actor(response).role, "view_audit_logs");
     if (!audit) throw new BackendUnavailableError();
     const logs = await audit.list(cursor(request), request.query.record_id === undefined ? undefined : identifier(request.query.record_id));
     response.json({ data: { logs, next_cursor: page(logs) } });
+  }));
+  router.get("/admin/audit-events", wrap(async (request, response) => {
+    if (!audit) throw new BackendUnavailableError();
+    const events = await listAuditEvents(audit.firestore, request.query);
+    response.set("Cache-Control", "no-store").json({ data: events });
   }));
   router.get("/clients/assigned", wrap(async (request, response) => {
     response.json({ data: await store().assigned(actor(response), cursor(request)) });
@@ -206,7 +214,8 @@ function wrap(fn: (request: Request, response: Response) => Promise<void>) {
       // incoming URL alias was missed by the app-level permission middleware.
       const access = endpointAccess(request.method, request.route.path);
       if (!access) throw new PermissionDeniedError("The endpoint has no authorization policy.");
-      requirePermission((response.locals.user as AuthenticatedUser).role, access.permission);
+      const user = response.locals.user as AuthenticatedUser;
+      requirePermission(user.role, access.permission, user.permissions?.auditRead);
       await fn(request, response);
     })().catch(next);
   };
