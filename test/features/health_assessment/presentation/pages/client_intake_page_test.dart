@@ -50,7 +50,7 @@ void main() {
       'Please provide the current medication dosage.',
     );
     expect(repository.current.status, ClientIntakeStatus.informationRequested);
-    expect(find.text('More information required'), findsOneWidget);
+    expect(find.text('Pending Information'), findsOneWidget);
     expect(
       find.text('Please provide the current medication dosage.'),
       findsOneWidget,
@@ -79,6 +79,7 @@ void main() {
       ClientIntakeReviewAction.clarificationRequested,
     );
     expect(repository.current.status, ClientIntakeStatus.informationRequested);
+    expect(find.text('Pending Information'), findsOneWidget);
     expect(
       find.text('Clarification has been requested from the client.'),
       findsOneWidget,

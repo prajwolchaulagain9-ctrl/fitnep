@@ -139,8 +139,22 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
       { action: "reviewed", status: "reviewed", note: null, expectedVersion: 2 }, { actor: dietitian, correlationId: "stale" }));
     await repository.updateReviewForAssignedDietitian("client", dietitian.uid,
       { action: "missing_information", status: "information_requested", note: "Private request", expectedVersion: 1 }, { actor: dietitian, correlationId: "review" });
+    const savedIntake = await db.doc("client_intakes/client").get();
+    assert.equal(savedIntake.get("status"), "information_requested");
+    assert.equal(savedIntake.get("review_note"), "Private request");
+    assert.equal(savedIntake.get("reviewed_by_id"), "dietitian");
     assert.equal((await db.collection("intake_review_history").get()).size, 1);
     assert.equal((await db.collection("workflow_outbox").get()).size, 1);
+    assert.equal(await new HostedWorkflowDelivery(db, () => now).drain(), 1);
+    const clientNotifications = await db.collection("notifications")
+      .where("recipient_id", "==", "client").get();
+    assert.equal(clientNotifications.size, 1);
+    assert.equal(clientNotifications.docs[0]!.get("type"), "intake");
+    assert.equal(clientNotifications.docs[0]!.get("reference_id"), "client");
+    assert.equal(clientNotifications.docs[0]!.get("title"), "Intake information requested");
+    assert.match(clientNotifications.docs[0]!.get("message"), /additional or clearer information/i);
+    assert.equal((await db.collection("notifications")
+      .where("recipient_id", "==", "other-client").get()).size, 0);
     const owner = await repository.getForOwner({ uid: "client", role: "client", roleRevision: 0 }, "own");
     assert.equal(owner.review.note, "Private request");
     await db.doc("client_assignments/client").update({ dietitian_id: "replacement", version: 2 });

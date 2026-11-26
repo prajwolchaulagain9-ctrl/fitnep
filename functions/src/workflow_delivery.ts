@@ -7,6 +7,42 @@ import { FirestoreNotificationRepository } from "./firestore_notification_reposi
 import { Auth } from "firebase-admin/auth";
 import { reconcileAccountAuth } from "./account_auth_recovery";
 
+type IntakeWorkflowEventType = Extract<WorkflowEventType, `intake.${string}`>;
+
+interface IntakeWorkflowNotificationInput {
+  eventId: string;
+  eventType: IntakeWorkflowEventType;
+  clientId: string;
+  createdAt: string;
+  dietitianId?: string;
+}
+
+export function buildIntakeWorkflowNotification(
+  input: IntakeWorkflowNotificationInput,
+): NewNotification | null {
+  const informationRequested =
+    input.eventType === "intake.information_requested";
+  const recipientId = informationRequested
+    ? input.clientId
+    : input.dietitianId;
+  if (!recipientId) return null;
+
+  return {
+    id: input.eventId,
+    recipientId,
+    type: "intake",
+    referenceId: input.clientId,
+    eventKey: `outbox:${input.eventId}:${recipientId}`,
+    title: informationRequested
+      ? "Intake information requested"
+      : "Client intake available",
+    message: informationRequested
+      ? "Additional or clearer information is required in your intake form. Open the form to review your dietitian's request."
+      : "Open the intake form to view the update securely.",
+    createdAt: input.createdAt,
+  };
+}
+
 /** The durable queue is drained by the same single Node host as the API. */
 export class HostedWorkflowDelivery {
   private running = false;
@@ -80,10 +116,14 @@ export class HostedWorkflowDelivery {
         } else if (event.event_type.startsWith("intake.")) {
           const intake = await tx.get(this.db.doc(`client_intakes/${event.client_id}`));
           if (intake.exists && (intake.get("version") ?? 1) === event.version) {
-            const recipientId = event.event_type === "intake.information_requested" ? event.client_id : assignment?.team.dietitianId;
-            if (recipientId) notifications.push({ ...base, recipientId, type: "intake", referenceId: event.client_id,
-              eventKey: `outbox:${id}:${recipientId}`, title: event.event_type === "intake.information_requested" ? "Intake update requested" : "Client intake available",
-              message: "Open the intake form to view the update securely." });
+            const notification = buildIntakeWorkflowNotification({
+              eventId: id,
+              eventType: event.event_type as IntakeWorkflowEventType,
+              clientId: event.client_id,
+              createdAt: base.createdAt,
+              dietitianId: assignment?.team.dietitianId,
+            });
+            if (notification) notifications.push(notification);
           }
         } else if (event.event_type === "membership.activated") {
           const membership = await tx.get(this.db.doc(`package_memberships/${event.target_id}`));
