@@ -86,7 +86,9 @@ Future<ProviderContainer> _open(
         sessionPreferenceStoreProvider.overrideWithValue(preferences),
         routeSessionProvider.overrideWith((ref) async {
           final user = await ref.watch(authenticationStateProvider.future);
-          return user == null ? null : (uid: user.uid, role: FitNepRole.client);
+          return user == null
+              ? null
+              : (uid: user.uid, role: FitNepRole.client, auditRead: false);
         }),
         notificationControllerProvider.overrideWith(EmptyNotifications.new),
       ],

@@ -165,7 +165,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         if (refreshNotifier.roleChanged) {
           refreshNotifier.roleChanged = false;
           if (permission != null &&
-              !AuthorizationService(session.role).hasPermission(permission)) {
+              !session.authorization.hasPermission(permission)) {
             return home;
           }
         }
@@ -176,7 +176,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               : home;
         }
         if (permission != null &&
-            !AuthorizationService(session.role).hasPermission(permission)) {
+            !session.authorization.hasPermission(permission)) {
           return '${AppRoutes.accessDenied}?permission=${Uri.encodeQueryComponent(permission)}';
         }
       }
@@ -489,6 +489,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => RouteAccessGate(
           requiredPermission: permissionForRoute(state.uri.path)!,
           builder: (_) => const AuditLogPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.legacyAuditLog,
+        builder: (context, state) => RouteAccessGate(
+          requiredPermission: permissionForRoute(state.uri.path)!,
+          builder: (_) => const LegacyAuditLogPage(),
         ),
       ),
       GoRoute(

@@ -14,7 +14,12 @@ import '../../features/authentication/presentation/hosted_session_gate.dart';
 export '../../core/authorization/role_permissions.dart';
 import 'app_routes.dart';
 
-typedef RouteSession = ({String uid, FitNepRole? role});
+typedef RouteSession = ({String uid, FitNepRole? role, bool auditRead});
+
+extension RouteSessionAuthorization on RouteSession {
+  AuthorizationService get authorization =>
+      AuthorizationService(role, auditRead: auditRead);
+}
 
 /// Rechecks the live server-owned account whenever its Firestore record changes.
 final routeSessionProvider = FutureProvider.autoDispose<RouteSession?>((
@@ -27,9 +32,13 @@ final routeSessionProvider = FutureProvider.autoDispose<RouteSession?>((
       : state.requireValue;
   if (account == null) {
     final user = ref.read(authenticationStateProvider).value;
-    return user == null ? null : (uid: user.uid, role: null);
+    return user == null ? null : (uid: user.uid, role: null, auditRead: false);
   }
-  return (uid: account.id, role: account.isActive ? account.role : null);
+  return (
+    uid: account.id,
+    role: account.isActive ? account.role : null,
+    auditRead: account.isActive && account.auditRead,
+  );
 }, retry: (retryCount, error) => null);
 
 /// Prevents route builders from exposing protected content to the wrong role.
@@ -68,8 +77,7 @@ class RouteAccessGate extends ConsumerWidget {
                 message: 'Sign in to access this FitNEP page.',
               );
             }
-            if (!AuthorizationService(session.role)
-                .hasPermission(requiredPermission)) {
+            if (!session.authorization.hasPermission(requiredPermission)) {
               return AccessDeniedPage(permission: requiredPermission);
             }
             Widget child = KeyedSubtree(

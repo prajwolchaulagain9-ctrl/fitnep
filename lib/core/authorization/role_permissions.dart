@@ -73,10 +73,14 @@ abstract final class FitNepPermissions {
 }
 
 class AuthorizationService {
-  const AuthorizationService(this.role);
+  const AuthorizationService(this.role, {this.auditRead = false});
   final FitNepRole? role;
+  final bool auditRead;
   bool hasPermission(String permission) =>
-      FitNepPermissions.byRole[role]?.contains(permission) ?? false;
+      (FitNepPermissions.byRole[role]?.contains(permission) ?? false) ||
+      (role == FitNepRole.staff &&
+          auditRead &&
+          permission == 'view_audit_logs');
 }
 
 String dashboardForRole(FitNepRole role) => switch (role) {
@@ -95,6 +99,7 @@ String? permissionForRoute(String path) {
   if (path == '/admin/users') return 'manage_user_roles';
   if (path.startsWith('/admin/staff-accounts')) return 'manage_staff_accounts';
   if (path == '/admin/audit-log') return 'view_audit_logs';
+  if (path == '/admin/audit-log/legacy') return 'manage_user_roles';
   if (path.startsWith('/admin/clients')) return 'manage_client_accounts';
   if (path.startsWith('/admin/')) return 'manage_business_settings';
   if (path == '/care/clients') return 'view_assigned_clients';

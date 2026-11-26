@@ -10,12 +10,14 @@ class FitNepAccount {
     required this.createdAt,
     required this.updatedAt,
     this.roleRevision = 0,
+    this.auditRead = false,
   });
   final String id, fullName, email;
   final FitNepRole role;
   final bool isActive;
   final DateTime createdAt, updatedAt;
   final int roleRevision;
+  final bool auditRead;
   factory FitNepAccount.fromJson(Map<String, dynamic> data) {
     final role = parseRole(data['role']);
     if (role == null ||
@@ -33,6 +35,7 @@ class FitNepAccount {
       createdAt: DateTime.parse(data['created_at'] as String),
       updatedAt: DateTime.parse(data['updated_at'] as String),
       roleRevision: (data['role_revision'] as num?)?.toInt() ?? 0,
+      auditRead: role == FitNepRole.staff && data['audit_read'] == true,
     );
   }
 }

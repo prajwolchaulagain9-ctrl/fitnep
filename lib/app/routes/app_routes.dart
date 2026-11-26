@@ -68,6 +68,7 @@ abstract final class AppRoutes {
   static const adminClients = '/admin/clients';
   static const clientProfile = '/admin/clients/:id';
   static const auditLog = '/admin/audit-log';
+  static const legacyAuditLog = '/admin/audit-log/legacy';
   static const adminPackageApprovals = '/admin/package-approvals';
   static const adminPackages = '/admin/packages';
   static const adminCreatePackage = '/admin/packages/create';
