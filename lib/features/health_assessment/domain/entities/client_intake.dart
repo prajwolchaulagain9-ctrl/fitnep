@@ -15,6 +15,7 @@ class ClientIntake {
     required this.submittedAt,
     required this.updatedAt,
     this.version = 1,
+    this.reviewRevision,
     this.status = ClientIntakeStatus.submitted,
     this.reviewAction,
     this.reviewNote,
@@ -22,6 +23,7 @@ class ClientIntake {
   });
 
   final int version;
+  final int? reviewRevision;
   final String clientId;
   final List<String> allergies;
   final List<String> medicalConditions;

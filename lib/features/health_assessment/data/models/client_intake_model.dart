@@ -3,6 +3,7 @@ import '../../domain/entities/client_intake.dart';
 class ClientIntakeModel extends ClientIntake {
   const ClientIntakeModel({
     super.version,
+    super.reviewRevision,
     required super.clientId,
     required super.allergies,
     required super.medicalConditions,
@@ -27,6 +28,10 @@ class ClientIntakeModel extends ClientIntake {
       version: json['version'] is int && (json['version'] as int) > 0
           ? json['version'] as int
           : 1,
+      reviewRevision: switch (json['review_revision']) {
+        final int revision when revision >= 0 => revision,
+        _ => null,
+      },
       clientId: clientId,
       allergies: _stringList(json['allergies']),
       medicalConditions: _stringList(json['medical_conditions']),

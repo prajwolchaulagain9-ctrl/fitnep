@@ -35,6 +35,7 @@ export interface ClientIntakeReview {
 
 export interface ClientIntakeReviewUpdate {
   expectedVersion?: number;
+  expectedReviewRevision?: number;
   action: ClientIntakeReviewAction;
   note: string | null;
   status: ClientIntakeStatus;
@@ -57,6 +58,7 @@ export interface ClientIntakeSection {
 
 export interface ClientIntakeRecord {
   version?: number;
+  reviewRevision?: number;
   clientId: string;
   allergies: string[];
   medicalConditions: string[];
@@ -138,7 +140,7 @@ export class ClientIntakeService {
   }
 
   async getOwnIntake(actor: AuthenticatedUser, correlationId: string) {
-    if (actor.role !== "client") throw new ClientIntakeError(403, "Client access is required.");
+    requireVerifiedClient(actor);
     if (!this.repository.getForOwner) throw new ClientIntakeError(503, "Intake storage is unavailable.");
     return this.repository.getForOwner(actor, correlationId);
   }
@@ -180,6 +182,7 @@ export class ClientIntakeService {
   async getSubmittedIntake(
     actor: AuthenticatedUser, clientIdInput: unknown, correlationId: string, versionInput?: unknown,
   ): Promise<ClientIntakeRecord> {
+    if (actor.role === "client") requireVerifiedClient(actor);
     if (!this.repository.getSubmittedIntake) {
       throw new ClientIntakeError(503, "Intake storage is unavailable.");
     }
@@ -220,13 +223,19 @@ export class ClientIntakeService {
 
 function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
   if (!isObject(value) ||
-      Object.keys(value).some(key => !["action", "note", "expected_version"].includes(key)) ||
+      Object.keys(value).some(key => !["action", "note", "expected_version", "expected_review_revision"].includes(key)) ||
       (value.expected_version !== undefined && (!Number.isSafeInteger(value.expected_version) || (value.expected_version as number) < 1)) ||
+      (value.expected_review_revision !== undefined && (value.expected_version === undefined ||
+        !Number.isSafeInteger(value.expected_review_revision) || (value.expected_review_revision as number) < 0)) ||
       typeof value.action !== "string" ||
       !clientIntakeReviewActions.includes(value.action as ClientIntakeReviewAction)) {
     throw new ClientIntakeError(400, "A valid intake review action is required.");
   }
   const action = value.action as ClientIntakeReviewAction;
+  const revision = {
+    expectedVersion: value.expected_version as number | undefined,
+    expectedReviewRevision: value.expected_review_revision as number | undefined,
+  };
   if (action === "reviewed") {
     if (value.note !== undefined && value.note !== null && value.note !== "") {
       throw new ClientIntakeError(
@@ -234,7 +243,7 @@ function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
         "A note is only used when requesting information.",
       );
     }
-    return { action, note: null, status: "reviewed", expectedVersion: value.expected_version as number | undefined };
+    return { action, note: null, status: "reviewed", ...revision };
   }
   if (typeof value.note !== "string" ||
       !value.note.trim() || value.note.trim().length > 1000) {
@@ -247,7 +256,7 @@ function reviewUpdate(value: unknown): ClientIntakeReviewUpdate {
     action,
     note: value.note.trim(),
     status: "information_requested",
-    expectedVersion: value.expected_version as number | undefined,
+    ...revision,
   };
 }
 

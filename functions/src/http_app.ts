@@ -902,6 +902,7 @@ function toApiIntakeWorkspace(workspace: IntakeWorkspace) {
 function toApiClientIntake(intake: ClientIntakeRecord) {
   return {
     version: intake.version ?? 1,
+    ...(intake.reviewRevision === undefined ? {} : { review_revision: intake.reviewRevision }),
     client_id: intake.clientId,
     allergies: intake.allergies,
     medical_conditions: intake.medicalConditions,

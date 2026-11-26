@@ -128,6 +128,7 @@ void main() {
         action: ClientIntakeReviewAction.missingInformation,
         note: 'Please provide your medication dosage.',
         expectedVersion: 2,
+        expectedReviewRevision: 0,
       );
 
       expect(captured.method, 'PATCH');
@@ -139,6 +140,7 @@ void main() {
         'action': 'missing_information',
         'note': 'Please provide your medication dosage.',
         'expected_version': 2,
+        'expected_review_revision': 0,
       });
       expect(intake.status, ClientIntakeStatus.informationRequested);
       expect(intake.reviewAction, ClientIntakeReviewAction.missingInformation);

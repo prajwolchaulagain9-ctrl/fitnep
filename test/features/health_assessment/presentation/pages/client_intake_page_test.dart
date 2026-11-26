@@ -1,4 +1,5 @@
 import 'package:fitnep/app/theme/app_theme.dart';
+import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
 import 'package:fitnep/features/health_assessment/domain/repositories/client_intake_repository.dart';
 import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
@@ -20,6 +21,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.lastAction, ClientIntakeReviewAction.reviewed);
+    expect(repository.lastExpectedRevision, 0);
     expect(repository.current.status, ClientIntakeStatus.reviewed);
     expect(find.text('Reviewed'), findsOneWidget);
   });
@@ -84,6 +86,53 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('a review conflict reloads the newer submission', (tester) async {
+    final repository = _FakeClientIntakeRepository()
+      ..replacement = const ClientIntake(
+        clientId: 'client-1',
+        version: 2,
+        reviewRevision: 0,
+        allergies: ['Shellfish'],
+        medicalConditions: [],
+        sections: [],
+        submittedAt: null,
+        updatedAt: null,
+      );
+    await _pumpPage(tester, repository);
+    final action = find.widgetWithText(FilledButton, 'Mark as reviewed');
+    await tester.scrollUntilVisible(action, 300);
+    await tester.tap(action);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Mark reviewed'));
+    await tester.pumpAndSettle();
+
+    expect(repository.lastExpectedVersion, 1);
+    expect(repository.lastExpectedRevision, 0);
+    expect(
+      find.text('This intake changed. Review the latest version.'),
+      findsOneWidget,
+    );
+    expect(find.text('Shellfish'), findsOneWidget);
+    expect(find.text('Peanuts'), findsNothing);
+  });
+
+  testWidgets(
+    'revalidation removes intake details after consent is withdrawn',
+    (tester) async {
+      final repository = _FakeClientIntakeRepository();
+      await _pumpPage(tester, repository);
+      expect(find.text('Peanuts'), findsOneWidget);
+      repository.accessWithdrawn = true;
+      await tester.tap(find.byTooltip('Refresh intake'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('You do not have access to this intake.'),
+        findsOneWidget,
+      );
+      expect(find.text('Peanuts'), findsNothing);
+    },
+  );
 }
 
 Future<void> _pumpPage(
@@ -99,7 +148,10 @@ Future<void> _pumpPage(
       overrides: [clientIntakeRepositoryProvider.overrideWithValue(repository)],
       child: MaterialApp(
         theme: AppTheme.light,
-        home: const ClientIntakePage(clientId: 'client-1'),
+        home: const ClientIntakePage(
+          clientId: 'client-1',
+          viewerId: 'dietitian-1',
+        ),
       ),
     ),
   );
@@ -108,9 +160,14 @@ Future<void> _pumpPage(
 
 class _FakeClientIntakeRepository implements ClientIntakeRepository {
   ClientIntakeReviewAction? lastAction;
+  int? lastExpectedVersion;
+  int? lastExpectedRevision;
   String? lastNote;
+  ClientIntake? replacement;
+  bool accessWithdrawn = false;
   ClientIntake current = const ClientIntake(
     clientId: 'client-1',
+    reviewRevision: 0,
     allergies: ['Peanuts'],
     medicalConditions: ['Type 2 diabetes'],
     sections: [
@@ -124,8 +181,15 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
   );
 
   @override
-  Future<ClientIntake> getAssignedClientIntake(String clientId) async =>
-      current;
+  Future<ClientIntake> getAssignedClientIntake(String clientId) async {
+    if (accessWithdrawn) {
+      throw const ClientIntakeException(
+        ClientIntakeFailure.forbidden,
+        'You do not have access to this intake.',
+      );
+    }
+    return current;
+  }
 
   @override
   Future<ClientIntake> updateReview({
@@ -133,11 +197,23 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
     required ClientIntakeReviewAction action,
     String? note,
     int? expectedVersion,
+    int? expectedReviewRevision,
   }) async {
     lastAction = action;
     lastNote = note;
+    lastExpectedVersion = expectedVersion;
+    lastExpectedRevision = expectedReviewRevision;
+    if (replacement case final newer?) {
+      current = newer;
+      throw const ClientIntakeException(
+        ClientIntakeFailure.conflict,
+        'This intake changed. Review the latest version.',
+      );
+    }
     current = ClientIntake(
       clientId: current.clientId,
+      version: current.version,
+      reviewRevision: (current.reviewRevision ?? 0) + 1,
       allergies: current.allergies,
       medicalConditions: current.medicalConditions,
       sections: current.sections,

@@ -228,6 +228,7 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 
   async function submissionFixture() {
     const api = request(createNotificationApp({
+      accounts,
       authVerifier: new FirebaseAuthVerifier(accounts),
       notificationRepository: new InMemoryNotificationRepository(),
       clientIntakeService: new ClientIntakeService(new FirestoreClientIntakeRepository(db)),
@@ -297,8 +298,14 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const review = (body: object) => api.patch("/dietitian/assigned-clients/client/intake/review")
       .auth(dietitian, { type: "bearer" }).send(body);
     await review({ action: "reviewed" }).expect(400);
-    await review({ action: "reviewed", expected_version: 1 }).expect(400);
-    await review({ action: "missing_information", expected_version: 2, note: "Private clarification" }).expect(200);
+    await review({ action: "reviewed", expected_version: 1 }).expect(409);
+    const changes = { action: "missing_information", expected_version: 2,
+      expected_review_revision: 0, note: "Private clarification" };
+    const reviewed = await review(changes).expect(200);
+    assert.equal(reviewed.body.data.intake.review_revision, 1);
+    assert.equal((await review(changes).expect(200)).body.data.intake.review_revision, 1);
+    await review({ action: "reviewed", expected_version: 2, expected_review_revision: 0 }).expect(409);
+    assert.equal((await db.collection("intake_review_history").get()).size, 1);
     assert.deepEqual((await v2.get()).data(), frozen);
     const revised = await submit({
       ...input, expected_version: 2, expected_draft_revision: 0, request_id: "submit-intake-version-three",
@@ -307,6 +314,8 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert.equal(revised.body.data.version, 3);
     assert.equal(revised.body.data.latest.status, "submitted");
     assert.equal(revised.body.data.latest.review_note, null);
+    assert.equal(revised.body.data.latest.review_revision, 0);
+    await review({ action: "reviewed", expected_version: 2, expected_review_revision: 1 }).expect(409);
     assert.deepEqual(revised.body.data.latest.allergies, []);
     assert.deepEqual((await preserved.get()).data(), original);
     assert.deepEqual((await v2.get()).data(), frozen);
@@ -325,6 +334,53 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(200);
     await sharing.updateSharing("client", { shareNutritionRecords: false });
     await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(403);
+    await api.get(oldVersion).auth(owner, { type: "bearer" }).expect(200);
+  });
+
+  it("revokes intake history and review when consent or live account authority changes", async () => {
+    const { api, draft, owner, submit } = await submissionFixture();
+    const dietitian = await intakeTestToken(auth, "dietitian");
+    const sharing = new FirestorePrivacyPreferencesRepository(db);
+    await sharing.updateSharing("client", { shareNutritionRecords: true });
+    await submit({ ...draft, expected_version: 1, request_id: "submit-for-access-recheck" }).expect(200);
+    const ownerGet = (path: string) => api.get(path).auth(owner, { type: "bearer" });
+    const teamGet = (path: string) => api.get(path).auth(dietitian, { type: "bearer" });
+    const current = "/dietitian/assigned-clients/client/intake";
+    const history = "/clients/client/intake/versions/1";
+    await teamGet(current).expect(200);
+    await teamGet(history).expect(200);
+
+    await sharing.updateSharing("client", { shareNutritionRecords: false });
+    await teamGet(current).expect(403);
+    await teamGet(history).expect(403);
+    await api.patch(current + "/review").auth(dietitian, { type: "bearer" })
+      .send({ action: "reviewed", expected_version: 2, expected_review_revision: 0 }).expect(403);
+    await ownerGet("/intakes/me").expect(200);
+    await ownerGet(history).expect(200);
+    const consentRef = db.doc("privacy_acceptances/client");
+    const acceptance = (await consentRef.get()).data()!;
+    await consentRef.delete();
+    await ownerGet("/intakes/me").expect(403);
+    await ownerGet("/intakes/me/draft").expect(403);
+    await ownerGet(history).expect(403);
+    await consentRef.set(acceptance);
+    await sharing.updateSharing("client", { shareNutritionRecords: true });
+    await teamGet(current).expect(200);
+
+    await accounts.change(actor, "dietitian", { role: "staff" });
+    await teamGet(current).expect(403);
+    await teamGet(history).expect(403);
+    await accounts.change(actor, "dietitian", { role: "dietitian" });
+    await teamGet(current).expect(403);
+    assert.deepEqual((await teamGet("/clients/assigned").expect(200)).body.data.clients, []);
+
+    await accounts.change(actor, "client", { account_status: "inactive" });
+    await ownerGet("/intakes/me").expect(403);
+    await accounts.change(actor, "client", { account_status: "active" });
+    const freshOwner = await intakeTestToken(auth, "client");
+    await api.get("/intakes/me").auth(freshOwner, { type: "bearer" }).expect(200);
+    await teamGet(current).expect(403);
+    assert.equal((await db.collection("intake_review_history").get()).size, 0);
   });
 
   it("filters and pages the current dietitian's directory, then reflects review and reassignment", async () => {

@@ -181,10 +181,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
   }
 
   private async loadWorkspace(transaction: Transaction, actor: AuthenticatedUser) {
-    const acceptance = await transaction.get(this.firestore.doc(`privacy_acceptances/${actor.uid}`));
-    if (!hasValidPrivacyAcceptance(acceptance.data())) {
-      throw new ClientIntakeError(403, "A current privacy acceptance is required to open intake.");
-    }
+    const acceptance = await this.currentAcceptance(transaction, actor.uid);
     const intakeRef = this.firestore.doc(`client_intakes/${actor.uid}`);
     const [intake, draft, membership] = await Promise.all([
       transaction.get(intakeRef),
@@ -221,6 +218,14 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return { workspace, intake, draft, acceptance };
   }
 
+  private async currentAcceptance(transaction: Transaction, uid: string) {
+    const acceptance = await transaction.get(this.firestore.doc(`privacy_acceptances/${uid}`));
+    if (!hasValidPrivacyAcceptance(acceptance.data())) {
+      throw new ClientIntakeError(403, "A current privacy acceptance is required to open intake.");
+    }
+    return acceptance;
+  }
+
   private confirmGuardian(
     transaction: Transaction,
     actor: AuthenticatedUser,
@@ -255,6 +260,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return this.reads.readResource(actor, {
       clientId, category: "intakes", recordId: "submitted", version,
     }, async transaction => {
+      if (actor.role === "client") await this.currentAcceptance(transaction, clientId);
       const reference = this.firestore.doc(`client_intakes/${clientId}`);
       const current = await transaction.get(reference);
       const intake = version === undefined || (current.get("version") ?? 1) === version
@@ -290,18 +296,29 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
       const version = intake.get("version") ?? 1;
-      if (!Number.isSafeInteger(version) || version < 1 || !Number.isSafeInteger(intake.get("review_revision") ?? 0)) {
+      const currentRevision = intake.get("review_revision") ?? 0;
+      if (!Number.isSafeInteger(version) || version < 1 || !Number.isSafeInteger(currentRevision) || currentRevision < 0) {
         throw new ClientIntakeError(503, "Intake version metadata needs attention.");
       }
       const needsVersion = intake.get("answers") !== undefined;
-      if ((needsVersion || review.expectedVersion !== undefined) && review.expectedVersion !== version) {
-        throw new ClientIntakeError(400, "The intake version changed. Reload before reviewing.");
+      if (needsVersion && review.expectedVersion === undefined) {
+        throw new ClientIntakeError(400, "Supply the version of the submitted intake being reviewed.");
+      }
+      if (review.expectedVersion !== undefined && review.expectedVersion !== version) {
+        throw new ClientIntakeError(409, "The intake version changed. Reload before reviewing.");
       }
       if (intake.get("status") === "draft") throw new ClientIntakeError(400, "Only submitted intake versions can be reviewed.");
-      if (intake.get("review_action") === review.action && (intake.get("review_note") ?? null) === review.note && intake.get("reviewed_by_id") === dietitianId) {
+      const sameReview = intake.get("review_action") === review.action &&
+        (intake.get("review_note") ?? null) === review.note && intake.get("reviewed_by_id") === dietitianId;
+      const expectedRevision = review.expectedReviewRevision;
+      if (sameReview && (expectedRevision === undefined || expectedRevision === currentRevision ||
+          expectedRevision + 1 === currentRevision)) {
         return { data: parseIntake(clientId, intake.data()) };
       }
-      const revision = (intake.get("review_revision") ?? 0) + 1;
+      if (expectedRevision !== undefined && expectedRevision !== currentRevision) {
+        throw new ClientIntakeError(409, "This intake was reviewed elsewhere. Reload before reviewing.");
+      }
+      const revision = currentRevision + 1;
       const updatedAt = Timestamp.now();
       transaction.update(intakeReference, {
         status: review.status,
@@ -339,6 +356,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         review_note: review.note,
         review_updated_at: updatedAt,
         reviewed_by_id: dietitianId,
+        review_revision: revision,
       }) };
     }, context.correlationId);
   }
@@ -430,6 +448,7 @@ function parseIntake(
 
   return {
     version: Number.isSafeInteger(data.version) && data.version > 0 ? data.version : 1,
+    reviewRevision: Number.isSafeInteger(data.review_revision) && data.review_revision >= 0 ? data.review_revision : 0,
     clientId,
     allergies: stringList(data.allergies ?? data.food_allergies),
     medicalConditions: stringList(
