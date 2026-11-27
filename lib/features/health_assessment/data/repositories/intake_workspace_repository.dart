@@ -67,6 +67,7 @@ class IntakeWorkspaceRepository {
       final latest = data['latest'];
       if (data['client_id'] != uid ||
           rawAnswers is! Map ||
+          (data['profile_ready'] != null && data['profile_ready'] is! bool) ||
           (version == 0 ? latest != null : latest is! Map)) {
         throw const FormatException('Invalid intake workspace.');
       }
@@ -92,7 +93,7 @@ class IntakeWorkspaceRepository {
         answers: Map.unmodifiable(answers),
         version: version,
         draftRevision: _revision(data['draft_revision']),
-        profileReady: data['profile_ready'] == true,
+        profileReady: data['profile_ready'] as bool?,
         latest: submitted,
       );
     } on DioException catch (error) {

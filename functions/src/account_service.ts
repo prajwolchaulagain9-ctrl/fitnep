@@ -203,12 +203,20 @@ export class FirestoreAccountService {
       throw new PermissionDeniedError("An account cannot assign its own role or status.");
     }
     const allowed = actor.role === "client"
-      ? ["full_name", ...clientProfileFields, "guardian_consent_confirmed"] : ["full_name"];
-    if (Object.keys(body).some(key => !allowed.includes(key)) || typeof body.full_name !== "string" ||
-        body.full_name.trim().length < 1 || body.full_name.trim().length > 120) {
+      ? ["full_name", ...clientProfileFields, "guardian_consent_confirmed", "expected_client_id"] : ["full_name"];
+    if (Object.keys(body).some(key => !allowed.includes(key))) {
+      throw new AccountInputError("Supply only editable profile fields.");
+    }
+    if (body.expected_client_id !== undefined && body.expected_client_id !== actor.uid) {
+      throw new PermissionDeniedError("The signed-in account changed. Reopen the intake form.");
+    }
+    const name = body.full_name;
+    if ((actor.role !== "client" || name !== undefined) &&
+        (typeof name !== "string" || name.trim().length < 1 || name.trim().length > 120)) {
       throw new AccountInputError("Supply a full name of 1 to 120 characters.");
     }
-    const update: Record<string, unknown> = { full_name: body.full_name.trim() };
+    const update: Record<string, unknown> = {};
+    if (typeof name === "string") update.full_name = name.trim();
     const email = body.contact_email;
     const phone = body.contact_phone;
     if (email !== undefined) {
@@ -237,6 +245,7 @@ export class FirestoreAccountService {
     if (body.guardian_consent_confirmed !== undefined && typeof body.guardian_consent_confirmed !== "boolean") {
       throw new AccountInputError("Supply a valid guardian confirmation.");
     }
+    if (Object.keys(update).length === 0) throw new AccountInputError("Supply a profile field to update.");
     await this.firestore.runTransaction(async transaction => {
       const reference = this.firestore.collection("users").doc(actor.uid);
       const data = (await transaction.get(reference)).data()!;

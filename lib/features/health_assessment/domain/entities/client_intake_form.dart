@@ -77,7 +77,7 @@ class IntakeFormWorkspace {
   final Map<IntakeField, String> answers;
   final int version;
   final int draftRevision;
-  final bool profileReady;
+  final bool? profileReady;
   final ClientIntake? latest;
 }
 

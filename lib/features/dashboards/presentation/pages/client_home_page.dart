@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import '../../../../app/routes/app_routes.dart';
 import '../../../../shared/widgets/fitnep_wordmark.dart';
 import '../../../authorization/presentation/role_home_page.dart';
+import '../../../health_assessment/data/datasources/client_intake_remote_datasource.dart';
+import '../../../health_assessment/presentation/controllers/client_intake_controller.dart';
 import '../../../notifications/presentation/controllers/notification_controller.dart';
 import '../../../purchases/presentation/controllers/membership_controller.dart';
 
@@ -14,12 +16,21 @@ class ClientHomePage extends ConsumerWidget {
   static const notificationButtonKey = Key('client_notification_button');
   static const notificationBadgeKey = Key('client_notification_badge');
 
-  const ClientHomePage({super.key});
+  const ClientHomePage({required this.clientId, super.key});
+
+  final String clientId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final unreadCount = ref.watch(unreadNotificationCountProvider);
     final purchase = ref.watch(membershipControllerProvider).purchase;
+    final intake = ref.watch(ownClientIntakeProvider(clientId));
+    final intakeError = intake.error;
+    final showIntake =
+        !intake.isLoading &&
+        !intake.hasValue &&
+        intakeError is ClientIntakeException &&
+        intakeError.failure == ClientIntakeFailure.notFound;
 
     return Scaffold(
       drawer: const RoleNavigationDrawer(),
@@ -88,16 +99,18 @@ class ClientHomePage extends ConsumerWidget {
               const SizedBox(height: 12),
             ],
             const _MembershipActions(),
-            const SizedBox(height: 12),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.assignment_outlined),
-                title: const Text('Health intake'),
-                subtitle: const Text('Fill in or update your intake form'),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => context.pushNamed(AppRoutes.intakeEditorName),
+            if (showIntake) ...[
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.assignment_outlined),
+                  title: const Text('Health intake'),
+                  subtitle: const Text('Start or resume your intake form'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => context.pushNamed(AppRoutes.intakeEditorName),
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: 20),
             Text(
               'Your FitNep updates',

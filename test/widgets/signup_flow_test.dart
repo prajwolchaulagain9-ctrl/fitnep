@@ -22,7 +22,9 @@ import 'package:fitnep/features/authentication/data/google_credential_provider.d
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:fitnep/features/authorization/data/authorization_repository.dart';
 import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
+import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -258,6 +260,12 @@ Future<ProviderContainer> _open(
         emptyMembershipOverride,
         authorizationRepositoryProvider.overrideWithValue(_SignupProfile()),
         intakeWorkspaceRepositoryProvider.overrideWithValue(_IntakeWorkspace()),
+        ownClientIntakeProvider.overrideWith(
+          (ref, uid) async => throw const ClientIntakeException(
+            ClientIntakeFailure.notFound,
+            'Intake unavailable.',
+          ),
+        ),
         offlineHostedSessionOverride,
         staffPasswordChangeRequiredProvider.overrideWith((ref) async {
           if (staffPasswordCheck == null) return false;

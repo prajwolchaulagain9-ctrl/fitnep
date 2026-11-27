@@ -5,7 +5,10 @@ import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
 import 'package:fitnep/features/dashboards/presentation/pages/client_home_page.dart';
+import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
+import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
 import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
 import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
 import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
@@ -19,6 +22,65 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  testWidgets(
+    'the dashboard hides the intake card after a successful submission',
+    (tester) async {
+      final workspace = _DraftIntake();
+      final container = ProviderContainer(
+        overrides: [
+          offlineHostedSessionOverride,
+          registrationAcceptedProvider.overrideWith((ref, uid) async => true),
+          routeSessionProvider.overrideWith(
+            (ref) async => (
+              uid: 'authenticated-client',
+              role: FitNepRole.client,
+              auditRead: false,
+            ),
+          ),
+          notificationRepositoryProvider.overrideWithValue(
+            _FakeNotificationRepository([]),
+          ),
+          packagePurchaseRepositoryProvider.overrideWithValue(
+            _EmptyPurchases(),
+          ),
+          intakeWorkspaceRepositoryProvider.overrideWithValue(workspace),
+          ownClientIntakeProvider('authenticated-client')
+              .overrideWith((ref) async {
+                final latest = workspace.latest;
+                if (latest == null) {
+                  throw const ClientIntakeException(
+                    ClientIntakeFailure.notFound,
+                    'Intake unavailable.',
+                  );
+                }
+                return latest;
+              }),
+        ],
+      );
+      addTearDown(container.dispose);
+      final router = container.read(appRouterProvider);
+      router.goNamed(AppRoutes.clientHomeName);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(routerConfig: router),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Health intake'));
+      await tester.pumpAndSettle();
+      final submit = find.text('Submit intake');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      expect(find.text('Health intake submitted.'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientHomePage), findsOneWidget);
+      expect(find.text('Health intake'), findsNothing);
+    },
+  );
+
   testWidgets('client home opens notifications and a pending intake request', (
     tester,
   ) async {
@@ -82,6 +144,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('FitNEP'), findsOneWidget);
+    expect(find.text('Health intake'), findsNothing);
     expect(find.byKey(ClientHomePage.notificationButtonKey), findsOneWidget);
     expect(find.byKey(ClientHomePage.notificationBadgeKey), findsOneWidget);
     expect(find.text('2'), findsOneWidget);
@@ -115,6 +178,45 @@ void main() {
     expect(find.byType(ClientHomePage), findsOneWidget);
     expect(find.byKey(ClientHomePage.notificationBadgeKey), findsNothing);
   });
+}
+
+class _DraftIntake extends Fake implements IntakeWorkspaceRepository {
+  static const _answers = {
+    IntakeField.height: '175',
+    IntakeField.weight: '70',
+    IntakeField.goals: 'Improve endurance',
+    IntakeField.medicalHistory: 'None',
+    IntakeField.allergies: 'None',
+    IntakeField.restrictions: 'None',
+    IntakeField.foodPreferences: 'Rice',
+  };
+  ClientIntake? latest;
+
+  @override
+  Future<IntakeFormWorkspace> load(String uid) async => IntakeFormWorkspace(
+    answers: _answers,
+    version: latest == null ? 0 : 1,
+    draftRevision: latest == null ? 1 : 0,
+    profileReady: true,
+    latest: latest,
+  );
+
+  @override
+  Future<IntakeFormWorkspace> submit(
+    String uid,
+    IntakeFormChange change,
+    String requestId,
+  ) {
+    latest = ClientIntake(
+      clientId: uid,
+      allergies: [],
+      medicalConditions: [],
+      sections: [],
+      submittedAt: null,
+      updatedAt: null,
+    );
+    return load(uid);
+  }
 }
 
 class _EmptyPurchases extends Fake implements PackagePurchaseRepository {

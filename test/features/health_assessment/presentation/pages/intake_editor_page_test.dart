@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:fitnep/features/authorization/data/authorization_repository.dart';
 import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
 import 'package:fitnep/features/health_assessment/presentation/pages/intake_editor_page.dart';
 import 'package:flutter/material.dart';
@@ -7,12 +8,38 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets(
-    'direct entry sends clients with incomplete profiles to My profile',
+    'direct entry opens the form and verifies age on the first save',
     (tester) async {
       final api = _IntakeApi()..profileReady = false;
       await _open(tester, api);
-      expect(find.text('Open My profile'), findsOneWidget);
-      expect(find.byKey(const ValueKey('height_cm')), findsNothing);
+      expect(find.text('Step 1 of 3'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('height_cm')), '175');
+      await tester.enterText(find.byKey(const ValueKey('weight_kg')), '70');
+      await _tap(tester, 'Next');
+      expect(find.text('Confirm your date of birth'), findsOneWidget);
+      expect(api.lastDraft, isNull);
+      await _tap(tester, 'Cancel');
+      expect(find.text('22.9 kg/m²'), findsOneWidget);
+      await _tap(tester, 'Next');
+      final year = DateTime.now().toUtc().year - 17;
+      await tester.enterText(
+        find.widgetWithText(TextFormField, 'Date of birth'),
+        '$year-01-01',
+      );
+      await _tap(tester, 'Save and continue');
+      expect(find.text('Parent or guardian consent'), findsOneWidget);
+      expect(api.lastDraft, isNull);
+      await _tap(tester, 'Confirm permission');
+      expect(find.text('Step 2 of 3'), findsOneWidget);
+      expect(api.profileUpdate, {
+        'expected_client_id': 'client-1',
+        'date_of_birth': '$year-01-01',
+        'guardian_consent_confirmed': true,
+      });
+      expect(api.lastDraft?['answers'], {
+        'height_cm': '175',
+        'weight_kg': '70',
+      });
     },
   );
 
@@ -103,6 +130,7 @@ Future<void> _open(WidgetTester tester, _IntakeApi api) async {
     ProviderScope(
       overrides: [
         intakeWorkspaceRepositoryProvider.overrideWithValue(api.repository),
+        authorizationRepositoryProvider.overrideWithValue(_ProfileApi(api)),
       ],
       child: const MaterialApp(home: IntakeEditorPage(clientId: 'client-1')),
     ),
@@ -117,6 +145,29 @@ Future<void> _tap(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
 }
 
+class _ProfileApi extends Fake implements AuthorizationRepository {
+  _ProfileApi(this.api);
+
+  final _IntakeApi api;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? query,
+  }) async {
+    expect(path, 'profile/me');
+    if (method == 'PATCH') {
+      api.profileUpdate = data;
+      api.profileReady = true;
+    }
+    return {
+      'account': {'id': 'client-1'},
+    };
+  }
+}
+
 class _IntakeApi {
   _IntakeApi() {
     _dio.interceptors.add(InterceptorsWrapper(onRequest: _handle));
@@ -126,6 +177,7 @@ class _IntakeApi {
   IntakeWorkspaceRepository get repository => IntakeWorkspaceRepository(_dio);
   Map<String, dynamic> _answers = {'full_name': 'Saved Name'};
   Map<String, dynamic>? lastDraft;
+  Map<String, dynamic>? profileUpdate;
   final submissions = <Map<String, dynamic>>[];
   var membershipActive = true;
   var profileReady = true;

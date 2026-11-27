@@ -17,7 +17,9 @@ import 'package:fitnep/features/authorization/domain/account.dart';
 import 'package:fitnep/features/authorization/presentation/role_home_page.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
 import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
+import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
 import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -115,9 +117,7 @@ class _Repository extends AuthorizationRepository {
   }) async {
     requestedPaths.add(path);
     if (path == 'profile/me') {
-      return {
-        'account': {..._data(account.role), 'date_of_birth': '2000-01-01'},
-      };
+      return {'account': _data(account.role)};
     }
     if (path == 'admin/audit-events') {
       final filters = query ?? const <String, dynamic>{};
@@ -228,6 +228,12 @@ Future<ProviderContainer> _open(
       staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
       emptyPackageCatalogOverride,
       intakeWorkspaceRepositoryProvider.overrideWithValue(_SavedIntake()),
+      ownClientIntakeProvider.overrideWith(
+        (ref, uid) async => throw const ClientIntakeException(
+          ClientIntakeFailure.notFound,
+          'Intake unavailable.',
+        ),
+      ),
       offlineHostedSessionOverride,
       registrationAcceptedProvider.overrideWith((ref, uid) async => true),
       authenticationStateProvider.overrideWith(
@@ -265,6 +271,16 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -240));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Health information'));
+    await tester.pumpAndSettle();
+    expect(find.text('Step 1 of 3'), findsOneWidget);
+    expect(find.text('175'), findsOneWidget);
+  });
+
+  testWidgets('the dashboard opens the intake form directly', (tester) async {
+    await _open(tester, _Repository(FitNepRole.client), AppRoutes.clientHome);
+    final intake = find.text('Health intake');
+    await tester.ensureVisible(intake);
+    await tester.tap(intake);
     await tester.pumpAndSettle();
     expect(find.text('Step 1 of 3'), findsOneWidget);
     expect(find.text('175'), findsOneWidget);

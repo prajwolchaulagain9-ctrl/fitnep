@@ -376,7 +376,7 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await db.doc("client_intakes/client").delete();
     await db.doc("customer_purchases/client/purchases/intake-membership").delete();
     const patch = (details: object) => api.patch("/profile/me").auth(owner, { type: "bearer" })
-      .send({ full_name: "Test Client", ...details });
+      .send({ expected_client_id: "client", ...details });
     const { full_name, age, date_of_birth, contact_email, ...health } = draft.answers;
     const healthDraft = { ...draft, answers: health };
     const save = (input: object) => api.put("/intakes/me/draft").auth(owner, { type: "bearer" }).send(input);
@@ -390,7 +390,11 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert.equal(oldDetails.body.data.account.contact_phone, "+9779800000000");
     const minorBirth = `${new Date().getUTCFullYear() - 17}-01-01`;
     await patch({ date_of_birth: minorBirth }).expect(400);
-    await patch({ date_of_birth: minorBirth, guardian_consent_confirmed: true }).expect(200);
+    await patch({ expected_client_id: "other-client", date_of_birth: minorBirth,
+      guardian_consent_confirmed: true }).expect(403);
+    const updated = await patch({ date_of_birth: minorBirth, guardian_consent_confirmed: true }).expect(200);
+    assert.equal(updated.body.data.account.full_name, oldDetails.body.data.account.full_name);
+    assert.equal(updated.body.data.account.contact_phone, "+9779800000000");
 
     const saved = await save({ ...healthDraft, expected_draft_revision: 1 }).expect(200);
     assert.equal(saved.body.data.profile_ready, true);

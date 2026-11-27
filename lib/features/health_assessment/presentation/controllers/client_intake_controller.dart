@@ -1,9 +1,11 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/authorization/authorization_refresh.dart';
 import '../../../../core/network/api_client_provider.dart';
 import '../../data/datasources/client_intake_remote_datasource.dart';
 import '../../data/repositories/client_intake_repository_impl.dart';
+import '../../data/repositories/intake_workspace_repository.dart';
 import '../../domain/entities/client_intake.dart';
 import '../../data/models/client_intake_model.dart';
 import '../../domain/repositories/client_intake_repository.dart';
@@ -30,10 +32,15 @@ final clientIntakeProvider = FutureProvider.autoDispose
 final ownClientIntakeProvider = FutureProvider.autoDispose
     .family<ClientIntake, String>((ref, uid) async {
       ref.watch(authorizationEpochProvider);
-      final response = await ref
-          .watch(apiClientProvider)
-          .dio
-          .get<Map<String, dynamic>>('intakes/me');
+      final Response<Map<String, dynamic>> response;
+      try {
+        response = await ref
+            .watch(apiClientProvider)
+            .dio
+            .get<Map<String, dynamic>>('intakes/me');
+      } on DioException catch (error) {
+        throw intakeWorkspaceError(error);
+      }
       final payload = response.data?['data']?['intake'];
       if (payload is! Map) {
         throw const FormatException(

@@ -7,11 +7,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/routes/app_routes.dart';
+import '../../../authorization/data/authorization_repository.dart';
+import '../../../authorization/domain/account.dart';
 import '../../data/datasources/client_intake_remote_datasource.dart';
 import '../../data/repositories/intake_workspace_repository.dart';
 import '../../domain/entities/client_intake.dart';
 import '../../domain/entities/client_intake_form.dart';
+import '../controllers/client_intake_controller.dart';
 import '../widgets/intake_form_fields.dart';
+import '../widgets/intake_birth_date_dialog.dart';
 
 class IntakeEditorPage extends ConsumerStatefulWidget {
   const IntakeEditorPage({
@@ -210,11 +214,7 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
 
   Future<bool> _save({required bool submit, bool announce = true}) async {
     final base = _workspace;
-    if (base == null ||
-        !base.profileReady ||
-        _checking ||
-        _saving ||
-        _newerWorkspace != null) {
+    if (base == null || _checking || _saving || _newerWorkspace != null) {
       return false;
     }
     for (final step in IntakeStep.values) {
@@ -224,16 +224,18 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
       }
     }
     FocusScope.of(context).unfocus();
-    final change = (
-      answers: _answers,
-      version: base.version,
-      draftRevision: base.draftRevision,
-    );
     setState(() {
       _saving = true;
       _writeError = null;
     });
     try {
+      final ready = await _prepareProfileForSave(base);
+      if (!mounted || ready == null) return false;
+      final change = (
+        answers: _answers,
+        version: ready.version,
+        draftRevision: ready.draftRevision,
+      );
       final saved = submit
           ? await _repository.submit(
               widget.clientId,
@@ -243,6 +245,7 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
           : await _repository.saveDraft(widget.clientId, change);
       if (!mounted) return false;
       setState(() => _applyWorkspace(saved));
+      if (submit) ref.invalidate(ownClientIntakeProvider(widget.clientId));
       if (submit && widget.onboarding) _finishOnboarding();
       if (announce) {
         final router = GoRouter.maybeOf(context);
@@ -278,6 +281,64 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
     }
   }
 
+  Future<IntakeFormWorkspace?> _prepareProfileForSave(
+    IntakeFormWorkspace workspace,
+  ) async {
+    if (workspace.profileReady == true) return workspace;
+    if (workspace.profileReady == null) {
+      throw const ClientIntakeException(
+        ClientIntakeFailure.server,
+        'FitNEP’s server needs an update before it can save this form.',
+      );
+    }
+
+    final repository = ref.read(authorizationRepositoryProvider);
+    final result = await repository.request('profile/me');
+    if (!mounted) return null;
+    final profile = result['account'];
+    if (profile is! Map || profile['id'] != widget.clientId) {
+      throw const ClientIntakeException(
+        ClientIntakeFailure.unauthorized,
+        'Your session ended. Please sign in again.',
+      );
+    }
+    final details = await showDialog<IntakeBirthDateDetails>(
+      context: context,
+      builder: (_) => IntakeBirthDateDialog(
+        initialDate: profile['date_of_birth'] as String? ?? '',
+        guardianConfirmed: profile['guardian_consent_confirmed'] == true,
+      ),
+    );
+    if (!mounted || details == null) return null;
+    await repository.request(
+      'profile/me',
+      method: 'PATCH',
+      data: {
+        'expected_client_id': widget.clientId,
+        'date_of_birth': details.date,
+        'guardian_consent_confirmed': details.guardianConfirmed,
+      },
+    );
+    if (!mounted) return null;
+    final fresh = await _repository.load(widget.clientId);
+    if (!mounted) return null;
+    if (fresh.version != workspace.version ||
+        fresh.draftRevision != workspace.draftRevision) {
+      throw const ClientIntakeException(
+        ClientIntakeFailure.conflict,
+        'Your saved intake changed. Review the latest answers and try again.',
+      );
+    }
+    if (fresh.profileReady != true) {
+      throw const ClientIntakeException(
+        ClientIntakeFailure.server,
+        'FitNEP could not confirm your date of birth. Please try again.',
+      );
+    }
+    setState(() => _workspace = fresh);
+    return fresh;
+  }
+
   void _announce(String message, {SnackBarAction? action}) =>
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -288,9 +349,11 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
       (error.failure == ClientIntakeFailure.forbidden ||
           error.failure == ClientIntakeFailure.unauthorized);
 
-  String _errorMessage(Object error) => error is ClientIntakeException
-      ? error.message
-      : 'Could not open your intake. Please try again.';
+  String _errorMessage(Object error) => switch (error) {
+    ClientIntakeException(:final message) => message,
+    AuthorizationFailure(:final message) => message,
+    _ => 'Could not open your intake. Please try again.',
+  };
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -336,29 +399,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
       );
     }
     final workspace = _workspace!;
-    if (!workspace.profileReady) {
-      return ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          const Text(
-            'Save your date of birth in My profile to start your health intake.',
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: () async {
-              await context.push(AppRoutes.ownProfile);
-              if (mounted) await _load();
-            },
-            child: const Text('Open My profile'),
-          ),
-          if (widget.onboarding)
-            TextButton(
-              onPressed: _finishOnboarding,
-              child: const Text('Finish later'),
-            ),
-        ],
-      );
-    }
     final latest = workspace.latest;
     final pending = latest?.status == ClientIntakeStatus.informationRequested;
     final enabled = !_saving && _newerWorkspace == null;
@@ -449,7 +489,8 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
                   ),
                 ),
               ),
-            if (_saving) const LinearProgressIndicator(),
+            if (_saving && (ModalRoute.isCurrentOf(context) ?? true))
+              const LinearProgressIndicator(),
             if (lastStep)
               FilledButton(
                 onPressed: canSubmit ? () => _save(submit: true) : null,

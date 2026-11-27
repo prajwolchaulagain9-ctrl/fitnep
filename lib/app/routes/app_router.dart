@@ -452,7 +452,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.clientHomeName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: permissionForRoute(state.uri.path)!,
-          builder: (_) => const ClientHomePage(),
+          builder: (_) => ClientHomePage(
+            clientId: ref.read(routeSessionProvider).requireValue!.uid,
+          ),
         ),
       ),
       GoRoute(

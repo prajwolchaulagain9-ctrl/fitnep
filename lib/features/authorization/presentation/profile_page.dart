@@ -8,6 +8,7 @@ import '../../../app/routes/app_routes.dart';
 import '../data/authorization_repository.dart';
 import '../domain/account.dart';
 import '../domain/profile_age.dart';
+import 'profile_guardian_consent.dart';
 import '../../../core/authorization/role_permissions.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -85,30 +86,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     if (guardianConfirmed || age == null || age! >= 18) return true;
     if (guardianDialogOpen) return false;
     guardianDialogOpen = true;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Parent or guardian consent'),
-        content: const Text(
-          'Ask a parent or guardian to review the Privacy Policy and confirm '
-          'that you have permission to provide your health information.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => context.pushNamed(AppRoutes.privacyPolicy),
-            child: const Text('Read privacy policy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Confirm permission'),
-          ),
-        ],
-      ),
-    );
+    final confirmed = await showProfileGuardianConsent(context);
     guardianDialogOpen = false;
     if (!mounted || confirmed != true) return false;
     setState(() => guardianConfirmed = true);
@@ -268,13 +246,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     child: ListTile(
                       leading: const Icon(Icons.assignment_outlined),
                       title: const Text('Health information'),
-                      subtitle: Text(
-                        savedBirthDate == null
-                            ? 'Save your date of birth to open your intake'
-                            : 'View or edit your intake, measurements and BMI',
+                      subtitle: const Text(
+                        'View or edit your intake, measurements and BMI',
                       ),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: savedBirthDate == null || saving
+                      onTap: saving
                           ? null
                           : () => context.pushNamed(AppRoutes.intakeEditorName),
                     ),
