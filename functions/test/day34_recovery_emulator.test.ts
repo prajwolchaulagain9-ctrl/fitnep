@@ -16,6 +16,7 @@ import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/pr
 import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
 import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
 import { FirestoreClientIntakeRepository } from "../src/firestore_client_intake_repository";
+import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
 import { PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
 
@@ -632,6 +633,11 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
 
   it("accepts unpaid intake submissions and sends one notice after assignment", async () => {
     const { draft, submit } = await submissionFixture();
+    const clientNotices = async () => {
+      const snapshot = await db.collection("notifications")
+        .where("reference_id", "==", draft.expected_client_id).get();
+      return snapshot.docs.filter(doc => ["intake", "assignment"].includes(doc.get("type")));
+    };
     const assignment = db.doc("client_assignments/client");
     const savedAssignment = (await assignment.get()).data()!;
     await assignment.delete();
@@ -645,7 +651,18 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert.equal(submitted.docs[0]!.get("event_type"), "intake.submitted");
     const worker = new HostedWorkflowDelivery(db, () => Date.now() + 1000);
     await worker.drain();
-    assert.equal((await db.collection("notifications").get()).size, 0);
+    // An asynchronous plan trigger can finish after the preceding test resets.
+    await new FirestoreNotificationRepository(db).createIfAbsent({
+      id: "unrelated-plan",
+      recipientId: "other-client",
+      type: "diet_plan",
+      referenceId: draft.expected_client_id,
+      eventKey: "unrelated-plan-notice",
+      title: "Diet plan assigned",
+      message: "Your diet plan is available.",
+      createdAt: new Date().toISOString(),
+    });
+    assert.equal((await clientNotices()).length, 0);
 
     await submit({
       ...draft, expected_version: 1, request_id: "revise-before-assignment",
@@ -655,10 +672,10 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await enqueue();
     await worker.drain();
     await worker.drain();
-    const notices = await db.collection("notifications").get();
-    assert.equal(notices.size, 2);
-    assert(notices.docs.every(doc => doc.get("recipient_id") === "dietitian"));
-    const intake = notices.docs.filter(doc => doc.get("type") === "intake");
+    const notices = await clientNotices();
+    assert.equal(notices.length, 2);
+    assert(notices.every(doc => doc.get("recipient_id") === "dietitian"));
+    const intake = notices.filter(doc => doc.get("type") === "intake");
     assert.equal(intake.length, 1);
     assert.equal(intake[0]!.get("reference_id"), "client");
     assert(intake[0]!.get("event_key").endsWith(":v2"));
