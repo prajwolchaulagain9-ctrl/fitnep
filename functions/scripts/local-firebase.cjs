@@ -5,7 +5,7 @@ const { applicationDefault, initializeApp } = require('firebase-admin/app');
 
 // Reuse the operator's existing CLI login; never store credentials in the app.
 module.exports = async function localFirebase(projectId) {
-  const cliRoot = path.join(process.env.APPDATA, 'npm/node_modules/firebase-tools/lib');
+  const cliRoot = require('./firebase-cli-lib.cjs');
   const cliAuth = require(path.join(cliRoot, 'auth.js'));
   const cliApi = require(path.join(cliRoot, 'api.js'));
   const account = cliAuth.getGlobalDefaultAccount();

@@ -68,12 +68,27 @@ export function ageRequiresGuardian(answers: IntakeAnswers, today: Date): boolea
     (birthAge !== undefined && birthAge < 18);
 }
 
-export function validateIntakeSubmission(answers: IntakeAnswers, today = new Date()): number {
+export function hasLegacyIntakeDetails(answers: IntakeAnswers): boolean {
+  return (["full_name", "age", "date_of_birth", "contact_email", "contact_phone"] as const)
+    .some(field => answers[field] !== undefined);
+}
+
+export function validateIntakeSubmission(answers: IntakeAnswers, today = new Date(), healthOnly = false): number {
   const required = [
-    "full_name", "age", "date_of_birth", "height_cm", "weight_kg", "fitness_goals",
+    "height_cm", "weight_kg", "fitness_goals",
     "medical_history", "allergies", "dietary_restrictions", "food_preferences",
   ] as const;
   for (const field of required) {
+    if (!answers[field]) throw new IntakeAnswerError(`${intakeFields[field].label} is required.`);
+  }
+  if (!healthOnly) validateLegacyIntakeDetails(answers, today);
+  validateIntakeMeasurements(answers);
+  const bmi = Number(answers.weight_kg) / (Number(answers.height_cm) / 100) ** 2;
+  return Math.round(bmi * 10) / 10;
+}
+
+function validateLegacyIntakeDetails(answers: IntakeAnswers, today: Date): void {
+  for (const field of ["full_name", "age", "date_of_birth"] as const) {
     if (!answers[field]) throw new IntakeAnswerError(`${intakeFields[field].label} is required.`);
   }
   if (!/^\d{1,3}$/.test(answers.age!) || Number(answers.age) !== intakeAge(answers.date_of_birth!, today)) {
@@ -88,9 +103,6 @@ export function validateIntakeSubmission(answers: IntakeAnswers, today = new Dat
       !/^\d{7,15}$/.test(phone.replace(/\D/g, "")))) {
     throw new IntakeAnswerError("Enter a phone number with 7 to 15 digits.");
   }
-  validateIntakeMeasurements(answers);
-  const bmi = Number(answers.weight_kg) / (Number(answers.height_cm) / 100) ** 2;
-  return Math.round(bmi * 10) / 10;
 }
 
 export function validateIntakeMeasurements(answers: IntakeAnswers): void {

@@ -86,6 +86,18 @@ export class FirestorePackageService {
     return historicalStatus;
   }
 
+  async membershipStatusForDisplay(
+    uid: string, transaction?: Transaction,
+  ): Promise<EffectiveMembershipStatus | "unavailable"> {
+    try {
+      return await this.assignmentStatus(uid, transaction);
+    } catch (error) {
+      // Invalid package data still blocks assignment eligibility.
+      if (error instanceof PackageError && error.statusCode === 503) return "unavailable";
+      throw error;
+    }
+  }
+
   async pendingMemberships() {
     const snapshot = await this.db.collection("package_memberships").where("status", "==", "pending").get();
     return snapshot.docs.map(doc => this.toApi(doc.data() as MembershipRecord))
@@ -218,9 +230,25 @@ export class FirestorePackageService {
   }
 
   private toApi(member: MembershipRecord) {
+    if (typeof member.created_at !== "string" || !Number.isFinite(Date.parse(member.created_at))) {
+      throw new PackageError(503, "An existing membership needs attention.");
+    }
+    if (member.status === "pending") {
+      return { ...member, status: "pending" as const, days_remaining: 0 };
+    }
+
+    const start = Date.parse(member.start_at ?? "");
+    const end = Date.parse(member.end_at ?? "");
+    if (member.status !== "active" || !Number.isFinite(start) ||
+        !Number.isFinite(end) || end <= start ||
+        !Number.isSafeInteger(member.package?.duration_days) || member.package.duration_days < 1) {
+      throw new PackageError(503, "An existing membership needs attention.");
+    }
     const now = this.now().getTime();
-    const status = member.status === "pending" ? "pending" : now >= Date.parse(member.end_at!) ? "expired" : now < Date.parse(member.start_at!) ? "scheduled" : "active";
-    return { ...member, status, days_remaining: status === "active" ? Math.max(0, Math.ceil((Date.parse(member.end_at!) - now) / day)) : status === "scheduled" ? member.package.duration_days : 0 };
+    const status = now >= end ? "expired" : now < start ? "scheduled" : "active";
+    const daysRemaining = status === "active" ? Math.ceil((end - now) / day)
+      : status === "scheduled" ? member.package.duration_days : 0;
+    return { ...member, status, days_remaining: daysRemaining };
   }
 }
 

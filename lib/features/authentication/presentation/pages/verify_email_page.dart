@@ -151,7 +151,7 @@ class _VerifyEmailPageState extends ConsumerState<VerifyEmailPage> {
     ref.invalidate(authenticationStateProvider);
     final user = await ref.read(authenticationStateProvider.future);
     if (user != null && user.uid == uid && user.emailVerified) {
-      router.go(AppRoutes.dashboard);
+      router.go('${AppRoutes.dashboard}?setup=intake');
     }
   }
 

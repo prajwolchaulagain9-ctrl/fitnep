@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../domain/entities/client_intake_form.dart';
 
@@ -7,12 +6,14 @@ class IntakeFormFields extends StatelessWidget {
   const IntakeFormFields({
     super.key,
     required this.controllers,
+    required this.step,
     required this.enabled,
     required this.onChanged,
     required this.validator,
   });
 
   final Map<IntakeField, TextEditingController> controllers;
+  final IntakeStep step;
   final bool enabled;
   final ValueChanged<IntakeField> onChanged;
   final String? Function(IntakeField) validator;
@@ -23,67 +24,36 @@ class IntakeFormFields extends StatelessWidget {
       controllers[IntakeField.height]!.text.trim(),
       controllers[IntakeField.weight]!.text.trim(),
     );
-    final sections = <(String, List<IntakeField>)>[
-      (
-        'Personal and contact details',
-        [
-          IntakeField.fullName,
-          IntakeField.age,
-          IntakeField.dateOfBirth,
-          IntakeField.email,
-          IntakeField.phone,
-        ],
-      ),
-      (
-        'Measurements',
-        [
-          IntakeField.height,
-          IntakeField.weight,
-          IntakeField.waist,
-          IntakeField.hip,
-          IntakeField.chest,
-        ],
-      ),
-      (
-        'Goals and health information',
-        [IntakeField.goals, IntakeField.medicalHistory],
-      ),
-      (
-        'Food and dietary information',
-        [
-          IntakeField.allergies,
-          IntakeField.restrictions,
-          IntakeField.foodPreferences,
-        ],
-      ),
-    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (title, fields) in sections) ...[
-          Text(title, style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          for (final field in fields)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _IntakeInput(
-                field: field,
-                controller: controllers[field]!,
-                enabled: enabled,
-                onChanged: () => onChanged(field),
-                validator: () => validator(field),
+        for (final field in step.fields)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _IntakeInput(
+              field: field,
+              controller: controllers[field]!,
+              enabled: enabled,
+              onChanged: () => onChanged(field),
+              validator: () => validator(field),
+            ),
+          ),
+        if (step == IntakeStep.measurements)
+          Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            color: Theme.of(context).colorScheme.secondaryContainer,
+            child: ListTile(
+              leading: const Icon(Icons.speed_rounded),
+              iconColor: Theme.of(context).colorScheme.onSecondaryContainer,
+              textColor: Theme.of(context).colorScheme.onSecondaryContainer,
+              title: const Text('BMI estimate'),
+              subtitle: Text(
+                bmi == null
+                    ? 'Enter your height and weight to see your estimate.'
+                    : '${bmi.toStringAsFixed(1)} kg/m²',
               ),
             ),
-          if (bmi != null && fields.contains(IntakeField.height))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                'BMI estimate: ${bmi.toStringAsFixed(1)} kg/m²',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-            ),
-          const SizedBox(height: 12),
-        ],
+          ),
       ],
     );
   }
@@ -114,10 +84,6 @@ class _IntakeInput extends StatelessWidget {
   Widget build(BuildContext context) {
     final multiline = field.maxLength == 1000;
     final keyboard = switch (field) {
-      IntakeField.age => TextInputType.number,
-      IntakeField.email => TextInputType.emailAddress,
-      IntakeField.phone => TextInputType.phone,
-      IntakeField.dateOfBirth => TextInputType.datetime,
       _ when field.range != null => const TextInputType.numberWithOptions(
         decimal: true,
       ),
@@ -134,12 +100,20 @@ class _IntakeInput extends StatelessWidget {
       minLines: multiline ? 2 : 1,
       maxLines: multiline ? 4 : 1,
       maxLength: field.maxLength,
-      inputFormatters: field == IntakeField.age
-          ? [FilteringTextInputFormatter.digitsOnly]
-          : null,
       decoration: InputDecoration(
         labelText: field.label,
-        hintText: field == IntakeField.dateOfBirth ? 'YYYY-MM-DD' : null,
+        prefixIcon: Icon(switch (field) {
+          IntakeField.height => Icons.height_rounded,
+          IntakeField.weight => Icons.monitor_weight_outlined,
+          IntakeField.waist ||
+          IntakeField.hip ||
+          IntakeField.chest => Icons.straighten_rounded,
+          IntakeField.goals => Icons.flag_outlined,
+          IntakeField.medicalHistory => Icons.medical_information_outlined,
+          IntakeField.allergies => Icons.warning_amber_rounded,
+          IntakeField.restrictions => Icons.no_food_outlined,
+          IntakeField.foodPreferences => Icons.restaurant_menu_rounded,
+        }),
         helperText: _allowsNone ? 'Enter None if this does not apply.' : null,
         counterText: '',
         suffixIcon: _allowsNone

@@ -6,27 +6,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('loads a partial draft and saves a minor’s confirmation', (
+  testWidgets(
+    'direct entry sends clients with incomplete profiles to My profile',
+    (tester) async {
+      final api = _IntakeApi()..profileReady = false;
+      await _open(tester, api);
+      expect(find.text('Open My profile'), findsOneWidget);
+      expect(find.byKey(const ValueKey('height_cm')), findsNothing);
+    },
+  );
+
+  testWidgets('a partial draft cannot be submitted with allergies blank', (
     tester,
   ) async {
-    final api = _IntakeApi();
+    final api = _IntakeApi()..prepareRequestedRevision();
     await _open(tester, api);
-    final name = find.byKey(const ValueKey('full_name'));
-    expect(tester.widget<TextFormField>(name).controller!.text, 'Saved Name');
-    await tester.enterText(find.byKey(const ValueKey('age')), '17');
-    await tester.pump(const Duration(milliseconds: 500));
-    await tester.pumpAndSettle();
-    expect(find.text('Parent or guardian consent'), findsOneWidget);
-    await tester.tap(find.text('Confirm permission'));
+    for (var i = 0; i < 2; i++) {
+      await _tap(tester, 'Next');
+    }
+    final allergies = find.byKey(const ValueKey('allergies'));
+    await tester.ensureVisible(allergies);
+    await tester.enterText(allergies, '');
     await tester.pumpAndSettle();
 
+    await _tap(tester, 'Submit updated intake');
+    expect(find.text('Food allergies is required.'), findsOneWidget);
+    expect(api.submissions, isEmpty);
     await _tap(tester, 'Save draft');
-    expect(api.lastDraft?['expected_client_id'], 'client-1');
-    expect(api.lastDraft?['expected_version'], 0);
-    expect(api.lastDraft?['expected_draft_revision'], 1);
-    expect(api.lastDraft?['guardian_consent_confirmed'], true);
-    expect(api.lastDraft?['answers'], {'full_name': 'Saved Name', 'age': '17'});
-    expect(find.text('Draft saved.'), findsOneWidget);
+    expect(api.lastDraft?['answers'], isNot(contains('allergies')));
   });
 
   testWidgets(
@@ -36,10 +43,12 @@ void main() {
       await _open(tester, api);
       expect(find.text('Pending information'), findsOneWidget);
       expect(find.text('Update your goals.'), findsOneWidget);
+      await _tap(tester, 'Next');
       final goals = find.byKey(const ValueKey('fitness_goals'));
       await tester.ensureVisible(goals);
       await tester.enterText(goals, 'Improve endurance');
       await tester.pumpAndSettle();
+      await _tap(tester, 'Next');
 
       await _tap(tester, 'Submit updated intake');
       await _tap(tester, 'Submit updated intake');
@@ -50,24 +59,43 @@ void main() {
         api.submissions.last['request_id'],
         matches(RegExp(r'^[a-f0-9]{32}$')),
       );
-      expect(
-        find.text('Intake submitted. Your care team can review it.'),
-        findsOneWidget,
-      );
+      expect(find.text('Health intake submitted.'), findsOneWidget);
     },
   );
 
-  testWidgets('inactive membership keeps the intake editor closed', (
-    tester,
-  ) async {
-    final api = _IntakeApi()..membershipActive = false;
-    await _open(tester, api);
-    expect(
-      find.text('An active membership is required to edit your intake.'),
-      findsOneWidget,
-    );
-    expect(find.byType(TextFormField), findsNothing);
-  });
+  testWidgets(
+    'an unpaid client can complete steps and resume the saved draft',
+    (tester) async {
+      final api = _IntakeApi()..membershipActive = false;
+      await _open(tester, api);
+      expect(find.text('Step 1 of 3'), findsOneWidget);
+      expect(find.byKey(const ValueKey('full_name')), findsNothing);
+      expect(find.byIcon(Icons.height_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.monitor_weight_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.speed_rounded), findsOneWidget);
+      expect(
+        find.text('Enter your height and weight to see your estimate.'),
+        findsOneWidget,
+      );
+      await _tap(tester, 'Next');
+      expect(find.text('Height (cm) is required.'), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('height_cm')), '175');
+      await tester.enterText(find.byKey(const ValueKey('weight_kg')), '70');
+      await tester.pump();
+      expect(find.text('22.9 kg/m²'), findsOneWidget);
+      await _tap(tester, 'Next');
+      expect(find.text('Step 2 of 3'), findsOneWidget);
+      expect(api.lastDraft?['answers'], {
+        'height_cm': '175',
+        'weight_kg': '70',
+      });
+      await tester.pumpWidget(const SizedBox.shrink());
+      await _open(tester, api);
+      expect(find.text('Step 2 of 3'), findsOneWidget);
+      await _tap(tester, 'Back');
+      expect(find.text('22.9 kg/m²'), findsOneWidget);
+    },
+  );
 }
 
 Future<void> _open(WidgetTester tester, _IntakeApi api) async {
@@ -100,20 +128,19 @@ class _IntakeApi {
   Map<String, dynamic>? lastDraft;
   final submissions = <Map<String, dynamic>>[];
   var membershipActive = true;
-  var _guardian = false;
+  var profileReady = true;
   var _version = 0;
   var _draftRevision = 1;
   var _pending = false;
 
   void prepareRequestedRevision() {
-    final year = DateTime.now().toUtc().year - 25;
     _version = 1;
     _draftRevision = 0;
     _pending = true;
     _answers = {
       'full_name': 'Saved Name',
       'age': '25',
-      'date_of_birth': '$year-01-01',
+      'date_of_birth': '2000-01-01',
       'contact_email': 'client@example.test',
       'height_cm': '175',
       'weight_kg': '70',
@@ -129,13 +156,13 @@ class _IntakeApi {
     if (options.method == 'PUT') {
       lastDraft = Map<String, dynamic>.from(options.data as Map);
       _answers = Map<String, dynamic>.from(lastDraft!['answers'] as Map);
-      _guardian = lastDraft!['guardian_consent_confirmed'] as bool;
       _draftRevision++;
     } else if (options.method == 'POST') {
       final request = Map<String, dynamic>.from(options.data as Map);
       submissions.add(request);
       if (submissions.length == 1) {
         _version++;
+        _draftRevision = 0;
         _pending = false;
         _answers = Map<String, dynamic>.from(request['answers'] as Map);
         handler.reject(
@@ -156,7 +183,7 @@ class _IntakeApi {
             'client_id': 'client-1',
             'answers': _answers,
             'membership_active': membershipActive,
-            'guardian_consent_confirmed': _guardian,
+            'profile_ready': profileReady,
             'version': _version,
             'draft_revision': _draftRevision,
             'latest': _version == 0

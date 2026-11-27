@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   IntakeAnswerError,
   IntakeAnswers,
@@ -17,6 +18,10 @@ export type ClientIntakeReviewAction =
   (typeof clientIntakeReviewActions)[number];
 export type ClientIntakeStatus =
   "submitted" | "reviewed" | "information_requested";
+
+export function intakeReviewOperationId(clientId: string, version: number, revision: number): string {
+  return createHash("sha256").update(`${clientId}:${version}:${revision}`).digest("hex");
+}
 
 export function submittedIntakeStatus(status: unknown, reviewAction: unknown): ClientIntakeStatus {
   if (status === "reviewed" || status === "information_requested") return status;
@@ -77,6 +82,7 @@ export interface IntakeWorkspace {
   latest: ClientIntakeRecord | null;
   membershipActive: boolean;
   guardianConfirmed: boolean;
+  profileReady: boolean;
 }
 
 export interface IntakeVersionIndex {

@@ -1,18 +1,15 @@
+import 'package:fitnep/features/authorization/domain/profile_age.dart';
 import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('validates stated age and date of birth at the guardian threshold', () {
+  test('derives age from date of birth at the guardian threshold', () {
     final today = DateTime.utc(2026, 11, 26);
 
-    expect(validIntakeAge('17'), 17);
-    expect(validIntakeAge('18'), 18);
-    expect(validIntakeAge('0'), isNull);
-    expect(validIntakeAge('17.5'), isNull);
-    expect(intakeBirthAge('2008-11-27', today), 17);
-    expect(intakeBirthAge('2008-11-26', today), 18);
-    expect(intakeBirthAge('2010-02-29', today), isNull);
-    expect(intakeBirthAge('2027-01-01', today), isNull);
+    expect(ageFromBirthDate('2008-11-27', today), 17);
+    expect(ageFromBirthDate('2008-11-26', today), 18);
+    expect(ageFromBirthDate('2010-02-29', today), isNull);
+    expect(ageFromBirthDate('2027-01-01', today), isNull);
   });
 
   test('calculates BMI to one decimal from valid height and weight', () {

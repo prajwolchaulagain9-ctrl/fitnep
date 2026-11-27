@@ -16,6 +16,8 @@ import 'package:fitnep/features/authorization/data/authorization_repository.dart
 import 'package:fitnep/features/authorization/domain/account.dart';
 import 'package:fitnep/features/authorization/presentation/role_home_page.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
 import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,6 +30,17 @@ import 'package:fitnep/features/purchases/presentation/controllers/membership_co
 class _EmptyMembership extends MembershipController {
   @override
   MembershipState build() => const MembershipState();
+}
+
+class _SavedIntake extends Fake implements IntakeWorkspaceRepository {
+  @override
+  Future<IntakeFormWorkspace> load(String uid) async =>
+      const IntakeFormWorkspace(
+        answers: {IntakeField.height: '175'},
+        version: 0,
+        draftRevision: 1,
+        profileReady: true,
+      );
 }
 
 class _Firestore extends Fake implements FirebaseFirestore {}
@@ -101,6 +114,11 @@ class _Repository extends AuthorizationRepository {
     Map<String, dynamic>? query,
   }) async {
     requestedPaths.add(path);
+    if (path == 'profile/me') {
+      return {
+        'account': {..._data(account.role), 'date_of_birth': '2000-01-01'},
+      };
+    }
     if (path == 'admin/audit-events') {
       final filters = query ?? const <String, dynamic>{};
       auditQueries.add(filters);
@@ -209,6 +227,7 @@ Future<ProviderContainer> _open(
     overrides: [
       staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
       emptyPackageCatalogOverride,
+      intakeWorkspaceRepositoryProvider.overrideWithValue(_SavedIntake()),
       offlineHostedSessionOverride,
       registrationAcceptedProvider.overrideWith((ref, uid) async => true),
       authenticationStateProvider.overrideWith(
@@ -236,6 +255,21 @@ Future<ProviderContainer> _open(
 }
 
 void main() {
+  testWidgets('My profile opens saved health information without a package', (
+    tester,
+  ) async {
+    await _open(tester, _Repository(FitNepRole.client), AppRoutes.ownProfile);
+    expect(find.text('My profile'), findsOneWidget);
+    expect(find.text('Date of birth'), findsOneWidget);
+    expect(find.byKey(const ValueKey('height_cm')), findsNothing);
+    await tester.drag(find.byType(ListView), const Offset(0, -240));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Health information'));
+    await tester.pumpAndSettle();
+    expect(find.text('Step 1 of 3'), findsOneWidget);
+    expect(find.text('175'), findsOneWidget);
+  });
+
   testWidgets(
     'staff audit grants govern navigation, filtering and revocation',
     (tester) async {
@@ -372,6 +406,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.assignedQueries.last['search'], 'Sharma');
     expect(repository.assignedQueries.last.containsKey('after'), false);
+    await tester.tap(find.text('Load more'));
+    await tester.pumpAndSettle();
+    expect(repository.assignedQueries.last, {
+      'limit': '20',
+      'search': 'Sharma',
+      'after': 'asha',
+    });
     final filter = find.byType(DropdownButtonFormField<String>);
     await tester.tap(filter);
     await tester.pumpAndSettle();
@@ -395,6 +436,31 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'assigned clients refresh on resume and show an empty assignment',
+    (tester) async {
+      final repository = _Repository(FitNepRole.dietitian)
+        ..includeAssignedClients = true;
+      await _open(tester, repository, AppRoutes.assignedClients);
+      expect(find.text('Asha Sharma'), findsOneWidget);
+      final requestsBeforeResume = repository.assignedQueries.length;
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      repository.includeAssignedClients = false;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+
+      expect(repository.assignedQueries.length, requestsBeforeResume + 1);
+      expect(find.text('Asha Sharma'), findsNothing);
+      expect(find.text('Load more'), findsNothing);
+      expect(
+        find.text('No active clients are assigned to you.'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets(
     'an admin client-list entry point remains guarded for every non-admin role',

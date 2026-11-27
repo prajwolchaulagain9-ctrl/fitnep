@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { FieldValue, Firestore, Timestamp } from "firebase-admin/firestore";
 import { getCurrentAssignment } from "./account_service";
 import { workflowEventTypes, WorkflowEventType } from "./audit";
+import { intakeReviewOperationId } from "./client_intake_service";
 import { NewNotification } from "./domain";
 import { FirestoreNotificationRepository } from "./firestore_notification_repository";
 import { Auth } from "firebase-admin/auth";
@@ -120,7 +121,14 @@ export class HostedWorkflowDelivery {
           const latestVersion = intake.get("version") ?? 1;
           if (intake.exists && intake.get("status") !== "draft") {
             if (event.event_type === "intake.information_requested") {
-              if (latestVersion === event.version) {
+              const revision = intake.get("review_revision");
+              // The existing operation ID identifies the exact review, including older queued events.
+              if (assignment && latestVersion === event.version &&
+                  intake.get("status") === "information_requested" &&
+                  Number.isSafeInteger(revision) && revision > 0 &&
+                  assignment.team.dietitianId === event.dietitian_id &&
+                  intake.get("reviewed_by_id") === event.dietitian_id &&
+                  event.operation_id === intakeReviewOperationId(event.client_id, latestVersion, revision)) {
                 const notification = buildIntakeWorkflowNotification({
                   eventId: id,
                   eventType: event.event_type,

@@ -42,7 +42,7 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
     response.json({ data: { allowed: true } });
   }));
   router.get("/profile/me", wrap(async (_request, response) => {
-    response.json({ data: { account: await store().get(actor(response).uid) } });
+    response.json({ data: { account: await store().ownProfile(actor(response)) } });
   }));
   router.patch("/profile/me", wrap(async (request, response) => {
     if (["role", "permissions", "account_status"].some(key => Object.hasOwn(body(request), key))) {
@@ -148,7 +148,12 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
         description: submitted.description!.toString().trim(), assigned_by_id: user.uid,
         assigned_by_role: latest.role, dietitian_name: latest.full_name, updated_at: FieldValue.serverTimestamp() };
       if (current.exists) transaction.update(reference, fields);
-      else transaction.create(reference, { ...fields, created_at: FieldValue.serverTimestamp() });
+      else transaction.create(reference, {
+        ...fields,
+        // New plans from this endpoint are available to the client immediately.
+        status: "published",
+        created_at: FieldValue.serverTimestamp(),
+      });
     });
     response.status(request.params.planId ? 200 : 201).json({ data: { plan: publicPlan(reference.id, (await reference.get()).data()!) } });
   };

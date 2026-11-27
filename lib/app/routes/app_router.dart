@@ -108,6 +108,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       final isAuthenticated = authentication.value != null;
       final path = state.uri.path;
+      if (!isAuthenticated) {
+        refreshNotifier.intakeSetupUid = null;
+      } else if (path == AppRoutes.signupPath ||
+          path == AppRoutes.verifyEmailPath) {
+        refreshNotifier.intakeSetupUid = authentication.value!.uid;
+      }
       final isPublicRoute = const {
         AppRoutes.welcomePath,
         AppRoutes.aboutPath,
@@ -173,6 +179,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (path == AppRoutes.dashboard ||
             path == AppRoutes.appUnderDevelopmentPath) {
+          final startsIntake =
+              !AppConfig.useFirebaseEmulators &&
+              session.role == FitNepRole.client &&
+              (refreshNotifier.intakeSetupUid == session.uid ||
+                  state.uri.queryParameters['setup'] == 'intake');
+          refreshNotifier.intakeSetupUid = null;
+          if (startsIntake) return '${AppRoutes.ownProfile}?onboarding=1';
           return session.role == FitNepRole.client
               ? AppRoutes.clientPackages
               : home;
@@ -220,6 +233,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           requiredPermission: 'view_own_client_records',
           builder: (_) => IntakeEditorPage(
             clientId: ref.read(routeSessionProvider).requireValue!.uid,
+            onboarding: state.uri.queryParameters['onboarding'] == '1',
           ),
         ),
       ),
@@ -320,7 +334,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.ownProfile,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: 'view_own_profile',
-          builder: (_) => const ProfilePage(),
+          builder: (_) => ProfilePage(
+            onboarding:
+                state.uri.queryParameters['onboarding'] == '1' &&
+                ref.read(routeSessionProvider).requireValue!.role ==
+                    FitNepRole.client,
+          ),
         ),
       ),
       GoRoute(
@@ -655,6 +674,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 class _RouterRefreshNotifier extends ChangeNotifier {
   final navigatorKey = GlobalKey<NavigatorState>();
   RouteSession? lastSession;
+  String? intakeSetupUid;
   bool roleChanged = false;
   void refresh() => notifyListeners();
 }

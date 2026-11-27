@@ -20,7 +20,7 @@ const credentialsFile = path.join(workspace, '.dart_tool/demo-admin.credentials.
 
 async function main() {
   assert.ok(!process.env.FIREBASE_AUTH_EMULATOR_HOST, 'This seed targets the Firebase project used by the live app.');
-  const cliRoot = path.join(process.env.APPDATA, 'npm/node_modules/firebase-tools/lib');
+  const cliRoot = require('./firebase-cli-lib.cjs');
   const cliAuth = require(path.join(cliRoot, 'auth.js'));
   const cliApi = require(path.join(cliRoot, 'apiv2.js'));
   const { requireAuth } = require(path.join(cliRoot, 'requireAuth.js'));

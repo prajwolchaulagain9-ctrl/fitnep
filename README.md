@@ -175,6 +175,12 @@ acceptance evidence, tests and any shared Firebase/schema changes in the PR.
 Use the agreed release branch and GitHub Releases for tested APK prereleases;
 do not commit build output.
 
+For Android distribution, supply the team's upload keystore through the ignored
+`android/key.properties` file. Set `storeFile` (absolute or relative to
+`android/`), `storePassword`, `keyAlias` and `keyPassword` before running
+`flutter build appbundle --release`. Local release builds use the debug key
+when this file is absent.
+
 The four-day work plan, Firebase teammate handoff and release-notes template are
 maintained separately in `D:\fitnep_plan`.
 

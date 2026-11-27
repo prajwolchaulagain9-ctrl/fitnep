@@ -31,7 +31,7 @@ async function main() {
   const app = await require('./local-firebase.cjs')('fitnep-88908');
   try {
     const auth = getAuth(app), db = getFirestore(app);
-    const cliAuth = require(path.join(process.env.APPDATA, 'npm/node_modules/firebase-tools/lib/auth.js'));
+    const cliAuth = require(path.join(require('./firebase-cli-lib.cjs'), 'auth.js'));
     const email = cliAuth.getGlobalDefaultAccount()?.user?.email;
     if (!email) throw new Error('A signed-in operator is required.');
     const identity = await auth.getUserByEmail(email);

@@ -26,15 +26,14 @@ if (process.env.FIREBASE_AUTH_EMULATOR_HOST || process.env.FIRESTORE_EMULATOR_HO
   const auth = getAuth(firebase);
   const firestore = getFirestore(firebase);
   const dependencies = createFitnepDependencies(auth, firestore);
-  const recovery = startWorkflowRecovery(firestore, auth);
+  const recovery = startWorkflowRecovery(firestore, auth, () => dependencies.privateRecordsStore.recoverPhotoUploads());
   const buildSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: workspace, encoding: 'utf8', windowsHide: true }).trim();
   const app = mountHostedAuth(auth, firestore, dependencies.authVerifier, process.env);
   // Use the configured Brevo delivery on Render when local secrets are absent.
   if (!process.env.BREVO_API_KEY) {
     const express = require('express');
     const proxy = express();
-    proxy.use(express.json({ limit: '8kb' }));
-    proxy.post(['/auth/signup/otp/send', '/auth/signup/otp/verify'], async (request, response) => {
+    proxy.post(['/auth/signup/otp/send', '/auth/signup/otp/verify'], express.json({ limit: '8kb' }), async (request, response) => {
       try {
         const result = await fetch('https://fitnep-api.onrender.com' + request.path, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: request.header('Authorization') || '' },

@@ -18,7 +18,7 @@ and run the matching authentication/session implementation.
 
 ## Team setup
 
-Use Node 24 and sign in with the Firebase CLI for the shared project. Add the
+Use Node 22 and sign in with the Firebase CLI for the shared project. Add the
 mail settings described in [signup email setup](signup-email-fixes.md) to the
 ignored `functions/.secret.local`. Both servers need the same
 `SIGNUP_OTP_HASH_SECRET` for password setup and replacement across backends.

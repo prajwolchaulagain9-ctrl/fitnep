@@ -7,7 +7,7 @@ const { spawn } = require('node:child_process');
 
 const project = 'fitnep-88908';
 const workspace = path.resolve(__dirname, '../..');
-const cliRoot = path.join(process.env.APPDATA, 'npm/node_modules/firebase-tools/lib');
+const cliRoot = require('./firebase-cli-lib.cjs');
 const cliAuth = require(path.join(cliRoot, 'auth.js'));
 const cliApi = require(path.join(cliRoot, 'api.js'));
 const { requireAuth } = require(path.join(cliRoot, 'requireAuth.js'));
@@ -29,12 +29,12 @@ const { requireAuth } = require(path.join(cliRoot, 'requireAuth.js'));
     if (fs.existsSync(privateDirectory)) fs.rmdirSync(privateDirectory);
   };
   process.once('exit', cleanup);
-  const jdk = process.env.JAVA_HOME || path.join(process.env.ProgramFiles, 'Android/Android Studio/jbr');
+  const jdk = process.env.JAVA_HOME || (process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Android/Android Studio/jbr'));
   const child = spawn(process.execPath, [path.join(cliRoot, 'bin/firebase.js'),
     'emulators:start', '--only', 'functions,firestore', '--project', project,
     '--config', 'firebase.json'], {
     cwd: workspace,
-    env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: privateFile, JAVA_HOME: jdk },
+    env: { ...process.env, GOOGLE_APPLICATION_CREDENTIALS: privateFile, ...(jdk && { JAVA_HOME: jdk }) },
     stdio: 'inherit',
     windowsHide: true,
   });

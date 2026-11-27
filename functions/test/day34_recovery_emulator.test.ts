@@ -7,13 +7,14 @@ import request from "supertest";
 import { FirestoreAuditWriter } from "../src/audit";
 import { FirestoreAccountService } from "../src/account_service";
 import { FirebaseAuthVerifier } from "../src/auth";
-import { ClientIntakeService } from "../src/client_intake_service";
+import { ClientIntakeService, intakeReviewOperationId } from "../src/client_intake_service";
 import { createNotificationApp } from "../src/http_app";
 import { HostedWorkflowDelivery } from "../src/workflow_delivery";
 import { reconcileAccountAuth } from "../src/account_auth_recovery";
 import { PlanAuditContract, planEvents } from "../src/plan_audit_contract";
 import { FirestorePrivacyAcceptanceStore, privacyPolicyVersion } from "../src/privacy_policy_acceptance";
 import { FirestorePrivacyPreferencesRepository } from "../src/firestore_privacy_preferences_repository";
+import { FirestorePrivateRecordsStore } from "../src/firestore_private_records_store";
 import { FirestoreClientIntakeRepository } from "../src/firestore_client_intake_repository";
 import { PrivateRecordAuthorizationError } from "../src/nutrition_record_access_service";
 import { InMemoryNotificationRepository } from "./in_memory_notification_repository";
@@ -196,11 +197,6 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     }
     await load(dietitian!).expect(403);
     await api.put(path).auth(other!, { type: "bearer" }).send(input).expect(403);
-    await save(input).expect(409);
-    await db.doc("customer_purchases/client/purchases/intake-membership").set({
-      purchased_at: Timestamp.fromMillis(now - 60_000),
-      expires_at: Timestamp.fromMillis(now + 86_400_000),
-    });
     await save({ ...input, answers: { ...input.answers, weight_kg: "0" } }).expect(400);
     await save(input).expect(400);
     const draft = db.doc("client_intakes/client/private/draft");
@@ -210,6 +206,7 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const before = (await acceptance.get()).get("accepted_at") as Timestamp;
     const confirmed = { ...input, guardian_consent_confirmed: true };
     const saved = await save(confirmed).expect(200);
+    assert.equal(saved.body.data.membership_active, false);
     const replay = await save(confirmed).expect(200);
     assert.equal(saved.body.data.draft_revision, 1);
     assert.equal(replay.body.data.draft_revision, 1);
@@ -301,6 +298,12 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const v2 = db.doc("client_intakes/client/versions/2");
     const frozen = (await v2.get()).data();
     assert.equal(frozen?.health_information.BMI, 22.9);
+    assert.equal(frozen?.health_information.date_of_birth, draft.answers.date_of_birth);
+    const displayed = await api.get("/clients/client/intake/versions/2").auth(owner, { type: "bearer" }).expect(200);
+    const labels = displayed.body.data.intake.sections.flatMap((section: { fields: { label: string }[] }) =>
+      section.fields.map(field => field.label.toLowerCase()));
+    assert(!labels.includes("date of birth"));
+    assert(!labels.includes("contact email"));
     assert(frozen?.submitted_at instanceof Timestamp);
     await submit({ ...input, answers: { ...input.answers, weight_kg: "71" } }).expect(409);
     await submit({ ...input, request_id: "different-stale-request" }).expect(409);
@@ -322,6 +325,9 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
       expected_review_revision: 0, note: "Private clarification" };
     const reviewed = await review(changes).expect(200);
     assert.equal(reviewed.body.data.intake.review_revision, 1);
+    const snapshot = await api.get("/clients/client/intake/versions/2").auth(owner, { type: "bearer" }).expect(200);
+    assert.equal(snapshot.body.data.intake.status, "submitted");
+    assert.equal(snapshot.body.data.intake.review_note, null);
     assert.equal((await review(changes).expect(200)).body.data.intake.review_revision, 1);
     await review({ action: "reviewed", expected_version: 2, expected_review_revision: 0 }).expect(409);
     assert.equal((await db.collection("intake_review_history").get()).size, 1);
@@ -363,6 +369,47 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await api.get(oldVersion).auth(replacement, { type: "bearer" }).expect(403);
     await index(replacement).expect(403);
     await api.get(oldVersion).auth(owner, { type: "bearer" }).expect(200);
+  });
+
+  it("keeps basic profile details out of new health drafts and versions", async () => {
+    const { api, draft, owner, submit } = await submissionFixture();
+    await db.doc("client_intakes/client").delete();
+    await db.doc("customer_purchases/client/purchases/intake-membership").delete();
+    const patch = (details: object) => api.patch("/profile/me").auth(owner, { type: "bearer" })
+      .send({ full_name: "Test Client", ...details });
+    const { full_name, age, date_of_birth, contact_email, ...health } = draft.answers;
+    const healthDraft = { ...draft, answers: health };
+    const save = (input: object) => api.put("/intakes/me/draft").auth(owner, { type: "bearer" }).send(input);
+    await save(healthDraft).expect(400);
+    const savedPurchase = db.doc("customer_purchases/client/purchases/malformed");
+    await savedPurchase.set({ purchased_at: Timestamp.now() });
+
+    await save({ ...draft, answers: { ...draft.answers, contact_phone: "+9779800000000" } }).expect(200);
+    const oldDetails = await api.get("/profile/me").auth(owner, { type: "bearer" }).expect(200);
+    assert.equal(oldDetails.body.data.account.date_of_birth, date_of_birth);
+    assert.equal(oldDetails.body.data.account.contact_phone, "+9779800000000");
+    const minorBirth = `${new Date().getUTCFullYear() - 17}-01-01`;
+    await patch({ date_of_birth: minorBirth }).expect(400);
+    await patch({ date_of_birth: minorBirth, guardian_consent_confirmed: true }).expect(200);
+
+    const saved = await save({ ...healthDraft, expected_draft_revision: 1 }).expect(200);
+    assert.equal(saved.body.data.profile_ready, true);
+    assert.equal(saved.body.data.membership_active, false);
+    assert.deepEqual(saved.body.data.answers, health);
+    const profile = await api.get("/profile/me").auth(owner, { type: "bearer" }).expect(200);
+    assert.equal(profile.body.data.account.contact_phone, "+9779800000000");
+    assert.equal(profile.body.data.account.contact_email, contact_email);
+    assert.equal(profile.body.data.account.date_of_birth, minorBirth);
+    const submitted = await submit({
+      ...healthDraft, expected_draft_revision: 2, request_id: "submit-health-with-separate-profile",
+    }).expect(200);
+    assert.equal(submitted.body.data.version, 1);
+    assert.deepEqual(submitted.body.data.answers, health);
+    const record = (await db.doc("client_intakes/client/versions/1").get()).data()!;
+    assert.equal(record.health_information.BMI, 22.9);
+    assert.equal(record.health_information.date_of_birth, undefined);
+    assert.equal(record.responses.contact_email, undefined);
+    assert.equal(record.responses.full_name, undefined);
   });
 
   it("revokes intake history and review when consent or live account authority changes", async () => {
@@ -411,11 +458,55 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     assert.equal((await db.collection("intake_review_history").get()).size, 0);
   });
 
+  it("delivers only the current intake request from the assigned dietitian", async () => {
+    const { api } = await submissionFixture();
+    const dietitian = await intakeTestToken(auth, "dietitian");
+    await new FirestorePrivacyPreferencesRepository(db).updateSharing("client", {
+      shareNutritionRecords: true,
+    });
+    const review = (revision: number, action: string, note?: string) =>
+      api.patch("/dietitian/assigned-clients/client/intake/review")
+        .auth(dietitian, { type: "bearer" })
+        .send({ action, expected_version: 1, expected_review_revision: revision, note })
+        .expect(200);
+    const worker = new HostedWorkflowDelivery(db, () => Date.now() + 1000);
+
+    await review(0, "missing_information", "Private first request");
+    const current = await review(1, "clarification_requested", "Private replacement request");
+    assert.equal(current.body.data.intake.review_revision, 2);
+    const queued = await db.collection("workflow_outbox").get();
+    assert.equal(queued.size, 2);
+    assert.equal(await worker.drain(), 2);
+    const notifications = await db.collection("notifications").get();
+    assert.equal(notifications.size, 1);
+    assert.equal(notifications.docs[0]!.get("recipient_id"), "client");
+    assert.equal(notifications.docs[0]!.get("reference_id"), "client");
+    assert.equal(notifications.docs[0]!.get("title"), "Intake information requested");
+    assert(!JSON.stringify(notifications.docs[0]!.data()).includes("Private"));
+    const eventId = notifications.docs[0]!.get("event_key").split(":")[1];
+    const delivered = (await db.doc(`workflow_outbox/${eventId}`).get()).data()!;
+    assert.equal(delivered.operation_id, intakeReviewOperationId("client", 1, 2));
+    const superseded = queued.docs.find(doc => doc.id !== eventId)!;
+    assert.equal((await db.doc(`outbox_handler_receipts/${superseded.id}`).get()).get("result"), "superseded");
+
+    await review(2, "missing_information", "Private closed request");
+    await review(3, "reviewed");
+    assert.equal(await worker.drain(), 1);
+    assert.equal((await db.collection("notifications").get()).size, 1);
+
+    await review(4, "clarification_requested", "Private old assignee request");
+    await db.doc("client_assignments/client").update({ dietitian_id: "replacement", version: 2 });
+    assert.equal(await worker.drain(), 1);
+    assert.equal((await db.collection("notifications").get()).size, 1);
+    assert.equal((await db.collection("outbox_handler_receipts").where("result", "==", "superseded").get()).size, 3);
+  });
+
   it("filters and pages the current dietitian's directory, then reflects review and reassignment", async () => {
     const api = request(createNotificationApp({
       accounts,
       authVerifier: new FirebaseAuthVerifier(accounts),
       notificationRepository: new InMemoryNotificationRepository(),
+      privateRecordsStore: new FirestorePrivateRecordsStore(db, new FirestorePrivacyPreferencesRepository(db)),
       clientIntakeService: new ClientIntakeService(new FirestoreClientIntakeRepository(db)),
     }));
     const [dietitian, replacement, admin, client] = await Promise.all([
@@ -507,16 +598,44 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const trail = await db.collection("audit_events").where("action", "==", "health.read").get();
     assert(trail.docs.some(doc => doc.get("target_id") === "client/diet-plans" && doc.get("record_ids")?.includes("latest")));
     assert(!JSON.stringify(trail.docs.map(doc => doc.data())).includes("Private"));
+
+    // Exercise the plan producer used by the app and tolerate one malformed
+    // purchase without dropping the client from the directory.
+    await db.doc("customer_purchases/other-client/purchases/active").update({ expires_at: "invalid" });
+    const newPlan = await api.post("/clients/other-client/diet-plans").auth(dietitian, { type: "bearer" })
+      .send({ title: "Training plan", description: "Synthetic plan details" }).expect(201);
+    const planId = newPlan.body.data.plan.id;
+    const otherPlan = await api.get(`/diet-plans/${planId}`).auth(await intakeTestToken(auth, "other-client"), { type: "bearer" }).expect(200);
+    assert.equal(otherPlan.body.data.diet_plan.title, "Training plan");
+    const newlyPublished = await list(dietitian).query({ search: "Asha", plan_status: "published" }).expect(200);
+    assert.equal(newlyPublished.body.data.clients[0].id, "other-client");
+    assert.equal(newlyPublished.body.data.clients[0].package_status, "unavailable");
+    assert.equal(newlyPublished.body.data.clients[0].plan_status, "published");
+    await db.doc("customer_purchases/other-client/purchases/active").update({
+      expires_at: Timestamp.fromMillis(now + 86_400_000),
+    });
+    await db.doc("package_memberships/malformed").set({
+      client_id: "other-client", status: "active", created_at: time.toDate().toISOString(),
+      package: { duration_days: 30 },
+    });
+    await db.doc(`diet_plans/${planId}`).update({ status: "draft" });
+    await api.patch(`/clients/other-client/diet-plans/${planId}`).auth(dietitian, { type: "bearer" })
+      .send({ title: "Updated training plan", description: "Synthetic plan details" }).expect(200);
+    const supportedDraft = await list(dietitian).query({ search: "Asha", plan_status: "draft" }).expect(200);
+    assert.equal(supportedDraft.body.data.clients[0].plan_status, "draft");
+    assert.equal(supportedDraft.body.data.clients[0].package_status, "unavailable");
   });
 
-  it("sends one intake notice when a client submits before assignment", async () => {
+  it("accepts unpaid intake submissions and sends one notice after assignment", async () => {
     const { draft, submit } = await submissionFixture();
     const assignment = db.doc("client_assignments/client");
     const savedAssignment = (await assignment.get()).data()!;
     await assignment.delete();
     await db.doc("client_intakes/client").delete();
+    await db.doc("customer_purchases/client/purchases/intake-membership").delete();
     const first = await submit({ ...draft, request_id: "submit-before-assignment" }).expect(200);
     assert.equal(first.body.data.version, 1);
+    assert.equal(first.body.data.membership_active, false);
     const submitted = await db.collection("workflow_outbox").get();
     assert.equal(submitted.size, 1);
     assert.equal(submitted.docs[0]!.get("event_type"), "intake.submitted");

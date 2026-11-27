@@ -15,7 +15,7 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
   environment: NodeJS.ProcessEnv, transport: typeof fetch = fetch): express.Express {
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "8kb" }));
+  app.use("/auth", express.json({ limit: "8kb" }));
   app.use((_request, response, next) => { response.set("Cache-Control", "no-store"); next(); });
   const privacy = new FirestorePrivacyAcceptanceStore(firestore);
   const mailer = new BrevoMailer(environment, transport);
@@ -120,12 +120,21 @@ export function mountHostedAuth(auth: Auth, firestore: Firestore, verifier: Auth
     });
   }
   app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
+    if (error instanceof Error && "type" in error &&
+        (error.type === "entity.too.large" || error.type === "entity.parse.failed")) {
+      const tooLarge = error.type === "entity.too.large";
+      response.status(tooLarge ? 413 : 400).json({
+        code: "invalid-argument", error: tooLarge ? "The submitted data is too large." : "Invalid request body.",
+      });
+      return;
+    }
     const actor = response.locals.actor;
-    const denied = error instanceof AuthenticationError && error.statusCode === 403;
+    const denied = (error instanceof AuthenticationError && error.statusCode === 403) ||
+      (error instanceof HttpsError && error.code === "permission-denied");
     const finish = () => {
       const status = error instanceof AuthenticationError ? error.statusCode : error instanceof PrivacyAcceptanceError ? 400
         : error instanceof HttpsError ? ({ "invalid-argument": 400, "not-found": 404, "deadline-exceeded": 410,
-            "resource-exhausted": 429, "failed-precondition": 503 } as Record<string, number>)[error.code] ?? 503 : 503;
+            "resource-exhausted": 429, "failed-precondition": 503 } as Record<string, number>)[error.code] ?? error.httpErrorCode.status : 503;
       response.status(status).json({ code: denied ? "permission-denied" : error instanceof HttpsError ? error.code : status === 401 ? "unauthenticated" : "unavailable",
         error: denied ? "You do not have permission to access this feature." : "The account request could not be completed. Please try again.",
         ...(error instanceof HttpsError && error.details ? { details: error.details } : {}) });

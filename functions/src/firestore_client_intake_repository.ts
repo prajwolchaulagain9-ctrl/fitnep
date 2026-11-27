@@ -8,9 +8,10 @@ import {
 } from "firebase-admin/firestore";
 
 import { AuditWriter, FirestoreAuditWriter } from "./audit";
-import { getCurrentAssignment } from "./account_service";
+import { getCurrentAssignment, legacyProfileDetails } from "./account_service";
 import {
-  ageRequiresGuardian, IntakeAnswerError, IntakeAnswers, parseIntakeAnswers, validateIntakeSubmission,
+  ageRequiresGuardian, hasLegacyIntakeDetails, intakeAge, IntakeAnswerError, IntakeAnswers,
+  parseIntakeAnswers, validateIntakeSubmission,
 } from "./client_intake_answers";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePrivateRecordsStore } from "./firestore_private_records_store";
@@ -32,6 +33,7 @@ import {
   IntakeSubmission,
   IntakeVersionIndex,
   IntakeWorkspace,
+  intakeReviewOperationId,
   submittedIntakeStatus,
 } from "./client_intake_service";
 
@@ -58,6 +60,8 @@ const reservedKeys = new Set([
   "review_revision",
 ]);
 
+const basicProfileKeys = new Set(["full_name", "age", "date_of_birth", "contact_email", "contact_phone"]);
+
 export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
   constructor(
     private readonly firestore: Firestore,
@@ -65,7 +69,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
       new FirestoreAuditWriter(firestore),
     private readonly reads: Pick<FirestorePrivateRecordsStore, "readResource"> =
       new FirestorePrivateRecordsStore(firestore, new FirestorePrivacyPreferencesRepository(firestore), audit),
-    private readonly membership: Pick<FirestorePackageService, "assignmentStatus"> =
+    private readonly membership: Pick<FirestorePackageService, "membershipStatusForDisplay"> =
       new FirestorePackageService(firestore),
   ) {}
 
@@ -141,7 +145,9 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return this.reads.readResource(actor, {
       clientId: actor.uid, category: "intakes", recordId: "draft", ownerOnly: true,
     }, async transaction => {
-      const { workspace, draft, acceptance } = await this.loadWorkspace(transaction, actor);
+      const { workspace, draft, acceptance, profile, legacy } = await this.loadWorkspace(transaction, actor);
+      const healthOnly = !hasLegacyIntakeDetails(input.answers);
+      if (healthOnly && !workspace.profileReady) throw profileIncomplete();
       // A response can be lost after the transaction commits. Return the
       // saved answers only when they match the very next draft revision.
       if (draft.exists && workspace.version === input.expectedVersion &&
@@ -149,8 +155,10 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
           JSON.stringify(workspace.answers) === JSON.stringify(input.answers)) {
         return { data: workspace };
       }
-      requireEditableWorkspace(workspace, input);
-      const guardianConfirmed = this.confirmGuardian(transaction, actor, acceptance, input, correlationId);
+      requireCurrentWorkspace(workspace, input);
+      const guardianConfirmed = healthOnly ? workspace.guardianConfirmed
+        : this.confirmGuardian(transaction, actor, acceptance, input, correlationId, profile.get("date_of_birth"));
+      if (healthOnly && Object.keys(legacy).length) transaction.update(profile.ref, legacy);
       const revision = workspace.draftRevision + 1;
       transaction.set(draft.ref, {
         client_id: actor.uid,
@@ -168,7 +176,8 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     return this.reads.readResource(actor, {
       clientId: actor.uid, category: "intakes", recordId: "submitted", ownerOnly: true,
     }, async transaction => {
-      const { workspace, intake, draft, acceptance } = await this.loadWorkspace(transaction, actor);
+      const { workspace, intake, draft, acceptance, profile, legacy } = await this.loadWorkspace(transaction, actor);
+      const healthOnly = !hasLegacyIntakeDetails(input.answers);
       const operationId = createHash("sha256").update(input.requestId).digest("hex");
       const receiptRef = intake.ref.collection("submissions").doc(operationId);
       const receipt = await transaction.get(receiptRef);
@@ -182,11 +191,12 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         return { data: workspace };
       }
 
-      requireEditableWorkspace(workspace, input);
+      requireCurrentWorkspace(workspace, input);
+      if (healthOnly && !workspace.profileReady) throw profileIncomplete();
       const now = Timestamp.now();
       let bmi: number;
       try {
-        bmi = validateIntakeSubmission(input.answers, now.toDate());
+        bmi = validateIntakeSubmission(input.answers, now.toDate(), healthOnly);
       } catch (error) {
         if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
         throw error;
@@ -196,7 +206,9 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         workspace.version === 0 ? null : transaction.get(versions.doc(String(workspace.version))),
         getCurrentAssignment(this.firestore, actor.uid, transaction),
       ]);
-      const guardianConfirmed = this.confirmGuardian(transaction, actor, acceptance, input, correlationId);
+      const guardianConfirmed = healthOnly ? workspace.guardianConfirmed
+        : this.confirmGuardian(transaction, actor, acceptance, input, correlationId, profile.get("date_of_birth"));
+      if (healthOnly && Object.keys(legacy).length) transaction.update(profile.ref, legacy);
       const version = workspace.version + 1;
       const submitted = submittedData(actor.uid, input.answers, version, bmi, now);
       // Preserve records written before immutable version documents existed.
@@ -227,10 +239,11 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
   private async loadWorkspace(transaction: Transaction, actor: AuthenticatedUser) {
     const acceptance = await this.currentAcceptance(transaction, actor.uid);
     const intakeRef = this.firestore.doc(`client_intakes/${actor.uid}`);
-    const [intake, draft, membership] = await Promise.all([
+    const [intake, draft, membership, profile] = await Promise.all([
       transaction.get(intakeRef),
       transaction.get(intakeRef.collection("private").doc("draft")),
-      this.membership.assignmentStatus(actor.uid, transaction),
+      this.membership.membershipStatusForDisplay(actor.uid, transaction),
+      transaction.get(this.firestore.doc(`users/${actor.uid}`)),
     ]);
     if ((draft.exists && draft.get("client_id") !== actor.uid) ||
         (intake.get("client_id") !== undefined && intake.get("client_id") !== actor.uid)) {
@@ -245,6 +258,17 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     const savedAnswers = draft.exists ? draft.get("answers") : intake.get("answers");
     const displayName = actor.displayName?.trim();
     const email = actor.email?.trim();
+    const legacy = legacyProfileDetails(profile.data() ?? {}, draft.get("answers"), intake.get("answers"));
+    const birthDate = profile.get("date_of_birth") ?? legacy.date_of_birth;
+    const guardianConfirmed = acceptance.get("guardian_consent_confirmed") === true;
+    let profileReady = false;
+    if (typeof birthDate === "string") {
+      try {
+        profileReady = intakeAge(birthDate, new Date()) >= 18 || guardianConfirmed;
+      } catch (error) {
+        if (!(error instanceof IntakeAnswerError)) throw error;
+      }
+    }
     const workspace: IntakeWorkspace = {
       clientId: actor.uid,
       latest,
@@ -257,9 +281,10 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         }
         : parseSavedAnswers(savedAnswers),
       membershipActive: membership === "active",
-      guardianConfirmed: acceptance.get("guardian_consent_confirmed") === true,
+      guardianConfirmed,
+      profileReady,
     };
-    return { workspace, intake, draft, acceptance };
+    return { workspace, intake, draft, acceptance, profile, legacy };
   }
 
   private async currentAcceptance(transaction: Transaction, uid: string) {
@@ -276,11 +301,14 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     acceptance: DocumentSnapshot,
     input: IntakeDraftWrite,
     correlationId: string,
+    profileBirthDate: unknown,
   ): boolean {
     const existing = acceptance.get("guardian_consent_confirmed") === true;
     let minor: boolean;
     try {
-      minor = ageRequiresGuardian(input.answers, new Date());
+      const now = new Date();
+      minor = ageRequiresGuardian(input.answers, now) ||
+        (typeof profileBirthDate === "string" && intakeAge(profileBirthDate, now) < 18);
     } catch (error) {
       if (error instanceof IntakeAnswerError) throw new ClientIntakeError(400, error.message);
       throw error;
@@ -306,14 +334,20 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
     }, async transaction => {
       if (actor.role === "client") await this.currentAcceptance(transaction, clientId);
       const reference = this.firestore.doc(`client_intakes/${clientId}`);
-      const current = await transaction.get(reference);
-      const intake = version === undefined || (current.get("version") ?? 1) === version
-        ? current
-        : await transaction.get(reference.collection("versions").doc(String(version)));
+      let intake = await transaction.get(version === undefined
+        ? reference : reference.collection("versions").doc(String(version)));
+      if (version !== undefined && !intake.exists) {
+        // Intakes created before version snapshots have only a current document.
+        intake = await transaction.get(reference);
+        if (intake.get("answers") !== undefined || (intake.get("version") ?? 1) !== version) {
+          throw new ClientIntakeError(404, "Client intake version not found.");
+        }
+      }
       if (!intake.exists) {
         throw new ClientIntakeError(404, "Client intake form not found.");
       }
       if (intake.get("status") === "draft") throw new ClientIntakeError(404, "No submitted intake form exists.");
+      if (version !== undefined && (intake.get("version") ?? 1) !== version) throw invalidIntake();
       return { data: parseIntake(clientId, intake.data()) };
     }, correlationId);
   }
@@ -389,7 +423,7 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
         outcome: "succeeded" as const,
         correlationId: context.correlationId,
         version,
-        operationId: createHash("sha256").update(`${clientId}:${version}:${revision}`).digest("hex"),
+        operationId: intakeReviewOperationId(clientId, version, revision),
       };
       if (review.action === "reviewed") this.audit.appendInTransaction(transaction, auditInput);
       else this.audit.appendWithEvent(transaction, auditInput, "intake.information_requested");
@@ -406,13 +440,14 @@ export class FirestoreClientIntakeRepository implements ClientIntakeRepository {
   }
 }
 
-function requireEditableWorkspace(workspace: IntakeWorkspace, input: IntakeDraftWrite): void {
+function requireCurrentWorkspace(workspace: IntakeWorkspace, input: IntakeDraftWrite): void {
   if (workspace.version !== input.expectedVersion || workspace.draftRevision !== input.expectedDraftRevision) {
     throw new ClientIntakeError(409, "Your intake changed. Reload the saved form before trying again.");
   }
-  if (!workspace.membershipActive) {
-    throw new ClientIntakeError(409, "An active membership is required to update the intake form.");
-  }
+}
+
+function profileIncomplete() {
+  return new ClientIntakeError(400, "Complete your date of birth and any guardian consent in My profile first.");
 }
 
 function submittedData(
@@ -426,8 +461,8 @@ function submittedData(
     submitted_at: now,
     updated_at: now,
     health_information: {
-      age: Number(answers.age),
-      date_of_birth: answers.date_of_birth,
+      ...(answers.age ? { age: Number(answers.age) } : {}),
+      ...(answers.date_of_birth ? { date_of_birth: answers.date_of_birth } : {}),
       height_cm: Number(answers.height_cm),
       weight_kg: Number(answers.weight_kg),
       ...(answers.waist_cm ? { waist_cm: Number(answers.waist_cm) } : {}),
@@ -440,7 +475,7 @@ function submittedData(
     goals: { fitness_goals: answers.fitness_goals },
     restrictions: { dietary_restrictions: answers.dietary_restrictions },
     responses: {
-      full_name: answers.full_name,
+      ...(answers.full_name ? { full_name: answers.full_name } : {}),
       ...(answers.contact_email ? { contact_email: answers.contact_email } : {}),
       ...(answers.contact_phone ? { contact_phone: answers.contact_phone } : {}),
       food_preferences: answers.food_preferences,
@@ -536,6 +571,7 @@ function intakeFields(defaultLabel: string, value: unknown): ClientIntakeField[]
   if (value === null || value === undefined) return [];
   if (isPlainObject(value)) {
     return Object.entries(value).flatMap(([key, entry]) => {
+      if (basicProfileKeys.has(key)) return [];
       const formatted = displayValue(entry);
       return formatted === null
         ? []

@@ -96,6 +96,31 @@ void main() {
   });
 
   test(
+    'a pending read stops if the user logs out before backend failover',
+    () async {
+      final auth = _Auth()..user = _User('first-token');
+      var backend = 'http://local.test/';
+      final adapter = _RoutingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      addTearDown(() => dio.close(force: true));
+      final client = ApiClient(
+        tokenStorage: TokenStorage(auth: auth),
+        dio: dio,
+        resolveBackend: () async => backend,
+        backendUnavailable: (_) {
+          auth.user = null;
+          backend = 'https://render.test/';
+        },
+      );
+      await expectLater(
+        client.dio.get<void>('notifications'),
+        throwsA(isA<DioException>()),
+      );
+      expect(adapter.hosts, ['local.test']);
+    },
+  );
+
+  test(
     'API reads the shared current Firebase session for every request',
     () async {
       final auth = _Auth()..user = _User('first-token');

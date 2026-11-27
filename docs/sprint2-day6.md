@@ -68,3 +68,23 @@ The emulators used `demo-fitnep`, synthetic accounts and Node 24.11.1. The first
 - The audit reader uses the new `audit_events` indexes in the repository. Hosted acceptance requires deployment of those indexes and a matching app/backend build. The audit-read grant is available through the existing admin account API.
 
 Related evidence is in the [Day 2 privacy handoff](sprint2-day2.md), [Day 3–4 producer handoff](sprint2-day3-day4.md) and [audit and RBAC emulator tests](../functions/test/rbac_emulator.test.ts).
+
+## Tanmay’s US12 and US15 follow-up
+
+Local verification ran against the US12 and US15 changes based on `033aad6`. The Firebase Auth, Firestore and Functions emulators used project `demo-fitnep` with synthetic accounts `client`, `other-client`, `dietitian` and `replacement`. The signed app and deployed backend still need joint acceptance.
+
+| Criterion | Local evidence |
+| --- | --- |
+| US12-AC1 | My profile collects name, date of birth and contact details. The health intake collects height and weight, optional waist, hip and chest measurements, goals, medical history, allergies, restrictions and food preferences. BMI is derived from the measurements. |
+| US12-AC2 | The Flutter editor blocks a submission with blank allergies while allowing a partial draft. Backend tests cover explicit None, numeric bounds and guardian confirmation. |
+| US12-AC3 | The editor test closes and reopens the form and restores the saved age and name with guardian confirmation. The emulator restores the saved owner draft and keeps it private from the assigned dietitian. |
+| US12-AC4 | The emulator confirms one intake notice per version for the current dietitian, including submission before assignment. Clients can open a pending request and resubmit. The original versions stay readable to the assigned team. The worker checks the current version, review revision and reviewer before sending a queued request. |
+| US12-AC5 | The emulator verifies owner and assigned-team access and denies unrelated clients and former assignees. Consent withdrawal, account deactivation and stale roles remove access. |
+| US15-AC1 | The list shows client name, package status, actual plan status and last activity. New client-visible plans have a Published status. The emulator distinguishes a missing plan from one with unavailable status and verifies that an invalid legacy purchase leaves the assigned client in the list. |
+| US15-AC2 | The emulator exercises name and plan filters across pages. The Flutter widget tests preserve the filters while requesting further results. |
+| US15-AC3 | The server scopes the list to the signed-in dietitian and removes reassigned clients on the next load. The widget refreshes the directory on resume and after closing a client profile. |
+| US15-AC4 | An empty directory shows “No active clients are assigned to you.” A search with zero matches has a separate message. |
+
+The backend keeps the current intake in `client_intakes/{uid}`, the owner draft in `private/draft` and immutable snapshots in `versions/{version}` under that intake. Reviews live in `intake_review_history`. The notification worker uses the operation ID already stored in the outbox to identify the current review, so pending events created by earlier builds remain readable. The existing repository preserves the previous submitted snapshot when a legacy intake is first revised.
+
+The [intake and directory emulator cases](../functions/test/day34_recovery_emulator.test.ts) and [route widget tests](../test/widgets/role_authorization_test.dart) cover the local integration. Close signed-candidate acceptance by running the same journey against a matching deployed backend with authorized test accounts and recording the app and backend SHAs in the team’s acceptance tracker.

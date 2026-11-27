@@ -6,6 +6,8 @@ import { AuthenticatedUser, isUserRole, UserRole } from "./domain";
 import { Permission, PermissionDeniedError, rolePermissions, requirePermission } from "./authorization_policy";
 import { currentAssignedTeam } from "./nutrition_record_access_service";
 import { FirestorePackageService, inactivePackageAssignmentMessage, PackageError } from "./package_membership_service";
+import { intakeAge, isObject } from "./client_intake_answers";
+import { hasValidPrivacyAcceptance } from "./privacy_policy_acceptance";
 
 export interface Account {
   id: string; full_name: string; email: string; role: UserRole; role_revision: number;
@@ -14,6 +16,22 @@ export interface Account {
   audit_read?: true;
 }
 export class AccountInputError extends Error {}
+
+export const clientProfileFields = ["date_of_birth", "contact_email", "contact_phone"] as const;
+
+export function legacyProfileDetails(
+  account: Record<string, unknown>, draftAnswers: unknown, submittedAnswers: unknown,
+): Partial<Record<typeof clientProfileFields[number], string>> {
+  const draft = isObject(draftAnswers) ? draftAnswers : {};
+  const submitted = isObject(submittedAnswers) ? submittedAnswers : {};
+  const details: Partial<Record<typeof clientProfileFields[number], string>> = {};
+  for (const field of clientProfileFields) {
+    if (Object.hasOwn(account, field)) continue;
+    const value = draft[field] ?? submitted[field];
+    if (typeof value === "string" && value.trim()) details[field] = value.trim();
+  }
+  return details;
+}
 export function identifier(value: unknown): string {
   if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
     throw new AccountInputError("Invalid account identifier.");
@@ -153,27 +171,104 @@ export class FirestoreAccountService {
     if (!doc.exists) throw new AccountInputError("Account not found.");
     return accountFrom(doc.id, doc.data());
   }
+  async ownProfile(actor: AuthenticatedUser) {
+    return this.firestore.runTransaction(async transaction => {
+      const reference = this.firestore.doc(`users/${actor.uid}`);
+      const data = (await transaction.get(reference)).data()!;
+      const account = accountFrom(actor.uid, data);
+      if (!accountMatchesActor(account, actor)) throw new PermissionDeniedError();
+      if (account.role !== "client") return account;
+      const intake = this.firestore.doc(`client_intakes/${actor.uid}`);
+      const [draft, submitted, acceptance] = await Promise.all([
+        transaction.get(intake.collection("private").doc("draft")), transaction.get(intake),
+        transaction.get(this.firestore.doc(`privacy_acceptances/${actor.uid}`)),
+      ]);
+      const legacy = legacyProfileDetails(
+        data, draft.get("client_id") === actor.uid ? draft.get("answers") : undefined,
+        submitted.get("client_id") === actor.uid ? submitted.get("answers") : undefined,
+      );
+      const details = Object.fromEntries(clientProfileFields.map(field => [
+        field, typeof data[field] === "string" ? data[field] : legacy[field] ?? null,
+      ]));
+      return {
+        ...account, ...details,
+        guardian_consent_confirmed: hasValidPrivacyAcceptance(acceptance.data()) &&
+          acceptance.get("guardian_consent_confirmed") === true,
+      };
+    });
+  }
   async editOwnProfile(actor: AuthenticatedUser, body: Record<string, unknown>) {
     requirePermission(actor.role, "edit_own_profile");
     if (Object.keys(body).some(key => ["role", "permissions", "account_status", "uid", "id"].includes(key))) {
       throw new PermissionDeniedError("An account cannot assign its own role or status.");
     }
-    if (Object.keys(body).length !== 1 || typeof body.full_name !== "string" ||
+    const allowed = actor.role === "client"
+      ? ["full_name", ...clientProfileFields, "guardian_consent_confirmed"] : ["full_name"];
+    if (Object.keys(body).some(key => !allowed.includes(key)) || typeof body.full_name !== "string" ||
         body.full_name.trim().length < 1 || body.full_name.trim().length > 120) {
       throw new AccountInputError("Supply a full name of 1 to 120 characters.");
     }
+    const update: Record<string, unknown> = { full_name: body.full_name.trim() };
+    const email = body.contact_email;
+    const phone = body.contact_phone;
+    if (email !== undefined) {
+      if (email !== null && (typeof email !== "string" || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+        throw new AccountInputError("Enter a valid contact email.");
+      }
+      update.contact_email = email;
+    }
+    if (phone !== undefined) {
+      if (phone !== null && (typeof phone !== "string" || phone.length > 32 ||
+          !/^\+?[0-9 ().-]+$/.test(phone) || !/^\d{7,15}$/.test(phone.replace(/\D/g, "")))) {
+        throw new AccountInputError("Enter a phone number with 7 to 15 digits.");
+      }
+      update.contact_phone = phone;
+    }
+    let age: number | undefined;
+    if (body.date_of_birth !== undefined) {
+      try {
+        if (typeof body.date_of_birth === "string") age = intakeAge(body.date_of_birth, new Date());
+      } catch {
+        throw new AccountInputError("Enter a valid date of birth.");
+      }
+      if (age === undefined) throw new AccountInputError("Enter a valid date of birth.");
+      update.date_of_birth = body.date_of_birth;
+    }
+    if (body.guardian_consent_confirmed !== undefined && typeof body.guardian_consent_confirmed !== "boolean") {
+      throw new AccountInputError("Supply a valid guardian confirmation.");
+    }
     await this.firestore.runTransaction(async transaction => {
       const reference = this.firestore.collection("users").doc(actor.uid);
-      const current = accountFrom(actor.uid, (await transaction.get(reference)).data());
+      const data = (await transaction.get(reference)).data()!;
+      const current = accountFrom(actor.uid, data);
       if (!accountMatchesActor(current, actor)) throw new PermissionDeniedError();
-      if (current.full_name === (body.full_name as string).trim()) return;
-      transaction.update(reference, { full_name: (body.full_name as string).trim(), updated_at: FieldValue.serverTimestamp() });
-      new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
+      const audit = new FirestoreAuditWriter(this.firestore);
+      const correlationId = randomUUID();
+      if (age !== undefined && age < 18) {
+        const acceptanceRef = this.firestore.doc(`privacy_acceptances/${actor.uid}`);
+        const acceptance = await transaction.get(acceptanceRef);
+        if (!hasValidPrivacyAcceptance(acceptance.data())) throw new PermissionDeniedError("Accept the Privacy Policy first.");
+        if (acceptance.get("guardian_consent_confirmed") !== true) {
+          if (body.guardian_consent_confirmed !== true) {
+            throw new AccountInputError("Confirm permission from a parent or guardian before saving.");
+          }
+          transaction.update(acceptanceRef, {
+            guardian_consent_confirmed: true, guardian_consent_confirmed_at: FieldValue.serverTimestamp(),
+          });
+          audit.appendInTransaction(transaction, {
+            actor, action: "privacy.accepted", targetType: "account", targetId: actor.uid,
+            clientId: actor.uid, status: "guardian_confirmed", outcome: "succeeded", correlationId,
+          });
+        }
+      }
+      if (Object.entries(update).every(([field, value]) => data[field] === value)) return;
+      transaction.update(reference, { ...update, updated_at: FieldValue.serverTimestamp() });
+      audit.appendInTransaction(transaction, {
         actor, action: "account.updated", targetType: "account", targetId: actor.uid,
-        outcome: "succeeded", correlationId: randomUUID(),
+        outcome: "succeeded", correlationId,
       });
     });
-    return this.get(actor.uid);
+    return this.ownProfile(actor);
   }
   async change(actor: AuthenticatedUser, uid: string, body: Record<string, unknown>): Promise<Account> {
     identifier(uid);

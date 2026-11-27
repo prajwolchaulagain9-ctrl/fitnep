@@ -36,6 +36,12 @@ class _IntakeHistoryPageState extends ConsumerState<IntakeHistoryPage> {
   }
 
   @override
+  void didUpdateWidget(IntakeHistoryPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.clientId != oldWidget.clientId) unawaited(_refresh());
+  }
+
+  @override
   void dispose() {
     _lifecycle.dispose();
     super.dispose();

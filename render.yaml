@@ -21,5 +21,13 @@ services:
         sync: false
       - key: CLOUDINARY_URL
         sync: false
+      - key: FIREBASE_WEB_API_KEY
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: SIGNUP_OTP_HASH_SECRET
+        sync: false
       - key: SESSION_IDLE_TIMEOUT_SECONDS
         value: '900'

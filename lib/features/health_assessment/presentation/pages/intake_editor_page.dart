@@ -14,32 +14,33 @@ import '../../domain/entities/client_intake_form.dart';
 import '../widgets/intake_form_fields.dart';
 
 class IntakeEditorPage extends ConsumerStatefulWidget {
-  const IntakeEditorPage({super.key, required this.clientId});
+  const IntakeEditorPage({
+    super.key,
+    required this.clientId,
+    this.onboarding = false,
+  });
 
   final String clientId;
+  final bool onboarding;
 
   @override
   ConsumerState<IntakeEditorPage> createState() => _IntakeEditorPageState();
 }
 
 class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
-  final _form = GlobalKey<FormState>();
   final _controllers = {
     for (final field in IntakeField.values) field: TextEditingController(),
   };
   late final AppLifecycleListener _lifecycle;
   IntakeFormWorkspace? _workspace;
   IntakeFormWorkspace? _newerWorkspace;
-  Timer? _guardianTimer;
   String? _requestId;
   String? _loadError;
   String? _writeError;
   bool _checking = true;
   bool _saving = false;
-  bool _completeValidation = false;
-  bool _guardianConfirmed = false;
-  bool _guardianOpen = false;
-  bool _guardianDismissed = false;
+  IntakeStep _step = IntakeStep.measurements;
+  bool? _showValidation;
 
   IntakeWorkspaceRepository get _repository =>
       ref.read(intakeWorkspaceRepositoryProvider);
@@ -50,9 +51,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
   };
   bool get _hasEdits =>
       _workspace != null && !mapEquals(_workspace!.answers, _answers);
-  bool get _needsGuardian =>
-      !_guardianConfirmed && needsIntakeGuardian(_answers, DateTime.now());
-
   @override
   void initState() {
     super.initState();
@@ -66,7 +64,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
 
   @override
   void dispose() {
-    _guardianTimer?.cancel();
     _lifecycle.dispose();
     for (final controller in _controllers.values) {
       controller.dispose();
@@ -86,7 +83,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
         final previous = _workspace;
         if (previous != null &&
             _hasEdits &&
-            fresh.membershipActive &&
             !mapEquals(fresh.answers, _answers)) {
           if (previous.version != fresh.version ||
               previous.draftRevision != fresh.draftRevision) {
@@ -95,9 +91,14 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
             _workspace = fresh;
             _newerWorkspace = null;
           }
-          _guardianConfirmed = _guardianConfirmed || fresh.guardianConfirmed;
         } else {
           _applyWorkspace(fresh);
+          if (previous == null && fresh.draftRevision > 0) {
+            _step = IntakeStep.values.firstWhere(
+              (step) => _stepHasErrors(step, complete: true),
+              orElse: () => IntakeStep.food,
+            );
+          }
         }
         _checking = false;
       });
@@ -114,8 +115,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
   void _applyWorkspace(IntakeFormWorkspace workspace) {
     _workspace = workspace;
     _newerWorkspace = null;
-    _guardianConfirmed = workspace.guardianConfirmed;
-    _guardianDismissed = false;
     _requestId = null;
     _writeError = null;
     _writeAnswers(workspace.answers);
@@ -131,7 +130,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
   void _forgetIntake() {
     _workspace = null;
     _newerWorkspace = null;
-    _guardianConfirmed = false;
     _requestId = null;
     _writeAnswers({});
   }
@@ -140,7 +138,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
     final latest = _newerWorkspace!;
     final original = _workspace!.answers;
     final edited = _answers;
-    final needsSavedGuardian = _guardianConfirmed;
     setState(() {
       _applyWorkspace(latest);
       if (keepEdits) {
@@ -151,7 +148,6 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
             else if (latest.answers.containsKey(field))
               field: latest.answers[field]!,
         });
-        _guardianConfirmed = needsSavedGuardian || latest.guardianConfirmed;
       }
     });
   }
@@ -161,89 +157,77 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
       _requestId = null;
       _writeError = null;
     });
-    if (field != IntakeField.age && field != IntakeField.dateOfBirth) return;
-    _guardianTimer?.cancel();
-    if (!_needsGuardian) {
-      _guardianDismissed = false;
-    } else if (!_guardianDismissed) {
-      _guardianTimer = Timer(const Duration(milliseconds: 450), () {
-        if (mounted && !_saving && !_checking && _needsGuardian) {
-          unawaited(_confirmGuardian());
-        }
-      });
-    }
   }
 
-  Future<bool> _confirmGuardian() async {
-    if (!_needsGuardian) return true;
-    if (_guardianOpen) return false;
-    _guardianOpen = true;
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Parent or guardian consent'),
-        content: const Text(
-          'If you are under 18, ask a parent or guardian to review the FitNEP '
-          'Privacy Policy and confirm that you have their permission to '
-          'provide your health information.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => dialogContext.pushNamed(AppRoutes.privacyPolicy),
-            child: const Text('Read privacy policy'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Confirm permission'),
-          ),
-        ],
-      ),
+  bool _stepHasErrors(IntakeStep step, {required bool complete}) {
+    final answers = _answers;
+    return step.fields.any(
+      (field) =>
+          validateIntakeField(
+            field,
+            answers[field] ?? '',
+            complete: complete,
+          ) !=
+          null,
     );
-    _guardianOpen = false;
-    if (!mounted) return false;
-    if (accepted == true) {
-      setState(() {
-        _guardianConfirmed = true;
-        _requestId = null;
-      });
-    } else {
-      _guardianDismissed = true;
-    }
-    return accepted == true;
   }
 
-  Future<void> _save({required bool submit}) async {
+  void _showErrors(IntakeStep step, {required bool complete}) {
+    setState(() {
+      _step = step;
+      _showValidation = complete;
+      _writeError = 'Check the highlighted fields.';
+    });
+  }
+
+  void _goToStep(IntakeStep step) {
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _step = step;
+      _showValidation = null;
+      _writeError = null;
+    });
+  }
+
+  Future<void> _next() async {
+    if (_stepHasErrors(_step, complete: true)) {
+      _showErrors(_step, complete: true);
+      return;
+    }
+    final next = IntakeStep.values[_step.index + 1];
+    if (!_hasEdits || await _save(submit: false, announce: false)) {
+      if (mounted) _goToStep(next);
+    }
+  }
+
+  void _finishOnboarding() => context.go(AppRoutes.clientHome);
+
+  Future<void> _saveAndLeave() async {
+    if (!_hasEdits || await _save(submit: false, announce: false)) {
+      if (mounted) _finishOnboarding();
+    }
+  }
+
+  Future<bool> _save({required bool submit, bool announce = true}) async {
     final base = _workspace;
     if (base == null ||
-        !base.membershipActive ||
+        !base.profileReady ||
         _checking ||
         _saving ||
         _newerWorkspace != null) {
-      return;
+      return false;
     }
-    _completeValidation = submit;
-    if (_form.currentState?.validate() != true) {
-      setState(() => _writeError = 'Check the highlighted fields.');
-      return;
+    for (final step in IntakeStep.values) {
+      if (_stepHasErrors(step, complete: submit)) {
+        _showErrors(step, complete: submit);
+        return false;
+      }
     }
-    _guardianTimer?.cancel();
-    if (!await _confirmGuardian() ||
-        !mounted ||
-        _checking ||
-        _saving ||
-        _workspace != base ||
-        _newerWorkspace != null) {
-      return;
-    }
+    FocusScope.of(context).unfocus();
     final change = (
       answers: _answers,
       version: base.version,
       draftRevision: base.draftRevision,
-      guardianConfirmed: _guardianConfirmed,
     );
     setState(() {
       _saving = true;
@@ -257,17 +241,25 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
               _requestId ??= _newRequestId(),
             )
           : await _repository.saveDraft(widget.clientId, change);
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() => _applyWorkspace(saved));
-      _announce(
-        submit
-            ? (saved.version == base.version + 1
-                  ? 'Intake submitted. Your care team can review it.'
-                  : 'Showing your latest saved intake.')
-            : 'Draft saved.',
-      );
+      if (submit && widget.onboarding) _finishOnboarding();
+      if (announce) {
+        final router = GoRouter.maybeOf(context);
+        _announce(
+          submit ? 'Health intake submitted.' : 'Draft saved.',
+          action: submit && router != null
+              ? SnackBarAction(
+                  label: 'Review sharing',
+                  onPressed: () =>
+                      router.push(AppRoutes.clientPrivacyPreferences),
+                )
+              : null,
+        );
+      }
+      return true;
     } catch (error) {
-      if (!mounted) return;
+      if (!mounted) return false;
       if (_accessDenied(error)) {
         setState(() {
           _forgetIntake();
@@ -280,14 +272,16 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
           await _load();
         }
       }
+      return false;
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
 
-  void _announce(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _announce(String message, {SnackBarAction? action}) =>
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message), action: action));
 
   bool _accessDenied(Object error) =>
       error is ClientIntakeException &&
@@ -331,33 +325,38 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
             children: [
               Text(message, textAlign: TextAlign.center),
               TextButton(onPressed: _load, child: const Text('Try again')),
+              if (widget.onboarding && !_hasEdits)
+                TextButton(
+                  onPressed: _finishOnboarding,
+                  child: const Text('Finish later'),
+                ),
             ],
           ),
         ),
       );
     }
     final workspace = _workspace!;
-    if (!workspace.membershipActive) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'An active membership is required to edit your intake.',
-                textAlign: TextAlign.center,
-              ),
-              TextButton(
-                onPressed: () async {
-                  await context.push(AppRoutes.clientMembership);
-                  if (mounted) await _load();
-                },
-                child: const Text('View membership'),
-              ),
-            ],
+    if (!workspace.profileReady) {
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const Text(
+            'Save your date of birth in My profile to start your health intake.',
           ),
-        ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: () async {
+              await context.push(AppRoutes.ownProfile);
+              if (mounted) await _load();
+            },
+            child: const Text('Open My profile'),
+          ),
+          if (widget.onboarding)
+            TextButton(
+              onPressed: _finishOnboarding,
+              child: const Text('Finish later'),
+            ),
+        ],
       );
     }
     final latest = workspace.latest;
@@ -365,13 +364,25 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
     final enabled = !_saving && _newerWorkspace == null;
     final canSubmit =
         enabled && (latest == null || workspace.draftRevision > 0 || _hasEdits);
+    final lastStep = _step == IntakeStep.food;
     return Form(
-      key: _form,
+      autovalidateMode: _showValidation == null
+          ? AutovalidateMode.disabled
+          : AutovalidateMode.always,
       child: SingleChildScrollView(
+        key: ValueKey(_step),
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            Text('Step ${_step.index + 1} of ${IntakeStep.values.length}'),
+            const SizedBox(height: 8),
+            LinearProgressIndicator(
+              value: (_step.index + 1) / IntakeStep.values.length,
+              semanticsLabel: 'Health intake progress',
+            ),
+            const SizedBox(height: 16),
+            Text(_step.label, style: Theme.of(context).textTheme.headlineSmall),
             if (latest != null)
               Card(
                 child: ListTile(
@@ -415,14 +426,14 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
               ),
             const SizedBox(height: 12),
             IntakeFormFields(
+              step: _step,
               controllers: _controllers,
               enabled: enabled,
               onChanged: _answerChanged,
               validator: (field) => validateIntakeField(
                 field,
-                _answers,
-                today: DateTime.now(),
-                complete: _completeValidation,
+                _controllers[field]!.text.trim(),
+                complete: _showValidation == true,
               ),
             ),
             if (_writeError case final error?)
@@ -439,20 +450,43 @@ class _IntakeEditorPageState extends ConsumerState<IntakeEditorPage> {
                 ),
               ),
             if (_saving) const LinearProgressIndicator(),
-            OutlinedButton(
-              onPressed:
-                  enabled &&
-                      (_hasEdits ||
-                          (_guardianConfirmed && !workspace.guardianConfirmed))
-                  ? () => _save(submit: false)
-                  : null,
-              child: const Text('Save draft'),
-            ),
-            FilledButton(
-              onPressed: canSubmit ? () => _save(submit: true) : null,
-              child: Text(
-                latest == null ? 'Submit intake' : 'Submit updated intake',
+            if (lastStep)
+              FilledButton(
+                onPressed: canSubmit ? () => _save(submit: true) : null,
+                child: Text(
+                  latest == null ? 'Submit intake' : 'Submit updated intake',
+                ),
+              )
+            else
+              FilledButton(
+                onPressed: enabled ? _next : null,
+                child: const Text('Next'),
               ),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              children: [
+                if (_step != IntakeStep.measurements)
+                  TextButton(
+                    onPressed: enabled
+                        ? () => _goToStep(IntakeStep.values[_step.index - 1])
+                        : null,
+                    child: const Text('Back'),
+                  ),
+                if (widget.onboarding)
+                  TextButton(
+                    onPressed: enabled ? _saveAndLeave : null,
+                    child: Text(
+                      _hasEdits ? 'Save and finish later' : 'Finish later',
+                    ),
+                  )
+                else
+                  TextButton(
+                    onPressed: enabled && _hasEdits
+                        ? () => _save(submit: false)
+                        : null,
+                    child: const Text('Save draft'),
+                  ),
+              ],
             ),
           ],
         ),

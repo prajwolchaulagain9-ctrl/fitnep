@@ -904,6 +904,7 @@ function toApiIntakeWorkspace(workspace: IntakeWorkspace) {
     version: workspace.version,
     draft_revision: workspace.draftRevision,
     membership_active: workspace.membershipActive,
+    profile_ready: workspace.profileReady,
     guardian_consent_confirmed: workspace.guardianConfirmed,
     latest: workspace.latest && toApiClientIntake(workspace.latest),
   };

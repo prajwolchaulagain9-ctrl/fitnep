@@ -20,6 +20,7 @@ class AssignedClientsPage extends ConsumerStatefulWidget {
 
 class _AssignedClientsPageState extends ConsumerState<AssignedClientsPage> {
   final _clients = <AssignedClient>[];
+  late final AppLifecycleListener _lifecycle;
   String _search = '';
   AssignedClientPlanStatus? _planStatus;
   String? _nextCursor;
@@ -31,11 +32,17 @@ class _AssignedClientsPageState extends ConsumerState<AssignedClientsPage> {
   @override
   void initState() {
     super.initState();
+    _lifecycle = AppLifecycleListener(
+      onResume: () {
+        if (ModalRoute.isCurrentOf(context) ?? true) unawaited(_reload());
+      },
+    );
     unawaited(_fetch(_request));
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _searchDebounce?.cancel();
     super.dispose();
   }

@@ -34,22 +34,30 @@ class ApiClient {
             if (options.path == 'session' || options.path.startsWith('auth/')) {
               await prepareAccountRequest?.call();
             }
-            final token = await tokenStorage.readAccessToken();
-            if (token != null && token.trim().isNotEmpty) {
-              options.headers['Authorization'] = 'Bearer ${token.trim()}';
+            if (resolveBackend != null) {
+              options.baseUrl = await resolveBackend();
             }
+            final token = await tokenStorage.readAccessToken();
+            final bearer = token == null || token.trim().isEmpty
+                ? null
+                : 'Bearer ${token.trim()}';
+            final retry = options.extra['backend_retry'] == true;
+            if (retry && options.headers['Authorization'] != bearer) {
+              throw StateError('The signed-in account changed.');
+            }
+            if (bearer != null) options.headers['Authorization'] = bearer;
             if (options.path != 'session' &&
                 !options.path.startsWith('auth/') &&
                 !options.path.startsWith('sessions/')) {
               final id = await sessionId?.call();
+              if (retry && options.headers['X-FitNEP-Session'] != id) {
+                throw StateError('The platform session changed.');
+              }
               if (id != null) options.headers['X-FitNEP-Session'] = id;
               // Do not mix a previous user's JWT with a new user's session.
               if (await tokenStorage.readAccessToken() != token) {
                 throw StateError('The signed-in account changed.');
               }
-            }
-            if (resolveBackend != null) {
-              options.baseUrl = await resolveBackend();
             }
             handler.next(options);
           } catch (error) {

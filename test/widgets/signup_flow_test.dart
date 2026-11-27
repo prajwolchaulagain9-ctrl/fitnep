@@ -20,6 +20,9 @@ import 'package:fitnep/features/authentication/data/authentication_service.dart'
 import 'package:fitnep/features/authentication/data/email_verification_service.dart';
 import 'package:fitnep/features/authentication/data/google_credential_provider.dart';
 import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/authorization/data/authorization_repository.dart';
+import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -29,6 +32,44 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../support/memory_session_preference_store.dart';
 import '../support/empty_notifications.dart';
+
+class _IntakeWorkspace extends Fake implements IntakeWorkspaceRepository {
+  @override
+  Future<IntakeFormWorkspace> load(String uid) async =>
+      const IntakeFormWorkspace(
+        answers: {},
+        version: 0,
+        draftRevision: 0,
+        profileReady: true,
+      );
+}
+
+class _SignupProfile extends Fake implements AuthorizationRepository {
+  Map<String, dynamic>? saved;
+
+  @override
+  Future<Map<String, dynamic>> request(
+    String path, {
+    String method = 'GET',
+    Map<String, dynamic>? data,
+    Map<String, dynamic>? query,
+  }) async {
+    expect(path, 'profile/me');
+    if (method == 'PATCH') saved = data;
+    return {
+      'account': {
+        'id': 'signup-client',
+        'full_name': 'Test Client',
+        'email': 'client@example.com',
+        'role': 'client',
+        'account_status': 'active',
+        'created_at': '2026-11-27T00:00:00Z',
+        'updated_at': '2026-11-27T00:00:00Z',
+        ...?saved,
+      },
+    };
+  }
+}
 
 class _ProviderInfo extends Fake implements UserInfo {
   @override
@@ -215,6 +256,8 @@ Future<ProviderContainer> _open(
       overrides: [
         emptyPackageCatalogOverride,
         emptyMembershipOverride,
+        authorizationRepositoryProvider.overrideWithValue(_SignupProfile()),
+        intakeWorkspaceRepositoryProvider.overrideWithValue(_IntakeWorkspace()),
         offlineHostedSessionOverride,
         staffPasswordChangeRequiredProvider.overrideWith((ref) async {
           if (staffPasswordCheck == null) return false;
@@ -599,7 +642,7 @@ void main() {
     await tester.ensureVisible(verify);
     await tester.tap(verify);
     await tester.pumpAndSettle();
-    expect(find.text('Choose a package'), findsOneWidget);
+    expect(find.text('My profile'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -630,7 +673,31 @@ void main() {
       expect(savedConsent!.containsKey('age'), isFalse);
       expect(savedConsent, containsPair('terms_accepted', true));
       expect(savedConsent, containsPair('guardian_consent_confirmed', false));
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.text('My profile'), findsOneWidget);
+      final birthDate = find.widgetWithText(TextField, 'Date of birth');
+      expect(find.byKey(const ValueKey('height_cm')), findsNothing);
+      final year = DateTime.now().toUtc().year - 17;
+      await tester.ensureVisible(birthDate);
+      await tester.enterText(birthDate, '$year-01-01');
+      await tester.pumpAndSettle();
+      expect(find.text('Parent or guardian consent'), findsOneWidget);
+      await tester.tap(find.text('Confirm permission'));
+      await tester.pumpAndSettle();
+      final next = find.text('Continue to health intake');
+      await tester.ensureVisible(next);
+      await tester.tap(next);
+      await tester.pumpAndSettle();
+      final repository =
+          container.read(authorizationRepositoryProvider) as _SignupProfile;
+      expect(repository.saved?['guardian_consent_confirmed'], true);
+      expect(repository.saved?['date_of_birth'], '$year-01-01');
+      expect(find.text('Step 1 of 3'), findsOneWidget);
+      expect(find.text('Date of birth'), findsNothing);
+      final finishLater = find.text('Finish later');
+      await tester.ensureVisible(finishLater);
+      await tester.tap(finishLater);
+      await tester.pumpAndSettle();
+      expect(find.text('Welcome back'), findsOneWidget);
       await _close(tester, auth);
     },
   );
@@ -662,7 +729,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '123456');
     await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
     await tester.pumpAndSettle();
-    expect(find.text('Choose a package'), findsOneWidget);
+    expect(find.text('My profile'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -684,7 +751,7 @@ void main() {
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
       expect(auth.googleSignIns, 1);
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.text('My profile'), findsOneWidget);
       expect(find.text('Verify your email'), findsNothing);
       await _close(tester, auth);
     },

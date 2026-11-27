@@ -41,7 +41,7 @@ class IntakeWorkspaceRepository {
     'expected_client_id': uid,
     'expected_version': change.version,
     'expected_draft_revision': change.draftRevision,
-    'guardian_consent_confirmed': change.guardianConfirmed,
+    'guardian_consent_confirmed': false,
     'answers': change.answers.map((field, value) => MapEntry(field.key, value)),
   };
 
@@ -67,8 +67,6 @@ class IntakeWorkspaceRepository {
       final latest = data['latest'];
       if (data['client_id'] != uid ||
           rawAnswers is! Map ||
-          data['membership_active'] is! bool ||
-          data['guardian_consent_confirmed'] is! bool ||
           (version == 0 ? latest != null : latest is! Map)) {
         throw const FormatException('Invalid intake workspace.');
       }
@@ -94,8 +92,7 @@ class IntakeWorkspaceRepository {
         answers: Map.unmodifiable(answers),
         version: version,
         draftRevision: _revision(data['draft_revision']),
-        membershipActive: data['membership_active'] as bool,
-        guardianConfirmed: data['guardian_consent_confirmed'] as bool,
+        profileReady: data['profile_ready'] == true,
         latest: submitted,
       );
     } on DioException catch (error) {

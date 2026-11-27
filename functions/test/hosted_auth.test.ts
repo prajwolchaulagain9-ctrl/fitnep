@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
 import request from "supertest";
+import express from "express";
 import { Auth } from "firebase-admin/auth";
 import { Firestore } from "firebase-admin/firestore";
 import { mountHostedAuth } from "../src/hosted_auth";
@@ -9,6 +10,17 @@ import { AuthenticationError } from "../src/auth";
 const auth = {} as Auth; const firestore = {} as Firestore;
 const verifier = { verifyIdToken: async () => { throw new AuthenticationError("No test identity."); } };
 const environment = { FIREBASE_WEB_API_KEY: "synthetic-public-project-key" };
+
+it("lets the application API parse multilingual intake answers above the auth body limit", async () => {
+  const app = mountHostedAuth(auth, firestore, verifier, environment);
+  app.post("/intakes/me/submit", express.json({ limit: "32kb" }), (req, res) => res.json(req.body));
+  const answers = Object.fromEntries(["fitness_goals", "medical_history", "food_preferences"].map(
+    field => [field, "क".repeat(1000)],
+  ));
+  await request(app).post("/intakes/me/submit").send({ answers }).expect(200, { answers });
+  await request(app).post("/auth/signup/otp/send").send({ answers }).expect(413);
+  await request(app).post("/auth/recovery/request").type("json").send("{").expect(400);
+});
 
 it("hosted recovery preserves enumeration protection without hiding configuration failures", async () => {
   for (const failure of ["EMAIL_NOT_FOUND", "USER_DISABLED"]) {

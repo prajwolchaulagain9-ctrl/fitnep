@@ -62,7 +62,7 @@ export async function listAssignedDietitianClients(
     const summaries = await Promise.all(page.map(async entry => {
       const id = entry.client.id;
       const [packageStatus, intake] = await Promise.all([
-        packages.assignmentStatus(id, transaction),
+        packages.membershipStatusForDisplay(id, transaction),
         entry.shared ? currentIntake(db, transaction, id) : null,
       ]);
       return { entry, row: {
