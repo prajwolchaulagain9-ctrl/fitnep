@@ -85,7 +85,9 @@ verified email. OTP/session/profile provisioning remain reachable during signup.
   reads occur within the Firestore transaction before data is read/written.
 * `client_assignments/{clientId}` stores an assigned dietitian, Staff IDs and
   role revisions. Both the client and care-team account versions must match.
-  Role/status changes invalidate old grants; an admin must renew assignments.
+  Role changes and deactivation invalidate old grants. Admins can assign an
+  active dietitian to any client regardless of membership. Assignments saved
+  during client inactivity take effect on reactivation.
 * Assigned-client lists query only assignments for the current actor. Staff get
   contact details, not financial or health data.
 * Diet plan reads/writes validate the client and the current assignment.

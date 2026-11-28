@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../client_profile_controller.dart';
 import '../widgets/status_badge.dart';
-import '../widgets/package_chip.dart';
 import '../widgets/deactivation_dialog.dart';
 import '../widgets/payment_history_tile.dart';
 import '../widgets/audit_log_tile.dart';
@@ -81,112 +80,72 @@ class ClientProfilePage extends ConsumerWidget {
               subtitle: 'The client profile could not be loaded.',
               icon: Icons.person_off_outlined,
             )
-          : CustomScrollView(
-              slivers: [
-                _buildSliverAppBar(context, state, controller),
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      if (!state.client!.isActive)
-                        _DeactivationNotice(client: state.client!),
-                      const SizedBox(height: 20),
-                      _PersonalInfoSection(client: state.client!),
-                      const SizedBox(height: 16),
-                      _PackageSection(client: state.client!),
-                      const SizedBox(height: 16),
-                      _AssignmentSection(
-                        state: state,
-                        onAssign: () => _handleAssign(context, ref, controller),
-                      ),
-                      if (state.client!.assignedDietitianId.isNotEmpty)
-                        OutlinedButton.icon(
-                          onPressed: () => context.pushNamed(
-                            AppRoutes.adminClientPlansName,
-                            pathParameters: {'id': clientId},
+          : Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 840),
+                child: CustomScrollView(
+                  slivers: [
+                    _buildSliverAppBar(context, state, controller),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                      sliver: SliverList(
+                        delegate: SliverChildListDelegate([
+                          if (!state.client!.isActive)
+                            _DeactivationNotice(client: state.client!),
+                          const SizedBox(height: 20),
+                          _AssignmentSection(
+                            state: state,
+                            onAssign: () => _handleAssign(
+                              context,
+                              state.client!,
+                              controller,
+                            ),
                           ),
-                          icon: const Icon(Icons.fact_check_outlined),
-                          label: const Text('Review diet plans'),
-                        ),
-                      const SizedBox(height: 16),
-                      if (state.client!.hasFinancialSummary)
-                        _PaymentSummarySection(client: state.client!),
-                      const SizedBox(height: 16),
-                      _PaymentHistorySection(client: state.client!),
-                      const SizedBox(height: 16),
-                      _PackageHistorySection(client: state.client!),
-                      if (state.auditLogs.isNotEmpty) ...[
-                        const SizedBox(height: 16),
-                        _AuditSection(state: state),
-                      ],
-                      const SizedBox(height: 24),
-                      _ActionButton(
-                        state: state,
-                        onDeactivate: () =>
-                            _handleDeactivate(context, controller),
-                        onReactivate: () =>
-                            _handleReactivate(context, controller),
+                          const SizedBox(height: 16),
+                          _PersonalInfoSection(client: state.client!),
+                          const SizedBox(height: 16),
+                          _PackageSection(client: state.client!),
+                          const SizedBox(height: 16),
+                          if (state.client!.hasFinancialSummary)
+                            _PaymentSummarySection(client: state.client!),
+                          const SizedBox(height: 16),
+                          _PaymentHistorySection(client: state.client!),
+                          const SizedBox(height: 16),
+                          _PackageHistorySection(client: state.client!),
+                          if (state.auditLogs.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            _AuditSection(state: state),
+                          ],
+                          const SizedBox(height: 24),
+                          _ActionButton(
+                            state: state,
+                            onDeactivate: () =>
+                                _handleDeactivate(context, controller),
+                            onReactivate: () =>
+                                _handleReactivate(context, controller),
+                          ),
+                        ]),
                       ),
-                    ]),
-                  ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
     );
   }
 
   Future<void> _handleAssign(
     BuildContext context,
-    WidgetRef ref,
+    ClientEntity client,
     ClientProfileController controller,
   ) async {
-    try {
-      final dietitians = await ref.read(activeDietitiansProvider.future);
-      if (!context.mounted) return;
-      if (dietitians.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No active dietitians are available.')),
-        );
-        return;
-      }
-      final selected = await showDialog<StaffAccount>(
-        context: context,
-        builder: (dialogContext) => SimpleDialog(
-          title: const Text('Assign dietitian'),
-          children: dietitians
-              .map(
-                (option) => SimpleDialogOption(
-                  onPressed: () =>
-                      Navigator.pop(dialogContext, option.dietitian),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text(option.dietitian.displayName)),
-                      const SizedBox(width: 16),
-                      Text(
-                        option.clientCountLabel,
-                        style: Theme.of(dialogContext).textTheme.bodySmall
-                            ?.copyWith(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant,
-                            ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-      );
-      if (selected != null) await controller.assignDietitian(selected);
-    } on StaffAccountFailure catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
-    } on ClientAssignmentFailure catch (error) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.message)));
+    final selected = await showDialog<StaffAccount>(
+      context: context,
+      builder: (_) => _DietitianPicker(client: client),
+    );
+    if (selected != null && context.mounted) {
+      await controller.assignDietitian(selected);
     }
   }
 
@@ -317,22 +276,17 @@ class _ProfileHeader extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      client.name,
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                    Flexible(
+                      child: Text(
+                        client.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.headlineMedium
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
                     ),
                     const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        StatusBadge(status: client.status, large: true),
-                        const SizedBox(width: 8),
-                        PackageChip(
-                          packageName: client.packageName,
-                          large: true,
-                        ),
-                      ],
-                    ),
+                    StatusBadge(status: client.status, large: true),
                   ],
                 ),
               ),
@@ -439,11 +393,6 @@ class _PersonalInfoSection extends StatelessWidget {
           DateFormat('dd MMM yyyy').format(client.joinDate),
           Icons.calendar_today_outlined,
         ),
-        _InfoRow(
-          'Dietitian',
-          client.assignedDietitianName,
-          Icons.medical_services_outlined,
-        ),
       ],
     );
   }
@@ -466,16 +415,6 @@ class _PackageSection extends StatelessWidget {
             status[0].toUpperCase() + status.substring(1),
             Icons.schedule_outlined,
           ),
-        _InfoRow(
-          'Member Since',
-          DateFormat('dd MMM yyyy').format(client.joinDate),
-          Icons.date_range_outlined,
-        ),
-        _InfoRow(
-          'Dietitian',
-          client.assignedDietitianName,
-          Icons.medical_services_outlined,
-        ),
       ],
     );
   }
@@ -490,53 +429,27 @@ class _AssignmentSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final client = state.client!;
-    final blocked =
-        !state.isCheckingAssignmentEligibility && !state.canAssignClient;
+    final hasDietitian = client.assignedDietitianId.isNotEmpty;
     return _SectionCard(
-      title: 'Dietitian Assignment',
+      title: 'Dietitian assignment',
       icon: Icons.medical_services_outlined,
       children: [
-        _InfoRow(
-          'Dietitian',
-          client.assignedDietitianName.isEmpty
-              ? 'Not assigned'
-              : client.assignedDietitianName,
-          Icons.person_outline_rounded,
+        Text(
+          client.dietitianLabel,
+          style: Theme.of(context).textTheme.titleMedium,
         ),
-        if (state.isCheckingAssignmentEligibility)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-                SizedBox(width: 10),
-                Flexible(child: Text('Checking package status…')),
-              ],
-            ),
+        if (!client.isActive) ...[
+          const SizedBox(height: 4),
+          Text(
+            'The assignment takes effect when the account is reactivated.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
-        if (blocked)
-          Container(
-            width: double.infinity,
-            margin: const EdgeInsets.only(top: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.statusInactiveContainer,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Text(
-              state.assignmentMessage ?? inactivePackageAssignmentMessage,
-              style: const TextStyle(color: AppColors.statusInactive),
-            ),
-          ),
+        ],
         const SizedBox(height: 12),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton.icon(
-            onPressed: state.canAssignClient && !state.isAssigning
+            onPressed: !state.isAssigning && !state.isDeactivating
                 ? onAssign
                 : null,
             icon: state.isAssigning
@@ -547,11 +460,97 @@ class _AssignmentSection extends StatelessWidget {
                   )
                 : const Icon(Icons.assignment_ind_outlined),
             label: Text(
-              client.assignedDietitianId.isEmpty
-                  ? 'Assign Dietitian'
-                  : 'Change Dietitian',
+              state.isAssigning
+                  ? 'Saving assignment…'
+                  : hasDietitian
+                  ? 'Change dietitian'
+                  : 'Assign dietitian',
             ),
           ),
+        ),
+        if (client.isActive && hasDietitian)
+          SizedBox(
+            width: double.infinity,
+            child: TextButton.icon(
+              onPressed: () => context.pushNamed(
+                AppRoutes.adminClientPlansName,
+                pathParameters: {'id': client.id},
+              ),
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('Review diet plans'),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _DietitianPicker extends ConsumerWidget {
+  const _DietitianPicker({required this.client});
+
+  final ClientEntity client;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dietitians = ref.watch(activeDietitiansProvider);
+    return AlertDialog(
+      title: Text(
+        client.assignedDietitianId.isEmpty
+            ? 'Assign dietitian'
+            : 'Change dietitian',
+      ),
+      scrollable: true,
+      content: SizedBox(
+        width: 360,
+        child: dietitians.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(switch (error) {
+                StaffAccountFailure(:final message) => message,
+                ClientAssignmentFailure(:final message) => message,
+                _ => 'Unable to load dietitians.',
+              }),
+              TextButton(
+                onPressed: () => ref.invalidate(activeDietitiansProvider),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+          data: (options) => options.isEmpty
+              ? const Text('No active dietitians are available.')
+              : Column(
+                  children: [
+                    for (final option in options)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(option.dietitian.displayName),
+                        subtitle: option.clientCountLabel == null
+                            ? null
+                            : Text(option.clientCountLabel!),
+                        selected:
+                            option.dietitian.uid == client.assignedDietitianId,
+                        trailing:
+                            option.dietitian.uid == client.assignedDietitianId
+                            ? const Icon(
+                                Icons.check,
+                                semanticLabel: 'Currently assigned',
+                              )
+                            : null,
+                        onTap:
+                            option.dietitian.uid == client.assignedDietitianId
+                            ? null
+                            : () => Navigator.pop(context, option.dietitian),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
         ),
       ],
     );
@@ -819,7 +818,7 @@ class _ActionButton extends StatelessWidget {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
-          onPressed: onDeactivate,
+          onPressed: state.isAssigning ? null : onDeactivate,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.statusInactive,
             foregroundColor: Colors.white,
@@ -833,7 +832,7 @@ class _ActionButton extends StatelessWidget {
       return SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
-          onPressed: onReactivate,
+          onPressed: state.isAssigning ? null : onReactivate,
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 16),
           ),

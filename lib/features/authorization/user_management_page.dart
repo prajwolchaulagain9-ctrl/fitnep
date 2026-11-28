@@ -127,8 +127,10 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     DropdownButtonFormField<String>(
+                      isExpanded: true,
                       initialValue: dietitian ?? '',
                       decoration: const InputDecoration(
                         labelText: 'Assigned dietitian',
@@ -141,12 +143,25 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                         for (final user in dietitians)
                           DropdownMenuItem(
                             value: user.id,
-                            child: Text(user.fullName),
+                            child: Text(
+                              user.fullName.isEmpty
+                                  ? user.email
+                                  : user.fullName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                       ],
                       onChanged: (value) =>
                           update(() => dietitian = value == '' ? null : value),
                     ),
+                    if (dietitians.isEmpty)
+                      const Text('No active dietitians are available.'),
+                    if (!client.isActive) ...[
+                      const SizedBox(height: 8),
+                      const Text(
+                        'The assignment takes effect when the account is reactivated.',
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     const Text(
                       'Choose additional care team members. Assigned admins can review plans when the client shares nutrition records.',
@@ -181,7 +196,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
           ),
         ),
       );
-      if (save == true) {
+      if (save == true && mounted) {
         await repo.request(
           'admin/clients/${Uri.encodeComponent(client.id)}/assignment',
           method: 'PUT',
@@ -303,8 +318,7 @@ class _UserManagementPageState extends ConsumerState<UserManagementPage> {
                                           'payments_verify': enabled,
                                         }),
                                 ),
-                              if (user.role == FitNepRole.client &&
-                                  user.isActive)
+                              if (user.role == FitNepRole.client)
                                 OutlinedButton.icon(
                                   onPressed: saving
                                       ? null

@@ -13,7 +13,6 @@ import {
   ClientAssignmentService,
   ClientPackageStatusReader,
   DietitianDirectory,
-  inactivePackageAssignmentMessage,
 } from "../src/client_assignment_service";
 import { AuthenticatedUser } from "../src/domain";
 import { createNotificationApp } from "../src/http_app";
@@ -29,7 +28,7 @@ const client: AuthenticatedUser = { uid: "client-1", role: "client" };
 const dietitian: AuthenticatedUser = { uid: "dietitian-1", role: "dietitian" };
 const otherDietitian: AuthenticatedUser = { uid: "dietitian-2", role: "dietitian" };
 
-describe("client assignment package validation", () => {
+describe("client assignment", () => {
   it("allows an active-package client to be assigned", async () => {
     const fixture = createFixture("active");
 
@@ -52,47 +51,38 @@ describe("client assignment package validation", () => {
   });
 
   for (const status of [
-    "pending", "scheduled", "expired", "inactive", "none",
+    "pending", "scheduled", "expired", "inactive", "none", "unavailable",
   ] as const) {
-    it(`prevents assignment when the package is ${status}`, async () => {
+    it(`allows assignment when the package is ${status}`, async () => {
       const fixture = createFixture(status);
 
       const eligibility = await request(fixture.app)
         .get("/admin/client-assignments/client-1/eligibility")
         .set(bearer("admin"))
         .expect(200);
-      assert.equal(eligibility.body.data.eligibility.can_assign, false);
-      assert.equal(
-        eligibility.body.data.eligibility.message,
-        inactivePackageAssignmentMessage,
-      );
+      assert.equal(eligibility.body.data.eligibility.can_assign, true);
+      assert.equal(eligibility.body.data.eligibility.package_status, status);
+      assert.equal(eligibility.body.data.eligibility.message, null);
 
       const response = await request(fixture.app)
         .put("/admin/client-assignments/client-1")
         .set(bearer("admin"))
         .send({ dietitian_id: "dietitian-1" })
-        .expect(409);
-      assert.equal(response.body.error, inactivePackageAssignmentMessage);
-      assert.equal(fixture.assignments.records.length, 0);
-      assert.equal(fixture.assignments.audits.length, 0);
+        .expect(200);
+      assert.equal(response.body.data.assignment.dietitian_id, "dietitian-1");
+      assert.equal(fixture.assignments.records.length, 1);
+      assert.equal(fixture.assignments.audits.length, 1);
     });
   }
 
-  it("re-checks package status when the assignment is submitted", async () => {
+  it("requires an active dietitian regardless of the package status", async () => {
     const fixture = createFixture("active");
-    await request(fixture.app)
-      .get("/admin/client-assignments/client-1/eligibility")
-      .set(bearer("admin"))
-      .expect(200);
-
-    fixture.packages.status = "expired";
-
     const response = await request(fixture.app)
       .put("/admin/client-assignments/client-1")
       .set(bearer("admin"))
-      .send({ dietitian_id: "dietitian-1" })
+      .send({ dietitian_id: "inactive-dietitian" })
       .expect(409);
-    assert.equal(response.body.error, inactivePackageAssignmentMessage);
+    assert.equal(response.body.error, "Select an active dietitian.");
     assert.equal(fixture.assignments.records.length, 0);
     assert.equal(fixture.assignments.audits.length, 0);
   });
@@ -295,7 +285,7 @@ describe("dietitian client visibility and notification (acceptance criterion)", 
 
 function createFixture(status: AssignmentPackageStatus) {
   const assignments = new InMemoryAssignmentRepository();
-  const packages = new MutablePackageStatusReader(status);
+  const packages: ClientPackageStatusReader = { getStatus: async () => status };
   const notifications = new InMemoryNotificationRepository();
   const service = new ClientAssignmentService(
     assignments,
@@ -310,7 +300,6 @@ function createFixture(status: AssignmentPackageStatus) {
   );
   return {
     assignments,
-    packages,
     notifications,
     app: createNotificationApp({
       authVerifier: new FakeAuthVerifier({
@@ -390,11 +379,6 @@ class FakeClientDirectory implements AssignedClientDirectory {
   async getClient(clientId: string): Promise<AssignedClientProfile> {
     return { id: clientId, name: `Client ${clientId}`, email: `${clientId}@example.com` };
   }
-}
-
-class MutablePackageStatusReader implements ClientPackageStatusReader {
-  constructor(public status: AssignmentPackageStatus) {}
-  async getStatus(): Promise<AssignmentPackageStatus> { return this.status; }
 }
 
 class ActiveDietitianDirectory implements DietitianDirectory {

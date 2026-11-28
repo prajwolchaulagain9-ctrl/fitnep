@@ -19,11 +19,13 @@ class DietitianAssignmentOption {
   });
 
   final StaffAccount dietitian;
-  final int currentClientCount;
+  final int? currentClientCount;
 
-  String get clientCountLabel => currentClientCount == 1
-      ? '1 current client'
-      : '$currentClientCount current clients';
+  String? get clientCountLabel => switch (currentClientCount) {
+    null => null,
+    1 => '1 active client',
+    final count => '$count active clients',
+  };
 }
 
 final activeDietitiansProvider =
@@ -52,12 +54,21 @@ final activeDietitiansProvider =
         dietitians.sort(
           (left, right) => left.displayName.compareTo(right.displayName),
         );
-        final counts = await assignment.dietitianClientCounts();
+        Map<String, int>? counts;
+        if (dietitians.isNotEmpty) {
+          try {
+            counts = await assignment.dietitianClientCounts();
+          } on ClientAssignmentFailure {
+            // Workload counts are supplemental to choosing a dietitian.
+          }
+        }
         return dietitians
             .map(
               (dietitian) => DietitianAssignmentOption(
                 dietitian: dietitian,
-                currentClientCount: counts[dietitian.uid] ?? 0,
+                currentClientCount: counts == null
+                    ? null
+                    : counts[dietitian.uid] ?? 0,
               ),
             )
             .toList(growable: false);
@@ -73,11 +84,7 @@ class ClientProfileState {
   final List<AuditLogEntity> auditLogs;
   final bool isLoading;
   final bool isDeactivating;
-  final bool isCheckingAssignmentEligibility;
-  final bool canAssignClient;
   final bool isAssigning;
-  final String? packageStatus;
-  final String? assignmentMessage;
   final String? errorMessage;
   final String? successMessage;
 
@@ -86,11 +93,7 @@ class ClientProfileState {
     this.auditLogs = const [],
     this.isLoading = false,
     this.isDeactivating = false,
-    this.isCheckingAssignmentEligibility = true,
-    this.canAssignClient = false,
     this.isAssigning = false,
-    this.packageStatus,
-    this.assignmentMessage,
     this.errorMessage,
     this.successMessage,
   });
@@ -100,12 +103,7 @@ class ClientProfileState {
     List<AuditLogEntity>? auditLogs,
     bool? isLoading,
     bool? isDeactivating,
-    bool? isCheckingAssignmentEligibility,
-    bool? canAssignClient,
     bool? isAssigning,
-    String? packageStatus,
-    String? assignmentMessage,
-    bool clearAssignmentMessage = false,
     String? errorMessage,
     String? successMessage,
   }) {
@@ -114,15 +112,7 @@ class ClientProfileState {
       auditLogs: auditLogs ?? this.auditLogs,
       isLoading: isLoading ?? this.isLoading,
       isDeactivating: isDeactivating ?? this.isDeactivating,
-      isCheckingAssignmentEligibility:
-          isCheckingAssignmentEligibility ??
-          this.isCheckingAssignmentEligibility,
-      canAssignClient: canAssignClient ?? this.canAssignClient,
       isAssigning: isAssigning ?? this.isAssigning,
-      packageStatus: packageStatus ?? this.packageStatus,
-      assignmentMessage: clearAssignmentMessage
-          ? null
-          : assignmentMessage ?? this.assignmentMessage,
       errorMessage: errorMessage,
       successMessage: successMessage,
     );
@@ -161,50 +151,27 @@ class ClientProfileController extends Notifier<ClientProfileState> {
         _getClientById(_clientId),
         _getLogsForClient(_clientId),
       ]);
+      if (!ref.mounted) return;
       state = state.copyWith(
         client: results[0] as ClientEntity,
         auditLogs: results[1] as List<AuditLogEntity>,
         isLoading: false,
       );
-      await _loadAssignmentEligibility();
     } catch (e) {
+      if (!ref.mounted) return;
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
-    }
-  }
-
-  Future<void> _loadAssignmentEligibility() async {
-    state = state.copyWith(isCheckingAssignmentEligibility: true);
-    try {
-      final eligibility = await _assignmentRepository.eligibility(_clientId);
-      state = state.copyWith(
-        isCheckingAssignmentEligibility: false,
-        canAssignClient: eligibility.canAssign,
-        packageStatus: eligibility.packageStatus,
-        assignmentMessage: eligibility.message,
-        clearAssignmentMessage: eligibility.message == null,
-      );
-    } on ClientAssignmentFailure catch (error) {
-      state = state.copyWith(
-        isCheckingAssignmentEligibility: false,
-        canAssignClient: false,
-        assignmentMessage: error.message,
-      );
     }
   }
 
   Future<bool> assignDietitian(StaffAccount dietitian) async {
     final client = state.client;
-    if (client == null || state.isAssigning) return false;
-    if (!state.canAssignClient) {
-      state = state.copyWith(
-        errorMessage:
-            state.assignmentMessage ?? inactivePackageAssignmentMessage,
-      );
+    if (client == null || state.isAssigning || state.isDeactivating) {
       return false;
     }
     state = state.copyWith(isAssigning: true);
     try {
       await _assignmentRepository.assign(client.id, dietitian.uid);
+      if (!ref.mounted) return true;
       final updated = client.copyWith(
         assignedDietitianId: dietitian.uid,
         assignedDietitianName: dietitian.displayName,
@@ -212,14 +179,15 @@ class ClientProfileController extends Notifier<ClientProfileState> {
       state = state.copyWith(
         client: updated,
         isAssigning: false,
-        successMessage: 'Client assigned successfully.',
+        successMessage: 'Dietitian assignment saved.',
       );
       ref.read(clientListControllerProvider.notifier).refreshClient(updated);
       ref.invalidate(activeDietitiansProvider);
       return true;
     } on ClientAssignmentFailure catch (error) {
-      await _loadAssignmentEligibility();
-      state = state.copyWith(isAssigning: false, errorMessage: error.message);
+      if (ref.mounted) {
+        state = state.copyWith(isAssigning: false, errorMessage: error.message);
+      }
       return false;
     }
   }

@@ -17,6 +17,11 @@ class ClientEntity {
   final ClientStatus status;
   final String assignedDietitianId;
   final String assignedDietitianName;
+  String get dietitianLabel => assignedDietitianId.isEmpty
+      ? 'Unassigned'
+      : assignedDietitianName.isEmpty
+      ? assignedDietitianId
+      : assignedDietitianName;
   final DateTime joinDate;
   final DateTime? deactivatedAt;
   final String? deactivationReason;

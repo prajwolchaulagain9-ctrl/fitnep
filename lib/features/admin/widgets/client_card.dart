@@ -68,7 +68,11 @@ class ClientCard extends StatelessWidget {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            PackageChip(packageName: client.packageName),
+                            Flexible(
+                              child: PackageChip(
+                                packageName: client.packageName,
+                              ),
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Row(
@@ -83,7 +87,7 @@ class ClientCard extends StatelessWidget {
                                   const SizedBox(width: 4),
                                   Expanded(
                                     child: Text(
-                                      client.assignedDietitianName,
+                                      client.dietitianLabel,
                                       style: Theme.of(context)
                                           .textTheme
                                           .bodySmall

@@ -1,5 +1,4 @@
 import { accountFrom, accountMatchesActor, getCurrentAssignment } from "./account_service";
-import { FirestorePackageService, inactivePackageAssignmentMessage } from "./package_membership_service";
 import { AuthenticatedUser } from "./domain";
 import {
   DocumentData,
@@ -35,16 +34,14 @@ implements ClientAssignmentRepository {
       const [actor, client, dietitian] = await Promise.all([
         readAccount(record.assignedById), readAccount(record.clientId), readAccount(record.dietitianId),
       ]);
-      if (actor.role !== "admin" || actor.account_status !== "active" ||
-        (!accountMatchesActor(actor, auditContext.actor)) ||
-        client.role !== "client" || client.account_status !== "active" ||
-        dietitian.role !== "dietitian" || dietitian.account_status !== "active") {
-        throw new ClientAssignmentError(403, "Assignments require current active accounts with the matching roles.");
+      if (actor.role !== "admin" || !accountMatchesActor(actor, auditContext.actor)) {
+        throw new ClientAssignmentError(403, "Administrator access is required to assign clients.");
+      }
+      if (client.role !== "client") throw new ClientAssignmentError(400, "Select a client account.");
+      if (dietitian.role !== "dietitian" || dietitian.account_status !== "active") {
+        throw new ClientAssignmentError(409, "Select an active dietitian.");
       }
       const snapshot = await transaction.get(reference);
-      if (await new FirestorePackageService(this.firestore).assignmentStatus(record.clientId, transaction) !== "active") {
-        throw new ClientAssignmentError(409, inactivePackageAssignmentMessage);
-      }
       const previousVersion = snapshot.exists
         ? positiveVersion(snapshot.get("version")) ?? 1
         : 0;
@@ -97,14 +94,13 @@ implements ClientAssignmentRepository {
         return assigned;
       }
 
-      if (snapshot.exists) {
-        const previousDietitianId = snapshot.get("dietitian_id");
-        if (typeof previousDietitianId !== "string" ||
-            !/^[A-Za-z0-9_-]{1,128}$/.test(previousDietitianId)) {
-          throw new ClientAssignmentError(
-            503,
-            "An existing client assignment needs attention.",
-          );
+      const previousDietitianId = snapshot.get("dietitian_id");
+      if (snapshot.exists && previousDietitianId === null && snapshot.get("active") !== false) {
+        throw new ClientAssignmentError(503, "An existing client assignment needs attention.");
+      }
+      if (snapshot.exists && previousDietitianId !== null) {
+        if (typeof previousDietitianId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(previousDietitianId)) {
+          throw new ClientAssignmentError(503, "An existing client assignment needs attention.");
         }
         const previousHistory = history.doc(historyDocumentId(
           record.clientId,
@@ -144,7 +140,7 @@ implements ClientAssignmentRepository {
         );
       }
       transaction.set(reference, currentValues);
-      const eventType = snapshot.exists ? "client.reassigned" : "client.assigned";
+      const eventType = typeof previousDietitianId === "string" ? "client.reassigned" : "client.assigned";
       this.audit.appendWithEvent(transaction, {
         actor: auditContext.actor,
         action: eventType,
@@ -155,8 +151,8 @@ implements ClientAssignmentRepository {
         operationId: `assignment-${assigned.clientId}-v${assigned.version}`,
         clientId: assigned.clientId,
         dietitianId: assigned.dietitianId,
-        ...(snapshot.exists
-          ? { previousDietitianId: snapshot.get("dietitian_id") as string }
+        ...(typeof previousDietitianId === "string"
+          ? { previousDietitianId }
           : {}),
         version: assigned.version,
       }, eventType);

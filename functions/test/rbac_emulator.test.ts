@@ -468,17 +468,14 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
     await request(api).get("/payments/record").set(bearer("client")).expect(200);
     await request(api).get("/payments/record").set(bearer("ceo")).expect(200);
   });
-  it("shares package eligibility and account revisions across both assignment APIs", async () => {
+  it("allows assignment without a package and rejects stale dietitian grants across both APIs", async () => {
     const legacy = "/admin/clients/client/assignment";
     const current = "/admin/client-assignments/client";
     const team = { dietitian_id: "dietitian", staff_ids: ["staff"] };
     await db.doc("customer_purchases/client/purchases/active-package").delete();
-    const ineligible = await request(api).get(current + "/eligibility").set(bearer("ceo")).expect(200);
-    assert.equal(ineligible.body.data.eligibility.can_assign, false);
-    await request(api).put(legacy).set(bearer("ceo")).send(team).expect(409);
-    await request(api).put(current).set(bearer("ceo")).send({ dietitian_id: "dietitian" }).expect(409);
-    assert.equal((await db.doc("client_assignments/client").get()).exists, false);
-    await activatePackage();
+    const eligible = await request(api).get(current + "/eligibility").set(bearer("ceo")).expect(200);
+    assert.equal(eligible.body.data.eligibility.package_status, "none");
+    assert.equal(eligible.body.data.eligibility.can_assign, true);
     await request(api).put(legacy).set(bearer("ceo")).send(team).expect(200);
     const version = (await db.doc("client_assignments/client").get()).get("version");
     await request(api).put(current).set(bearer("ceo")).send({ dietitian_id: "dietitian" }).expect(200);
@@ -509,6 +506,52 @@ suite("RBAC with real Firebase identities, Firestore transactions and rules", ()
       .send({ account_status: "inactive" }).expect(200);
     assert.deepEqual(await counts(), {});
     denied(await request(api).get("/dietitian/assigned-clients/client").set(bearer("dietitian")));
+    await request(api).patch("/admin/users/client").set(bearer("ceo"))
+      .send({ account_status: "active" }).expect(200);
+    assert.deepEqual(await counts(), {});
+  });
+  it("saves assignments for inactive clients through both APIs and activates only the saved grant", async () => {
+    const legacy = "/admin/clients/other/assignment";
+    const current = "/admin/client-assignments/other";
+    const status = (account_status: "active" | "inactive") => request(api)
+      .patch("/admin/clients/other/status").set(bearer("ceo")).send({ account_status }).expect(200);
+    const adminProfile = async () => (await request(api).get("/admin/clients/other")
+      .set(bearer("ceo")).expect(200)).body.data.client;
+    const dietitianProfile = () => request(api).get("/dietitian/assigned-clients/other").set(bearer("dietitian"));
+    const assignDietitian = () => request(api).put(current).set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian" }).expect(200);
+
+    await status("inactive");
+    await request(api).put(legacy).set(bearer("ceo"))
+      .send({ dietitian_id: "dietitian", staff_ids: ["staff"] }).expect(200);
+    assert.equal((await adminProfile()).assignedDietitianId, "dietitian");
+    denied(await dietitianProfile());
+    await request(api).put(legacy).set(bearer("ceo"))
+      .send({ dietitian_id: null, staff_ids: [] }).expect(200);
+    assert.equal((await adminProfile()).assignedDietitianId, "");
+
+    await assignDietitian();
+    const assignment = db.doc("client_assignments/other");
+    const version = (await assignment.get()).get("version");
+    assert.equal(version, 3);
+    await assignDietitian();
+    assert.equal((await assignment.get()).get("version"), version);
+    assert.equal((await adminProfile()).assignedDietitianId, "dietitian");
+    const careTeam = await request(api).get(legacy).set(bearer("ceo")).expect(200);
+    assert.equal(careTeam.body.data.assignment.dietitian_id, "dietitian");
+    assert.equal((await db.doc(`client_assignment_history/other_v${version}`).get()).get("dietitian_id"), "dietitian");
+    denied(await dietitianProfile());
+
+    await status("active");
+    await dietitianProfile().expect(200);
+    await status("inactive");
+    await assignDietitian();
+    for (const role of ["staff", "client"]) {
+      await request(api).patch("/admin/users/other").set(bearer("ceo")).send({ role }).expect(200);
+    }
+    await status("active");
+    assert.equal((await adminProfile()).assignedDietitianId, "");
+    denied(await dietitianProfile());
   });
   it("audits plans and conversations before returning content and revokes stale support grants", async () => {
     await request(api).put("/admin/clients/client/assignment").set(bearer("ceo"))

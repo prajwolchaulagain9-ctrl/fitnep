@@ -3,21 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/api_client_provider.dart';
 
-const inactivePackageAssignmentMessage =
-    'Only clients with an active package can be assigned.';
-
-class AssignmentEligibility {
-  const AssignmentEligibility({
-    required this.canAssign,
-    required this.packageStatus,
-    required this.message,
-  });
-
-  final bool canAssign;
-  final String packageStatus;
-  final String? message;
-}
-
 class ClientAssignmentFailure implements Exception {
   const ClientAssignmentFailure(this.message);
   final String message;
@@ -29,30 +14,6 @@ class ClientAssignmentFailure implements Exception {
 class ClientAssignmentRepository {
   const ClientAssignmentRepository(this._dio);
   final Dio _dio;
-
-  Future<AssignmentEligibility> eligibility(String clientId) async {
-    try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        'admin/client-assignments/${Uri.encodeComponent(clientId)}/eligibility',
-      );
-      final data = response.data!['data'] as Map<String, dynamic>;
-      final eligibility = data['eligibility'] as Map<String, dynamic>;
-      return AssignmentEligibility(
-        canAssign: eligibility['can_assign'] as bool,
-        packageStatus: eligibility['package_status'] as String,
-        message: eligibility['message'] as String?,
-      );
-    } on DioException catch (error) {
-      throw _failure(
-        error,
-        'Unable to verify the client package. Assignment is unavailable.',
-      );
-    } on TypeError {
-      throw const ClientAssignmentFailure(
-        'The assignment service returned invalid package information.',
-      );
-    }
-  }
 
   Future<void> assign(String clientId, String dietitianId) async {
     try {

@@ -98,10 +98,16 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
   }));
   router.get("/admin/clients/:id/assignment", wrap(async (request, response) => {
     const id = identifier(request.params.id);
-    const assignment = (await store().firestore.collection("client_assignments").doc(id).get()).data();
-    response.json({ data: { assignment: assignment ? {
-      dietitian_id: assignment.dietitian_id ?? null, staff_ids: assignment.staff_ids ?? [],
-    } : null } });
+    const db = store().firestore;
+    const assignment = await db.runTransaction(async transaction => {
+      const current = await getCurrentAssignment(db, id, transaction, { includeInactiveClient: true });
+      if (current) return { dietitian_id: current.team.dietitianId, staff_ids: current.team.teamMemberIds };
+      const cleared = (await transaction.get(db.doc(`client_assignments/${id}`))).data();
+      return cleared?.active === false && cleared.dietitian_id === null
+        ? { dietitian_id: null, staff_ids: cleared.staff_ids ?? [] }
+        : null;
+    });
+    response.json({ data: { assignment } });
   }));
   router.get("/admin/audit-logs", wrap(async (request, response) => {
     requirePermission(actor(response).role, "view_audit_logs");
@@ -258,7 +264,7 @@ async function clientView(store: FirestoreAccountService, account: Account,
   const db = store.firestore;
   const [profileSnapshot, assignment, memberships, receipts] = await Promise.all([
     db.doc(`client_profiles/${account.id}`).get(),
-    getCurrentAssignment(db, account.id),
+    getCurrentAssignment(db, account.id, undefined, { includeInactiveClient: true }),
     new FirestorePackageService(db).membershipsWithLegacy(account.id).catch(error => {
       if (error instanceof PackageError && error.statusCode === 503) return [];
       throw error;
@@ -306,5 +312,5 @@ async function clientView(store: FirestoreAccountService, account: Account,
     status: account.account_status, joinDate: account.created_at,
     deactivatedAt: account.deactivated_at, deactivationReason: account.deactivation_reason,
     assignedDietitianId: assignment?.team.dietitianId ?? "",
-    assignedDietitianName: assignment ? (await store.get(assignment.team.dietitianId)).full_name : "" };
+    assignedDietitianName: assignment ? assignment.dietitian.full_name || assignment.dietitian.email || assignment.dietitian.id : "" };
 }

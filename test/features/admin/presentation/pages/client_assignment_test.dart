@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fitnep/features/admin/data/admin_local_datasource.dart';
 import 'package:fitnep/features/admin/data/client_assignment_repository.dart';
+import 'package:fitnep/features/admin/data/client_entity.dart';
 import 'package:fitnep/features/admin/data/staff_account_entity.dart';
 import 'package:fitnep/features/admin/client_profile_controller.dart';
 import 'package:fitnep/features/admin/client_list_controller.dart';
@@ -39,144 +40,107 @@ void main() {
     expect(counts, {'dietitian-1': 4, 'dietitian-2': 1});
   });
 
-  testWidgets('active-package client can be assigned', (tester) async {
-    final api = _AssignmentApi(canAssign: true, packageStatus: 'active');
-    addTearDown(api.dio.close);
+  for (final (clientId, isActive) in [
+    ('client_001', true),
+    ('client_005', false),
+  ]) {
+    testWidgets('assigns $clientId on a narrow screen without a package', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 680);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _AssignmentApi();
+      addTearDown(api.dio.close);
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          adminDatasourceProvider.overrideWithValue(AdminLocalDatasource()),
-          clientAssignmentRepositoryProvider.overrideWithValue(
-            ClientAssignmentRepository(api.dio),
-          ),
-          activeDietitiansProvider.overrideWith(
-            (ref) async => [
-              DietitianAssignmentOption(
-                dietitian: const StaffAccount(
-                  uid: 'dietitian-new',
-                  name: 'Dr. Active Dietitian',
-                  email: 'dietitian@fitnep.test',
-                  role: StaffRole.dietitian,
-                  isActive: true,
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            adminDatasourceProvider.overrideWithValue(_AssignmentDatasource()),
+            clientAssignmentRepositoryProvider.overrideWithValue(
+              ClientAssignmentRepository(api.dio),
+            ),
+            activeDietitiansProvider.overrideWith(
+              (ref) async => [
+                DietitianAssignmentOption(
+                  dietitian: const StaffAccount(
+                    uid: 'dietitian-new',
+                    name: 'Dr. Alexandrina Long Dietitian Name',
+                    email: 'dietitian@fitnep.test',
+                    role: StaffRole.dietitian,
+                    isActive: true,
+                  ),
+                  currentClientCount: api.assignedDietitianId == null ? 7 : 8,
                 ),
-                currentClientCount: api.assignedDietitianId == null ? 7 : 8,
-              ),
-            ],
-          ),
-        ],
-        child: const MaterialApp(
-          home: ClientProfilePage(clientId: 'client_001'),
+              ],
+            ),
+          ],
+          child: MaterialApp(home: ClientProfilePage(clientId: clientId)),
         ),
-      ),
-    );
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Dietitian Assignment'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
+      );
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      final button = find.widgetWithText(OutlinedButton, 'Assign dietitian');
 
-    final button = find.widgetWithText(OutlinedButton, 'Change Dietitian');
-    expect(button, findsOneWidget);
-    expect(tester.widget<OutlinedButton>(button).onPressed, isNotNull);
+      await tester.scrollUntilVisible(
+        button,
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Unassigned'), findsOneWidget);
+      expect(
+        find.textContaining('when the account is reactivated'),
+        isActive ? findsNothing : findsOneWidget,
+      );
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('7 active clients'), findsOneWidget);
+      await tester.tap(find.text('Dr. Alexandrina Long Dietitian Name'));
+      await tester.pumpAndSettle();
 
-    await tester.scrollUntilVisible(
-      button,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    expect(find.text('7 current clients'), findsOneWidget);
-    await tester.tap(find.text('Dr. Active Dietitian'));
-    await tester.pumpAndSettle();
+      expect(api.assignedDietitianId, 'dietitian-new');
+      expect(api.assignedClientPath, 'admin/client-assignments/$clientId');
+      expect(find.text('Dietitian assignment saved.'), findsOneWidget);
+      expect(find.text('Dr. Alexandrina Long Dietitian Name'), findsOneWidget);
+      expect(
+        find.text('Review diet plans'),
+        isActive ? findsOneWidget : findsNothing,
+      );
 
-    expect(api.assignedDietitianId, 'dietitian-new');
-    expect(find.text('Client assigned successfully.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Change dietitian'));
+      await tester.pumpAndSettle();
+      expect(find.text('8 active clients'), findsOneWidget);
+    });
+  }
+}
 
-    await tester.pump(const Duration(seconds: 4));
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    expect(find.text('8 current clients'), findsOneWidget);
-  });
-
-  testWidgets('inactive-package client is blocked with an explanation', (
-    tester,
-  ) async {
-    final api = _AssignmentApi(canAssign: false, packageStatus: 'expired');
-    addTearDown(api.dio.close);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          adminDatasourceProvider.overrideWithValue(AdminLocalDatasource()),
-          clientAssignmentRepositoryProvider.overrideWithValue(
-            ClientAssignmentRepository(api.dio),
-          ),
-        ],
-        child: const MaterialApp(
-          home: ClientProfilePage(clientId: 'client_001'),
-        ),
-      ),
-    );
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Dietitian Assignment'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-
-    expect(find.text(inactivePackageAssignmentMessage), findsOneWidget);
-    final button = find.widgetWithText(OutlinedButton, 'Change Dietitian');
-    expect(tester.widget<OutlinedButton>(button).onPressed, isNull);
-    expect(api.assignedDietitianId, isNull);
-  });
+class _AssignmentDatasource extends AdminLocalDatasource {
+  @override
+  Future<ClientEntity> getClientById(String id) async =>
+      (await super.getClientById(id)).copyWith(
+        packageName: 'No current package',
+        packageId: '',
+        assignedDietitianName: '',
+        assignedDietitianId: '',
+      );
 }
 
 class _AssignmentApi {
-  _AssignmentApi({required this.canAssign, required this.packageStatus}) {
+  _AssignmentApi() {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) {
-          if (request.method == 'GET') {
-            handler.resolve(
-              Response<Map<String, dynamic>>(
-                requestOptions: request,
-                data: {
-                  'data': {
-                    'eligibility': {
-                      'client_id': 'client_001',
-                      'package_status': packageStatus,
-                      'can_assign': canAssign,
-                      'message': canAssign
-                          ? null
-                          : inactivePackageAssignmentMessage,
-                    },
-                  },
-                },
-              ),
-            );
-            return;
-          }
+          expect(request.method, 'PUT');
+          assignedClientPath = request.path;
           assignedDietitianId =
               (request.data as Map<String, dynamic>)['dietitian_id'] as String;
           handler.resolve(
             Response<Map<String, dynamic>>(
               requestOptions: request,
-              data: {
-                'data': {
-                  'assignment': {
-                    'client_id': 'client_001',
-                    'dietitian_id': assignedDietitianId,
-                    'active': true,
-                    'assigned_at': '2026-11-23T12:00:00.000Z',
-                  },
-                },
-              },
+              data: const {},
             ),
           );
         },
@@ -184,8 +148,7 @@ class _AssignmentApi {
     );
   }
 
-  final bool canAssign;
-  final String packageStatus;
   final Dio dio = Dio(BaseOptions(baseUrl: 'https://fitnep.test/'));
   String? assignedDietitianId;
+  String? assignedClientPath;
 }

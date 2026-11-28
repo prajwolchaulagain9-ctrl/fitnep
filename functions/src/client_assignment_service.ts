@@ -1,8 +1,6 @@
 import { Auth } from "firebase-admin/auth";
 import { AuthenticatedUser } from "./domain";
 import { FirestorePackageService } from "./package_membership_service";
-export { inactivePackageAssignmentMessage } from "./package_membership_service";
-import { inactivePackageAssignmentMessage } from "./package_membership_service";
 import { NotificationWorkflowService } from "./notification_service";
 import { StaffAccountRepository } from "./staff_account_repository";
 
@@ -12,6 +10,7 @@ export type AssignmentPackageStatus =
   | "scheduled"
   | "expired"
   | "inactive"
+  | "unavailable"
   | "none";
 
 export interface ClientAssignmentRecord {
@@ -79,13 +78,13 @@ export class ClientAssignmentService {
   async eligibility(actor: AuthenticatedUser, clientIdInput: unknown) {
     this.requireAdmin(actor);
     const clientId = requiredIdentifier(clientIdInput, "Client id");
+    await this.clients?.getClient(clientId);
     const packageStatus = await this.packages.getStatus(clientId);
-    const canAssign = packageStatus === "active";
     return {
       clientId,
       packageStatus,
-      canAssign,
-      message: canAssign ? null : inactivePackageAssignmentMessage,
+      canAssign: true,
+      message: null,
     };
   }
 
@@ -95,20 +94,18 @@ export class ClientAssignmentService {
     dietitianIdInput: unknown,
     correlationId: string,
   ): Promise<ClientAssignmentRecord> {
-    const eligibility = await this.eligibility(actor, clientIdInput);
-    if (!eligibility.canAssign) {
-      throw new ClientAssignmentError(409, inactivePackageAssignmentMessage);
-    }
+    this.requireAdmin(actor);
+    const clientId = requiredIdentifier(clientIdInput, "Client id");
     const dietitianId = requiredIdentifier(dietitianIdInput, "Dietitian id");
     if (!(await this.dietitians.isActiveDietitian(dietitianId))) {
       throw new ClientAssignmentError(409, "Select an active dietitian.");
     }
     const clientProfile = this.clients !== null
-      ? await this.clients.getClient(eligibility.clientId)
+      ? await this.clients.getClient(clientId)
       : null;
     const assignment = await this.repository.assign(
       {
-        clientId: eligibility.clientId,
+        clientId,
         dietitianId,
         active: true,
         assignedAt: this.now().toISOString(),
@@ -175,7 +172,7 @@ implements ClientPackageStatusReader {
   constructor(private readonly memberships: FirestorePackageService) {}
 
   async getStatus(clientId: string): Promise<AssignmentPackageStatus> {
-    return this.memberships.assignmentStatus(clientId);
+    return this.memberships.membershipStatusForDisplay(clientId);
   }
 }
 

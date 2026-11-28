@@ -52,6 +52,8 @@ class PackageChip extends StatelessWidget {
       ),
       child: Text(
         packageName,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: AppColors.statusTone(context, _color),
           fontSize: large ? 13 : 10,

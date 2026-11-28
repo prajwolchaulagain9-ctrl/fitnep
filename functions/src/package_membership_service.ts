@@ -5,7 +5,6 @@ import { AuthenticatedUser } from "./domain";
 import { FirestoreAuditWriter } from "./audit";
 
 const day = 86_400_000;
-export const inactivePackageAssignmentMessage = "Only clients with an active package can be assigned.";
 
 export class PackageError extends Error {
   constructor(readonly statusCode: number, message: string) { super(message); }
@@ -86,7 +85,7 @@ export class FirestorePackageService {
     return [...current, ...historical].sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
-  /** Effective status used by assignment, including retained legacy purchases. */
+  /** Effective status including retained legacy purchases. */
   async assignmentStatus(uid: string, transaction?: Transaction): Promise<EffectiveMembershipStatus> {
     const memberships = await this.memberships(uid, transaction);
     if (memberships.some(member => member.status === "active")) return "active";
@@ -103,7 +102,7 @@ export class FirestorePackageService {
       const endsAt = document.get("expires_at");
       if (!(startsAt instanceof Timestamp) || !(endsAt instanceof Timestamp) ||
           endsAt.toMillis() <= startsAt.toMillis()) {
-        throw new PackageError(503, "An existing membership needs attention before assignment.");
+        throw new PackageError(503, "An existing membership needs attention.");
       }
       const now = this.now().getTime();
       if (startsAt.toMillis() <= now && now < endsAt.toMillis()) return "active";
@@ -123,7 +122,6 @@ export class FirestorePackageService {
     try {
       return await this.assignmentStatus(uid, transaction);
     } catch (error) {
-      // Invalid package data still blocks assignment eligibility.
       if (error instanceof PackageError && error.statusCode === 503) return "unavailable";
       throw error;
     }
