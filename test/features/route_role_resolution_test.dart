@@ -1,5 +1,5 @@
-import 'package:fitnep/features/authorization/domain/account.dart';
-import 'package:fitnep/core/authorization/role_permissions.dart';
+import 'package:fitnep/features/authorization/data/account.dart';
+import 'package:fitnep/shared/role_permissions.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Map<String, dynamic> account(Object? role) => {

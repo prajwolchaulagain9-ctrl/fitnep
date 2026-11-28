@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fitnep/features/authorization/data/authorization_repository.dart';
-import 'package:fitnep/features/authorization/domain/account.dart';
+import 'package:fitnep/features/authorization/data/account.dart';
 
 class _Firestore extends Fake implements FirebaseFirestore {}
 

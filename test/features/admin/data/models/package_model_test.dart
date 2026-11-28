@@ -1,4 +1,4 @@
-import 'package:fitnep/features/admin/data/models/package_model.dart';
+import 'package:fitnep/features/admin/data/package_model.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

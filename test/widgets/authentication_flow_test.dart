@@ -1,3 +1,6 @@
+import 'package:fitnep/features/client/pages/client_home_page.dart';
+import 'package:fitnep/features/onboarding/data/client_onboarding_status.dart';
+
 import '../support/empty_package_catalog.dart';
 import '../support/offline_hosted_session.dart';
 
@@ -9,9 +12,9 @@ import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
-import 'package:fitnep/core/services/firebase_providers.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/notifications/notification_controller.dart';
+import 'package:fitnep/shared/firebase_providers.dart';
+import 'package:fitnep/features/authentication/authentication_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -78,6 +81,9 @@ Future<ProviderContainer> _open(
       overrides: [
         emptyPackageCatalogOverride,
         emptyMembershipOverride,
+        clientOnboardingStatusProvider.overrideWith(
+          (ref, uid) async => ClientOnboardingStatus.completed,
+        ),
         offlineHostedSessionOverride,
         registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         staffPasswordChangeRequiredProvider.overrideWith((ref) async => false),
@@ -88,7 +94,12 @@ Future<ProviderContainer> _open(
           final user = await ref.watch(authenticationStateProvider.future);
           return user == null
               ? null
-              : (uid: user.uid, role: FitNepRole.client, auditRead: false);
+              : (
+                  uid: user.uid,
+                  role: FitNepRole.client,
+                  auditRead: false,
+                  paymentsVerify: false,
+                );
         }),
         notificationControllerProvider.overrideWith(EmptyNotifications.new),
       ],
@@ -142,7 +153,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('Firebase login reaches package selection and logs out', (
+  testWidgets('Firebase login reaches client home and logs out', (
     tester,
   ) async {
     final auth = _Auth();
@@ -167,7 +178,7 @@ void main() {
     expect(auth.email, 'client@example.com');
     expect(auth.password, 'Password!12');
     expect(preferences.rememberSession, isTrue);
-    expect(find.text('Choose a package'), findsOneWidget);
+    expect(find.byType(ClientHomePage), findsOneWidget);
     await tester.tap(find.byTooltip('Open navigation menu'));
     await tester.pumpAndSettle();
 
@@ -219,7 +230,7 @@ void main() {
     await _close(tester, auth);
   });
 
-  testWidgets('remembered sessions open package selection on startup', (
+  testWidgets('remembered sessions open client home on startup', (
     tester,
   ) async {
     final auth = _Auth(user: _User());
@@ -229,7 +240,7 @@ void main() {
       MemorySessionPreferenceStore(rememberSession: true),
     );
 
-    expect(find.text('Choose a package'), findsOneWidget);
+    expect(find.byType(ClientHomePage), findsOneWidget);
     expect(auth.signOuts, 0);
     await _close(tester, auth);
   });

@@ -1,9 +1,9 @@
 import 'package:fitnep/app/theme/app_theme.dart';
-import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
-import 'package:fitnep/features/health_assessment/domain/repositories/client_intake_repository.dart';
-import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
-import 'package:fitnep/features/health_assessment/presentation/pages/client_intake_page.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_repository.dart';
+import 'package:fitnep/features/health_assessment/client_intake_controller.dart';
+import 'package:fitnep/features/health_assessment/pages/client_intake_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +12,7 @@ void main() {
   testWidgets('dietitian marks an intake form as reviewed', (tester) async {
     final repository = _FakeClientIntakeRepository();
     await _pumpPage(tester, repository);
+    expect(find.text('Waist cm'), findsOneWidget);
 
     final action = find.widgetWithText(FilledButton, 'Mark as reviewed');
     await tester.scrollUntilVisible(action, 300);
@@ -24,6 +25,13 @@ void main() {
     expect(repository.lastExpectedRevision, 0);
     expect(repository.current.status, ClientIntakeStatus.reviewed);
     expect(find.text('Reviewed'), findsOneWidget);
+  });
+
+  testWidgets('client intake hides legacy extra measurements', (tester) async {
+    final repository = _FakeClientIntakeRepository();
+    await _pumpPage(tester, repository, own: true);
+    expect(find.text('Height'), findsOneWidget);
+    expect(find.text('Waist cm'), findsNothing);
   });
 
   testWidgets('dietitian requests and saves missing information', (
@@ -138,20 +146,27 @@ void main() {
 
 Future<void> _pumpPage(
   WidgetTester tester,
-  ClientIntakeRepository repository,
-) async {
+  _FakeClientIntakeRepository repository, {
+  bool own = false,
+}) async {
   tester.view.physicalSize = const Size(1080, 1800);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [clientIntakeRepositoryProvider.overrideWithValue(repository)],
+      overrides: [
+        clientIntakeRepositoryProvider.overrideWithValue(repository),
+        if (own)
+          ownClientIntakeProvider('client-1')
+              .overrideWith((ref) async => repository.current),
+      ],
       child: MaterialApp(
         theme: AppTheme.light,
-        home: const ClientIntakePage(
+        home: ClientIntakePage(
           clientId: 'client-1',
-          viewerId: 'dietitian-1',
+          viewerId: own ? 'client-1' : 'dietitian-1',
+          readOnly: own,
         ),
       ),
     ),
@@ -174,7 +189,10 @@ class _FakeClientIntakeRepository implements ClientIntakeRepository {
     sections: [
       ClientIntakeSection(
         title: 'Health information',
-        fields: [ClientIntakeField(label: 'Height', value: '168 cm')],
+        fields: [
+          ClientIntakeField(label: 'Height', value: '168 cm'),
+          ClientIntakeField(label: 'Waist cm', value: '78'),
+        ],
       ),
     ],
     submittedAt: null,

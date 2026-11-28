@@ -2,9 +2,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/app/theme/app_theme.dart';
-import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/shared/firebase_providers.dart';
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/authentication/authentication_controller.dart';
 import 'package:fitnep/shared/widgets/app_startup_view.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:animations/animations.dart';
@@ -67,6 +67,7 @@ void main() {
                 uid: 'client-1',
                 role: FitNepRole.client,
                 auditRead: false,
+                paymentsVerify: false,
               );
             }),
             registrationAcceptedProvider.overrideWith(

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/theme/app_theme.dart';
-import '../../core/constants/app_assets.dart';
+import '../app_assets.dart';
 
 // Keep the original mark while adapting its colors and tagline to the app.
 class FitNepWordmark extends StatelessWidget {

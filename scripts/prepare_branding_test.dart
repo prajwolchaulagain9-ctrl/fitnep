@@ -31,9 +31,10 @@ void main() {
     ) async {
       final dark = brightness == Brightness.dark;
       await tester.runAsync(() async {
-        await (FontLoader(
-          'Inter',
-        )..addFont(rootBundle.load('assets/fonts/Inter-Variable.ttf'))).load();
+        await (FontLoader('Inter')..addFont(
+              rootBundle.load('lib/shared/assets/fonts/Inter-Variable.ttf'),
+            ))
+            .load();
       });
       final captureKey = GlobalKey();
       await tester.pumpWidget(

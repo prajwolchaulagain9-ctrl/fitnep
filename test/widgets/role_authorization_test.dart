@@ -3,7 +3,7 @@ import '../support/offline_hosted_session.dart';
 
 import 'dart:async';
 
-import 'package:fitnep/core/authorization/authorization_refresh.dart';
+import 'package:fitnep/shared/authorization_refresh.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
@@ -13,21 +13,21 @@ import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/features/authorization/data/authorization_repository.dart';
-import 'package:fitnep/features/authorization/domain/account.dart';
-import 'package:fitnep/features/authorization/presentation/role_home_page.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
-import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
-import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
-import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
+import 'package:fitnep/features/authorization/data/account.dart';
+import 'package:fitnep/features/authorization/role_home_page.dart';
+import 'package:fitnep/features/authentication/authentication_controller.dart';
+import 'package:fitnep/features/health_assessment/data/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_form.dart';
+import 'package:fitnep/features/health_assessment/client_intake_controller.dart';
+import 'package:fitnep/features/notifications/notification_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../support/empty_notifications.dart';
 
-import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
+import 'package:fitnep/features/packages/membership_controller.dart';
 
 class _EmptyMembership extends MembershipController {
   @override
@@ -117,7 +117,10 @@ class _Repository extends AuthorizationRepository {
   }) async {
     requestedPaths.add(path);
     if (path == 'profile/me') {
-      return {'account': _data(account.role)};
+      return {
+        'account': _data(account.role),
+        'onboarding': {'status': 'completed'},
+      };
     }
     if (path == 'admin/audit-events') {
       final filters = query ?? const <String, dynamic>{};
@@ -373,14 +376,12 @@ void main() {
               .value
               .uri
               .path,
-          role == FitNepRole.client
-              ? AppRoutes.clientPackages
-              : dashboardForRole(role),
+          dashboardForRole(role),
         );
         expect(
           find.text(
             role == FitNepRole.client
-                ? 'Choose a package'
+                ? 'Welcome back'
                 : '${role.label} dashboard',
           ),
           findsOneWidget,
@@ -632,12 +633,15 @@ void main() {
       );
       await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
-      expect(repository.updates, [
-        {
-          'title': 'Weekly plan',
-          'description': 'Assigned client nutrition plan.',
-        },
-      ]);
+      expect(
+        repository.updates.single,
+        allOf(
+          containsPair('title', 'Weekly plan'),
+          containsPair('description', 'Assigned client nutrition plan.'),
+          containsPair('draft', true),
+          contains('request_id'),
+        ),
+      );
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     },

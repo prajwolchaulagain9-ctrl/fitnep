@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/services/firebase_providers.dart';
-import '../features/authentication/presentation/controllers/authentication_controller.dart';
-import '../features/authentication/presentation/password_reset_session_observer.dart';
-import '../features/authentication/presentation/hosted_session_gate.dart';
-import '../features/authentication/presentation/sign_out_to_welcome.dart';
+import '../shared/firebase_providers.dart';
+import '../features/authentication/authentication_controller.dart';
+import '../features/authentication/password_reset_session_observer.dart';
+import '../features/authentication/hosted_session_gate.dart';
+import '../features/authentication/sign_out_to_welcome.dart';
 import '../shared/widgets/app_startup_view.dart';
 import 'routes/app_router.dart';
 import 'theme/app_theme.dart';

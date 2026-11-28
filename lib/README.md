@@ -1,27 +1,8 @@
-# Code folder template
+# Where to find Flutter code
 
-`app/` is reserved for application setup, navigation, and theme.
-`core/` is reserved for shared infrastructure and utilities.
-`shared/` is reserved for models, providers, and widgets used by multiple features.
+- `app/` starts the app and contains routes and the theme.
+- `features/` groups screens and related code by what they do. Open `onboarding/` for client setup, `packages/` for packages and membership, or `admin/` for the admin workspace.
+- Inside a feature, `pages/` contains screens, `data/` contains API calls and models, and `widgets/` contains widgets specific to that feature. Feature controllers sit at the feature root.
+- `shared/` contains the API client, Firebase setup, and other cross-feature Dart helpers. Shared widgets live in `shared/widgets/`, and images, icons, and fonts live in `shared/assets/`.
 
-Each feature has this layout:
-
-```text
-feature/
-  data/
-    datasources/
-    models/
-    repositories/
-  domain/
-    entities/
-    repositories/
-    usecases/
-  presentation/
-    controllers/
-    pages/
-    widgets/
-```
-
-Folders and new Dart files are placeholders only. No feature code has been
-implemented. Start with the files needed for the current feature; the empty
-directories do not require empty classes or a use case for every method.
+The backend is in the top-level `functions/` directory. Firebase uses the top-level `firestore.rules` and `firestore.indexes.json`.

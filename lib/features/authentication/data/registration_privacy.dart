@@ -2,9 +2,9 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../../../core/config/app_config.dart';
-import '../../../core/services/firebase_providers.dart';
-import '../domain/entities/privacy_policy.dart';
+import '../../../shared/app_config.dart';
+import '../../../shared/firebase_providers.dart';
+import 'privacy_policy.dart';
 import 'hosted_auth_client.dart';
 
 typedef RegistrationPrivacyRequest = Future<bool> Function(

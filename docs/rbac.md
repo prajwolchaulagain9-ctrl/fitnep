@@ -51,7 +51,7 @@ current account again inside the transaction.
 ## Central policy and dashboards
 
 `functions/src/authorization_policy.ts` is the security policy.
-`lib/core/authorization/role_permissions.dart` is its presentation equivalent.
+`lib/shared/role_permissions.dart` is its presentation equivalent.
 A test compares the two permission maps. `AuthorizationService.hasPermission`
 controls menus/actions, and `permissionForRoute` supplies reusable route guards.
 
@@ -287,18 +287,18 @@ and device sign-in validation remain deployment steps, not emulator results.
 - `functions/src/rbac_http.ts`
 - `functions/test/rbac_emulator.test.ts`
 - `functions/test/rbac_policy.test.ts`
-- `lib/core/authorization/authorization_refresh.dart`
-- `lib/core/authorization/role_permissions.dart`
-- `lib/features/admin/data/datasources/admin_datasource.dart`
-- `lib/features/admin/data/datasources/admin_remote_datasource.dart`
+- `lib/shared/authorization_refresh.dart`
+- `lib/shared/role_permissions.dart`
+- `lib/features/admin/data/admin_datasource.dart`
+- `lib/features/admin/data/admin_remote_datasource.dart`
 - `lib/features/authorization/data/authorization_repository.dart`
-- `lib/features/authorization/domain/account.dart`
-- `lib/features/authorization/presentation/account_session.dart`
-- `lib/features/authorization/presentation/assigned_clients_page.dart`
-- `lib/features/authorization/presentation/client_records_page.dart`
-- `lib/features/authorization/presentation/profile_page.dart`
-- `lib/features/authorization/presentation/role_home_page.dart`
-- `lib/features/authorization/presentation/user_management_page.dart`
+- `lib/features/authorization/data/account.dart`
+- `lib/features/authorization/account_session.dart`
+- `lib/features/authorization/assigned_clients_page.dart`
+- `lib/features/authorization/client_records_page.dart`
+- `lib/features/authorization/profile_page.dart`
+- `lib/features/authorization/role_home_page.dart`
+- `lib/features/authorization/user_management_page.dart`
 - `test/support/denied_permission_repository.dart`
 - `test/support/empty_notifications.dart`
 - `test/widgets/role_authorization_test.dart`
@@ -331,20 +331,20 @@ and device sign-in validation remain deployment steps, not emulator results.
 - `lib/app/routes/app_router.dart`
 - `lib/app/routes/app_routes.dart`
 - `lib/app/routes/route_access_gate.dart`
-- `lib/core/network/api_client.dart`
-- `lib/core/network/api_client_provider.dart`
-- `lib/features/admin/data/datasources/admin_local_datasource.dart`
-- `lib/features/admin/data/models/client_model.dart`
-- `lib/features/admin/data/repositories/admin_repository_impl.dart`
-- `lib/features/admin/domain/entities/audit_log_entity.dart`
-- `lib/features/admin/domain/entities/client_entity.dart`
-- `lib/features/admin/presentation/controllers/client_list_controller.dart`
-- `lib/features/admin/presentation/controllers/client_profile_controller.dart`
-- `lib/features/admin/presentation/pages/audit_log_page.dart`
-- `lib/features/admin/presentation/pages/client_profile_page.dart`
-- `lib/features/admin/presentation/widgets/audit_log_tile.dart`
-- `lib/features/authentication/presentation/password_reset_session_observer.dart`
-- `lib/features/dashboards/presentation/pages/client_home_page.dart`
+- `lib/shared/api_client.dart`
+- `lib/shared/api_client_provider.dart`
+- `lib/features/admin/data/admin_local_datasource.dart`
+- `lib/features/admin/data/client_model.dart`
+- `lib/features/admin/data/admin_repository_impl.dart`
+- `lib/features/admin/data/audit_log_entity.dart`
+- `lib/features/admin/data/client_entity.dart`
+- `lib/features/admin/client_list_controller.dart`
+- `lib/features/admin/client_profile_controller.dart`
+- `lib/features/admin/pages/audit_log_page.dart`
+- `lib/features/admin/pages/client_profile_page.dart`
+- `lib/features/admin/widgets/audit_log_tile.dart`
+- `lib/features/authentication/password_reset_session_observer.dart`
+- `lib/features/client/pages/client_home_page.dart`
 - `test/app/routes/app_router_notification_test.dart`
 - `test/features/admin/presentation/pages/client_list_page_test.dart`
 - `test/widgets/authentication_flow_test.dart`

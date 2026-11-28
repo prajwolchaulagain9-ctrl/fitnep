@@ -2,9 +2,9 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fitnep/core/network/api_client.dart';
-import 'package:fitnep/core/network/backend_resolver.dart';
-import 'package:fitnep/core/storage/token_storage.dart';
+import 'package:fitnep/shared/api_client.dart';
+import 'package:fitnep/shared/backend_resolver.dart';
+import 'package:fitnep/shared/token_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _User extends Fake implements User {

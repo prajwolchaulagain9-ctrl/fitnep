@@ -1,3 +1,5 @@
+import 'package:fitnep/features/packages/data/package_repository.dart';
+
 import '../../support/offline_hosted_session.dart';
 
 import 'dart:async';
@@ -6,14 +8,14 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
-import 'package:fitnep/core/services/firebase_providers.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
-import 'package:fitnep/features/health_assessment/domain/repositories/client_intake_repository.dart';
-import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_destination_record.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
-import 'package:fitnep/features/notifications/domain/repositories/notification_destination_repository.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_destination_controller.dart';
+import 'package:fitnep/shared/firebase_providers.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_repository.dart';
+import 'package:fitnep/features/health_assessment/client_intake_controller.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_record.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_repository.dart';
+import 'package:fitnep/features/notifications/notification_destination_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +24,44 @@ import 'package:fitnep/features/authorization/data/authorization_repository.dart
 import '../../support/denied_permission_repository.dart';
 
 void main() {
+  testWidgets('payment notification opens the requested payment details', (
+    tester,
+  ) async {
+    String? paymentId;
+    final container = ProviderContainer(
+      overrides: [
+        offlineHostedSessionOverride,
+        routeSessionProvider.overrideWith(
+          (ref) async => (
+            uid: 'admin-1',
+            role: FitNepRole.admin,
+            auditRead: false,
+            paymentsVerify: true,
+          ),
+        ),
+        paymentDetailsProvider.overrideWith((ref, id) async {
+          paymentId = id;
+          throw const PackageFailure('Test payment response');
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    final router = container.read(appRouterProvider);
+    router.goNamed(
+      AppRoutes.paymentDetailsName,
+      pathParameters: {'id': 'payment-99'},
+    );
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(paymentId, 'payment-99');
+    expect(find.text('Payment details'), findsOneWidget);
+  });
+
   final cases = <(String, NotificationType, String)>[
     (
       AppRoutes.dietPlanDetailsName,
@@ -30,7 +70,6 @@ void main() {
     ),
     (AppRoutes.messageThreadName, NotificationType.message, 'Messages'),
     (AppRoutes.taskDetailsName, NotificationType.task, 'Task Details'),
-    (AppRoutes.paymentDetailsName, NotificationType.payment, 'Payment Details'),
   ];
 
   for (final testCase in cases) {
@@ -46,6 +85,7 @@ void main() {
               uid: 'dietitian-1',
               role: FitNepRole.dietitian,
               auditRead: false,
+              paymentsVerify: false,
             ),
           ),
           notificationDestinationRepositoryProvider.overrideWithValue(
@@ -87,6 +127,7 @@ void main() {
               uid: 'dietitian-1',
               role: FitNepRole.dietitian,
               auditRead: false,
+              paymentsVerify: false,
             ),
           ),
           notificationDestinationRepositoryProvider.overrideWithValue(
@@ -151,6 +192,7 @@ void main() {
                 uid: user.uid,
                 role: parseRole((user as _RouteUser).role),
                 auditRead: false,
+                paymentsVerify: false,
               ),
       ),
     );

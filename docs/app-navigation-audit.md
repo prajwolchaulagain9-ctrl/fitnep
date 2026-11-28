@@ -8,11 +8,11 @@ Unrelated work has been retained.
 
 | File or UI | Current status |
 | --- | --- |
-| `lib/features/authentication/presentation/pages/app_under_development_page.dart` | `AppUnderDevelopmentPage` has no caller. `/app-under-development` redirects to the appropriate current flow instead. |
-| `lib/features/onboarding/presentation/pages/demo_entry_page.dart` | `/demo` is registered only with Firebase emulator mode enabled. No live-app entry. |
-| `lib/features/packages/presentation/pages/packages_page.dart` | Alternate package UI used only by the emulator route. Live clients use `PackageSelectionPage`. |
+| `lib/features/authentication/pages/app_under_development_page.dart` | `AppUnderDevelopmentPage` has no caller. `/app-under-development` redirects to the appropriate current flow instead. |
+| `lib/features/onboarding/pages/demo_entry_page.dart` | `/demo` is registered only with Firebase emulator mode enabled. No live-app entry. |
+| `lib/features/packages/pages/packages_page.dart` | Alternate package UI used only by the emulator route. Live clients use `PackageSelectionPage`. |
 | `PrivacyPolicyPage.review` and its private acceptance screen in `privacy_policy_page.dart` | Legacy age/guardian review UI has no current caller. Normal signup and consent use explicit agreement and public policy links; the legacy implementation is retained. |
-| `lib/features/admin/data/datasources/admin_local_datasource.dart` | Mock admin datasource used by tests only. Production uses `AdminRemoteDatasource`. |
+| `lib/features/admin/data/admin_local_datasource.dart` | Mock admin datasource used by tests only. Production uses `AdminRemoteDatasource`. |
 
 ## Public navigation
 

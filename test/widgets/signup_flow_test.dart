@@ -1,3 +1,6 @@
+import 'package:fitnep/features/client/pages/client_home_page.dart';
+import 'package:fitnep/features/packages/data/package_repository.dart';
+
 import '../support/empty_package_catalog.dart';
 import '../support/offline_hosted_session.dart';
 
@@ -14,17 +17,17 @@ import 'package:fitnep/app/app.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
-import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/features/notifications/notification_controller.dart';
+import 'package:fitnep/shared/firebase_providers.dart';
 import 'package:fitnep/features/authentication/data/authentication_service.dart';
 import 'package:fitnep/features/authentication/data/email_verification_service.dart';
 import 'package:fitnep/features/authentication/data/google_credential_provider.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/authentication_controller.dart';
+import 'package:fitnep/features/authentication/authentication_controller.dart';
 import 'package:fitnep/features/authorization/data/authorization_repository.dart';
-import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
-import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
-import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
+import 'package:fitnep/features/health_assessment/data/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_form.dart';
+import 'package:fitnep/features/health_assessment/client_intake_controller.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -47,7 +50,11 @@ class _IntakeWorkspace extends Fake implements IntakeWorkspaceRepository {
 }
 
 class _SignupProfile extends Fake implements AuthorizationRepository {
+  _SignupProfile(this.auth, {required this.newGoogleAccount});
+  final _Auth auth;
+  final bool newGoogleAccount;
   Map<String, dynamic>? saved;
+  Map<String, dynamic>? onboarding;
 
   @override
   Future<Map<String, dynamic>> request(
@@ -56,9 +63,21 @@ class _SignupProfile extends Fake implements AuthorizationRepository {
     Map<String, dynamic>? data,
     Map<String, dynamic>? query,
   }) async {
+    if (path == 'profile/me/onboarding' && method == 'PUT') {
+      onboarding = data;
+      return {'onboarding': onboarding};
+    }
     expect(path, 'profile/me');
     if (method == 'PATCH') saved = data;
     return {
+      'onboarding':
+          onboarding ??
+          {
+            'status':
+                auth.signUps > 0 || (newGoogleAccount && auth.googleSignIns > 0)
+                ? 'required'
+                : 'completed',
+          },
       'account': {
         'id': 'signup-client',
         'full_name': 'Test Client',
@@ -229,7 +248,7 @@ Future<void> _loadCaptureFonts() async {
   await icons.load();
   final inter = FontLoader('Inter')
     ..addFont(
-      File('assets/fonts/Inter-Variable.ttf')
+      File('lib/shared/assets/fonts/Inter-Variable.ttf')
           .readAsBytes()
           .then(ByteData.sublistView),
     );
@@ -242,6 +261,7 @@ Future<ProviderContainer> _open(
   _Auth auth, {
   _Google? google,
   _Verification? verification,
+  bool newGoogleAccount = false,
   RegistrationPrivacyRequest? privacy,
   Future<bool> Function()? staffPasswordCheck,
 }) async {
@@ -258,7 +278,11 @@ Future<ProviderContainer> _open(
       overrides: [
         emptyPackageCatalogOverride,
         emptyMembershipOverride,
-        authorizationRepositoryProvider.overrideWithValue(_SignupProfile()),
+        authorizationRepositoryProvider.overrideWithValue(
+          _SignupProfile(auth, newGoogleAccount: newGoogleAccount),
+        ),
+        availablePackagesProvider.overrideWith((ref) async => []),
+        packageMembershipsProvider.overrideWith((ref) async => []),
         intakeWorkspaceRepositoryProvider.overrideWithValue(_IntakeWorkspace()),
         ownClientIntakeProvider.overrideWith(
           (ref, uid) async => throw const ClientIntakeException(
@@ -279,7 +303,12 @@ Future<ProviderContainer> _open(
           final user = await ref.watch(authenticationStateProvider.future);
           return user == null
               ? null
-              : (uid: user.uid, role: FitNepRole.client, auditRead: false);
+              : (
+                  uid: user.uid,
+                  role: FitNepRole.client,
+                  auditRead: false,
+                  paymentsVerify: false,
+                );
         }),
         notificationControllerProvider.overrideWith(EmptyNotifications.new),
         sessionPreferenceStoreProvider.overrideWithValue(
@@ -300,7 +329,7 @@ Future<ProviderContainer> _open(
   if (const bool.fromEnvironment('FITNEP_CAPTURE_AUTH_UI')) {
     await tester.runAsync(() async {
       await precacheImage(
-        const AssetImage('assets/icons/google_g.png'),
+        const AssetImage('lib/shared/assets/icons/google_g.png'),
         tester.element(find.byType(FitNepApp)),
       );
       await precacheImage(
@@ -389,7 +418,7 @@ void main() {
       expect(find.text('Checking your account…'), findsNothing);
       router.go(AppRoutes.changeStaffPasswordPath);
       await tester.pumpAndSettle();
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.byType(ClientHomePage), findsOneWidget);
       await _close(tester, auth);
     },
   );
@@ -413,7 +442,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pump(const Duration(seconds: 3));
       expect(checks, 1);
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.byType(ClientHomePage), findsOneWidget);
       expect(find.text('Checking your account…'), findsNothing);
       expect(find.text('We couldn’t connect.'), findsNothing);
       await _close(tester, auth);
@@ -434,7 +463,7 @@ void main() {
     await _signInExisting(tester, container);
     await tester.pumpAndSettle();
     expect(find.text('We couldn’t connect.'), findsOneWidget);
-    expect(find.text('Choose a package'), findsNothing);
+    expect(find.byType(ClientHomePage), findsNothing);
     await tester.tap(find.text('Use another account'));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('welcome_carousel')), findsOneWidget);
@@ -466,7 +495,7 @@ void main() {
         find.text('The privacy service is temporarily unavailable.'),
         findsOneWidget,
       );
-      expect(find.text('Choose a package'), findsNothing);
+      expect(find.byType(ClientHomePage), findsNothing);
 
       await tester.tap(find.text('Read Privacy Policy'));
       await tester.pumpAndSettle();
@@ -477,7 +506,7 @@ void main() {
       available = true;
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.byType(ClientHomePage), findsOneWidget);
       await _close(tester, auth);
     },
   );
@@ -518,7 +547,7 @@ void main() {
 
       pending.complete(true);
       await tester.pumpAndSettle();
-      expect(find.text('Choose a package'), findsNothing);
+      expect(find.byType(ClientHomePage), findsNothing);
       await _close(tester, auth);
     },
   );
@@ -554,10 +583,10 @@ void main() {
         find.text('Could not save your agreement. Please try again.'),
         findsOneWidget,
       );
-      expect(find.text('Choose a package'), findsNothing);
+      expect(find.byType(ClientHomePage), findsNothing);
       await tester.tap(find.text('Agree and continue'));
       await tester.pumpAndSettle();
-      expect(find.text('Choose a package'), findsOneWidget);
+      expect(find.byType(ClientHomePage), findsOneWidget);
       expect(attempts, 2);
       await _close(tester, auth);
     },
@@ -650,7 +679,7 @@ void main() {
     await tester.ensureVisible(verify);
     await tester.tap(verify);
     await tester.pumpAndSettle();
-    expect(find.text('My profile'), findsOneWidget);
+    expect(find.text('A little about you'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -681,7 +710,26 @@ void main() {
       expect(savedConsent!.containsKey('age'), isFalse);
       expect(savedConsent, containsPair('terms_accepted', true));
       expect(savedConsent, containsPair('guardian_consent_confirmed', false));
-      expect(find.text('My profile'), findsOneWidget);
+      expect(find.text('A little about you'), findsOneWidget);
+      final router = container.read(appRouterProvider);
+      router.go(AppRoutes.clientPackages);
+      await tester.pumpAndSettle();
+      expect(find.text('A little about you'), findsOneWidget);
+      router.goNamed(
+        AppRoutes.clientCheckoutName,
+        pathParameters: {'membershipId': 'pending-id'},
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('A little about you'), findsOneWidget);
+      await tester.ensureVisible(find.text('Skip for now'));
+      await tester.tap(find.text('Skip for now'));
+      await tester.pumpAndSettle();
+      expect(find.text('Available packages'), findsOneWidget);
+      router.go(AppRoutes.clientHome);
+      await tester.pumpAndSettle();
+      expect(find.text('Finish onboarding'), findsOneWidget);
+      router.go(AppRoutes.ownProfile);
+      await tester.pumpAndSettle();
       final birthDate = find.widgetWithText(TextField, 'Date of birth');
       expect(find.byKey(const ValueKey('height_cm')), findsNothing);
       final year = DateTime.now().toUtc().year - 17;
@@ -691,7 +739,7 @@ void main() {
       expect(find.text('Parent or guardian consent'), findsOneWidget);
       await tester.tap(find.text('Confirm permission'));
       await tester.pumpAndSettle();
-      final next = find.text('Continue to health intake');
+      final next = find.text('Save profile');
       await tester.ensureVisible(next);
       await tester.tap(next);
       await tester.pumpAndSettle();
@@ -699,13 +747,7 @@ void main() {
           container.read(authorizationRepositoryProvider) as _SignupProfile;
       expect(repository.saved?['guardian_consent_confirmed'], true);
       expect(repository.saved?['date_of_birth'], '$year-01-01');
-      expect(find.text('Step 1 of 3'), findsOneWidget);
-      expect(find.text('Date of birth'), findsNothing);
-      final finishLater = find.text('Finish later');
-      await tester.ensureVisible(finishLater);
-      await tester.tap(finishLater);
-      await tester.pumpAndSettle();
-      expect(find.text('Welcome back'), findsOneWidget);
+      expect(find.text('My profile'), findsOneWidget);
       await _close(tester, auth);
     },
   );
@@ -737,7 +779,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '123456');
     await tester.tap(find.widgetWithText(FilledButton, 'Verify email'));
     await tester.pumpAndSettle();
-    expect(find.text('My profile'), findsOneWidget);
+    expect(find.text('A little about you'), findsOneWidget);
     await _close(tester, auth);
   });
 
@@ -746,7 +788,12 @@ void main() {
     (tester) async {
       final auth = _Auth();
       final google = _Google()..cancel = true;
-      final container = await _open(tester, auth, google: google);
+      final container = await _open(
+        tester,
+        auth,
+        google: google,
+        newGoogleAccount: true,
+      );
       container.read(appRouterProvider).go(AppRoutes.signupPath);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('signup_agreement')));
@@ -759,7 +806,7 @@ void main() {
       await tester.tap(find.text('Continue with Google'));
       await tester.pumpAndSettle();
       expect(auth.googleSignIns, 1);
-      expect(find.text('My profile'), findsOneWidget);
+      expect(find.text('A little about you'), findsOneWidget);
       expect(find.text('Verify your email'), findsNothing);
       await _close(tester, auth);
     },

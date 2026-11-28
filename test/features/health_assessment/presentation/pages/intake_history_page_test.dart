@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:fitnep/features/health_assessment/data/repositories/intake_history_repository.dart';
-import 'package:fitnep/features/health_assessment/presentation/pages/intake_history_page.dart';
+import 'package:fitnep/features/health_assessment/data/intake_history_repository.dart';
+import 'package:fitnep/features/health_assessment/pages/intake_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

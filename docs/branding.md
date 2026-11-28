@@ -3,7 +3,7 @@
 The original image fill was exported from Figma node `4:994`:
 https://www.figma.com/design/LFz2aFEFAJjVBlVjrnEsFW/Untitled?node-id=4-994
 The supplied `146:2` link is a separate 100×100 vector, not the auth logo.
-The source asset is `assets/images/fitnep_logo.png` (641×615).
+The source asset is `lib/shared/assets/images/fitnep_logo.png` (641×615).
 `FitNepWordmark` displays the original symbol and FitNEP name with the
 **Your Health Partner** tagline on startup, welcome, recovery, and the client
 header.

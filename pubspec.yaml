@@ -23,6 +23,8 @@ dependencies:
   cloud_functions: ^7.1.0
   google_fonts: ^6.2.1
   google_sign_in: ^7.2.0
+  image_picker: ^1.2.4
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:
@@ -40,10 +42,10 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/icons/google_g.png
-    - assets/images/fitnep_logo.png
-    - assets/fonts/Inter-LICENSE.txt
+    - lib/shared/assets/icons/google_g.png
+    - lib/shared/assets/images/fitnep_logo.png
+    - lib/shared/assets/fonts/Inter-LICENSE.txt
   fonts:
     - family: Inter
       fonts:
-        - asset: assets/fonts/Inter-Variable.ttf
+        - asset: lib/shared/assets/fonts/Inter-Variable.ttf

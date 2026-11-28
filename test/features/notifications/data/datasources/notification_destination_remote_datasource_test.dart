@@ -1,8 +1,8 @@
 import 'package:dio/dio.dart';
-import 'package:fitnep/core/network/api_client.dart';
-import 'package:fitnep/core/storage/token_storage.dart';
-import 'package:fitnep/features/notifications/data/datasources/notification_destination_remote_datasource.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
+import 'package:fitnep/shared/api_client.dart';
+import 'package:fitnep/shared/token_storage.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_remote_datasource.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -6,9 +6,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-import '../../../core/config/app_config.dart';
-import '../../../core/services/firebase_providers.dart';
-import '../../../core/network/backend_resolver.dart';
+import '../../../shared/app_config.dart';
+import '../../../shared/firebase_providers.dart';
+import '../../../shared/backend_resolver.dart';
 
 typedef HostedIdentity = ({String uid, String token, int authTime});
 typedef HostedIdentityReader = Future<HostedIdentity?> Function();

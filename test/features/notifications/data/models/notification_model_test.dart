@@ -1,5 +1,5 @@
-import 'package:fitnep/features/notifications/data/models/notification_model.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
+import 'package:fitnep/features/notifications/data/notification_model.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

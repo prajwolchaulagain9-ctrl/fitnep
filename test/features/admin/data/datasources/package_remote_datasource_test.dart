@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
-import 'package:fitnep/core/network/api_client.dart';
-import 'package:fitnep/core/storage/token_storage.dart';
-import 'package:fitnep/features/admin/data/datasources/package_remote_datasource.dart';
+import 'package:fitnep/shared/api_client.dart';
+import 'package:fitnep/shared/token_storage.dart';
+import 'package:fitnep/features/admin/data/package_remote_datasource.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

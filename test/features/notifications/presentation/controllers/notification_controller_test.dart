@@ -1,8 +1,8 @@
 import 'dart:async';
 
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
-import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
+import 'package:fitnep/features/notifications/data/notification_repository.dart';
+import 'package:fitnep/features/notifications/notification_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 

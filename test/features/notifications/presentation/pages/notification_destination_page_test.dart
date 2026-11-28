@@ -1,9 +1,9 @@
-import 'package:fitnep/features/notifications/data/datasources/notification_destination_remote_datasource.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_destination_record.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
-import 'package:fitnep/features/notifications/domain/repositories/notification_destination_repository.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_destination_controller.dart';
-import 'package:fitnep/features/notifications/presentation/pages/notification_destination_page.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_remote_datasource.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_record.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
+import 'package:fitnep/features/notifications/data/notification_destination_repository.dart';
+import 'package:fitnep/features/notifications/notification_destination_controller.dart';
+import 'package:fitnep/features/notifications/pages/notification_destination_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

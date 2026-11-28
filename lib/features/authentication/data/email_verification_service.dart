@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/services/firebase_providers.dart';
-import '../../../core/config/app_config.dart';
+import '../../../shared/firebase_providers.dart';
+import '../../../shared/app_config.dart';
 import 'authentication_service.dart';
 import 'hosted_auth_client.dart';
 

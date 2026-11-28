@@ -1,0 +1,19 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../app/routes/app_routes.dart';
+import 'authentication_controller.dart';
+
+Future<bool> signOutToWelcome(
+  BuildContext context,
+  WidgetRef ref, {
+  GoRouter? router,
+}) async {
+  final navigation = router ?? GoRouter.of(context);
+  final signedOut = await ref
+      .read(authenticationControllerProvider.notifier)
+      .signOut();
+  if (signedOut) navigation.goNamed(AppRoutes.welcome);
+  return signedOut;
+}

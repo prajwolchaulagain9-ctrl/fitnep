@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
-import 'package:fitnep/core/network/api_client.dart';
-import 'package:fitnep/core/storage/token_storage.dart';
-import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
-import 'package:fitnep/features/health_assessment/data/repositories/client_intake_repository_impl.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
+import 'package:fitnep/shared/api_client.dart';
+import 'package:fitnep/shared/token_storage.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_repository_impl.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

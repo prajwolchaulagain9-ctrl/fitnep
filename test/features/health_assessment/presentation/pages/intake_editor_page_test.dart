@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:fitnep/features/authorization/data/authorization_repository.dart';
-import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
-import 'package:fitnep/features/health_assessment/presentation/pages/intake_editor_page.dart';
+import 'package:fitnep/features/health_assessment/data/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/pages/intake_editor_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -82,6 +82,7 @@ void main() {
       expect(api.submissions, hasLength(2));
       expect(api.submissions.first, api.submissions.last);
       expect(api.submissions.last['expected_version'], 1);
+      expect(api.submissions.last['answers']['waist_cm'], '78');
       expect(
         api.submissions.last['request_id'],
         matches(RegExp(r'^[a-f0-9]{32}$')),
@@ -97,6 +98,9 @@ void main() {
       await _open(tester, api);
       expect(find.text('Step 1 of 3'), findsOneWidget);
       expect(find.byKey(const ValueKey('full_name')), findsNothing);
+      expect(find.byKey(const ValueKey('waist_cm')), findsNothing);
+      expect(find.byKey(const ValueKey('hip_cm')), findsNothing);
+      expect(find.byKey(const ValueKey('chest_cm')), findsNothing);
       expect(find.byIcon(Icons.height_rounded), findsOneWidget);
       expect(find.byIcon(Icons.monitor_weight_outlined), findsOneWidget);
       expect(find.byIcon(Icons.speed_rounded), findsOneWidget);
@@ -123,6 +127,24 @@ void main() {
       expect(find.text('22.9 kg/m²'), findsOneWidget);
     },
   );
+
+  testWidgets('prefills onboarding values only for an untouched intake', (
+    tester,
+  ) async {
+    final api = _IntakeApi()
+      .._draftRevision = 0
+      ..onboarding = {'status': 'completed', 'heightCm': 175, 'weightKg': 70};
+    await _open(tester, api);
+    expect(find.text('22.9 kg/m²'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('weight_kg')), '75');
+    await _tap(tester, 'Save draft');
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await _open(tester, api);
+    await _tap(tester, 'Back');
+    expect(find.text('75'), findsOneWidget);
+    expect(find.text('24.5 kg/m²'), findsOneWidget);
+  });
 }
 
 Future<void> _open(WidgetTester tester, _IntakeApi api) async {
@@ -164,6 +186,7 @@ class _ProfileApi extends Fake implements AuthorizationRepository {
     }
     return {
       'account': {'id': 'client-1'},
+      'onboarding': ?api.onboarding,
     };
   }
 }
@@ -178,6 +201,7 @@ class _IntakeApi {
   Map<String, dynamic> _answers = {'full_name': 'Saved Name'};
   Map<String, dynamic>? lastDraft;
   Map<String, dynamic>? profileUpdate;
+  Map<String, dynamic>? onboarding;
   final submissions = <Map<String, dynamic>>[];
   var membershipActive = true;
   var profileReady = true;
@@ -196,6 +220,7 @@ class _IntakeApi {
       'contact_email': 'client@example.test',
       'height_cm': '175',
       'weight_kg': '70',
+      'waist_cm': '78',
       'fitness_goals': 'Stay active',
       'medical_history': 'None',
       'allergies': 'None',

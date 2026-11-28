@@ -2,23 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/config/app_config.dart';
-import '../../core/authorization/role_permissions.dart';
-import '../../core/authorization/authorization_refresh.dart';
+import '../../shared/app_config.dart';
+import '../../shared/role_permissions.dart';
+import '../../shared/authorization_refresh.dart';
 import '../../features/authorization/data/authorization_repository.dart';
-import '../../features/authorization/domain/account.dart';
-import '../../features/authorization/presentation/account_session.dart';
-import '../../features/authentication/presentation/controllers/authentication_controller.dart';
-import '../../features/authentication/presentation/pages/registration_privacy_gate.dart';
-import '../../features/authentication/presentation/hosted_session_gate.dart';
-export '../../core/authorization/role_permissions.dart';
+import '../../features/authorization/data/account.dart';
+import '../../features/authorization/account_session.dart';
+import '../../features/authentication/authentication_controller.dart';
+import '../../features/authentication/pages/registration_privacy_gate.dart';
+import '../../features/authentication/hosted_session_gate.dart';
+import '../../features/onboarding/data/client_onboarding_status.dart';
+export '../../shared/role_permissions.dart';
 import 'app_routes.dart';
 
-typedef RouteSession = ({String uid, FitNepRole? role, bool auditRead});
+typedef RouteSession = ({
+  String uid,
+  FitNepRole? role,
+  bool auditRead,
+  bool paymentsVerify,
+});
 
 extension RouteSessionAuthorization on RouteSession {
-  AuthorizationService get authorization =>
-      AuthorizationService(role, auditRead: auditRead);
+  AuthorizationService get authorization => AuthorizationService(
+    role,
+    auditRead: auditRead,
+    paymentsVerify: paymentsVerify,
+  );
 }
 
 /// Rechecks the live server-owned account whenever its Firestore record changes.
@@ -32,12 +41,15 @@ final routeSessionProvider = FutureProvider.autoDispose<RouteSession?>((
       : state.requireValue;
   if (account == null) {
     final user = ref.read(authenticationStateProvider).value;
-    return user == null ? null : (uid: user.uid, role: null, auditRead: false);
+    return user == null
+        ? null
+        : (uid: user.uid, role: null, auditRead: false, paymentsVerify: false);
   }
   return (
     uid: account.id,
     role: account.isActive ? account.role : null,
     auditRead: account.isActive && account.auditRead,
+    paymentsVerify: account.isActive && account.paymentsVerify,
   );
 }, retry: (retryCount, error) => null);
 
@@ -46,11 +58,13 @@ class RouteAccessGate extends ConsumerWidget {
   const RouteAccessGate({
     required this.requiredPermission,
     required this.builder,
+    this.requiresClientOnboarding = false,
     super.key,
   });
 
   final String requiredPermission;
   final WidgetBuilder builder;
+  final bool requiresClientOnboarding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -86,7 +100,9 @@ class RouteAccessGate extends ConsumerWidget {
                 session.role,
                 ref.watch(authorizationEpochProvider),
               )),
-              child: builder(context),
+              child: requiresClientOnboarding
+                  ? _ClientOnboardingGate(uid: session.uid, builder: builder)
+                  : Builder(builder: builder),
             );
             if (AppConfig.hostedSessionsEnabled) {
               child = HostedSessionGate(uid: session.uid, child: child);
@@ -102,6 +118,44 @@ class RouteAccessGate extends ConsumerWidget {
 
   Widget _loading() =>
       const Scaffold(body: Center(child: CircularProgressIndicator()));
+}
+
+class _ClientOnboardingGate extends ConsumerWidget {
+  const _ClientOnboardingGate({required this.uid, required this.builder});
+
+  final String uid;
+  final WidgetBuilder builder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final progress = clientOnboardingStatusProvider(uid);
+    return ref
+        .watch(progress)
+        .when(
+          skipLoadingOnRefresh: false,
+          loading: () =>
+              const Scaffold(body: Center(child: CircularProgressIndicator())),
+          error: (_, _) => _AccessMessage(
+            title: 'Could not load your setup',
+            message: 'Check your connection and try again.',
+            onRetry: () => ref.invalidate(progress),
+          ),
+          data: (status) {
+            if (status != ClientOnboardingStatus.pending) {
+              return builder(context);
+            }
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted &&
+                  ref.read(progress).value == ClientOnboardingStatus.pending) {
+                context.goNamed(AppRoutes.clientOnboardingName);
+              }
+            });
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          },
+        );
+  }
 }
 
 class _AccessMessage extends ConsumerWidget {

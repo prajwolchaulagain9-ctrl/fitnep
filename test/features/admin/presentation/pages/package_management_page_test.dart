@@ -1,13 +1,13 @@
 import 'dart:async';
 
 import 'package:fitnep/app/routes/app_routes.dart';
-import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
-import 'package:fitnep/features/admin/domain/entities/package_history_entity.dart';
-import 'package:fitnep/features/admin/domain/repositories/package_repository.dart';
-import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart';
-import 'package:fitnep/features/admin/presentation/pages/create_package_page.dart';
-import 'package:fitnep/features/admin/presentation/pages/package_management_page.dart';
-import 'package:fitnep/features/admin/presentation/pages/package_history_page.dart';
+import 'package:fitnep/features/admin/data/package_entity.dart';
+import 'package:fitnep/features/admin/data/package_history_entity.dart';
+import 'package:fitnep/features/admin/data/package_repository.dart';
+import 'package:fitnep/features/admin/package_management_controller.dart';
+import 'package:fitnep/features/admin/pages/create_package_page.dart';
+import 'package:fitnep/features/admin/pages/package_management_page.dart';
+import 'package:fitnep/features/admin/pages/package_history_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

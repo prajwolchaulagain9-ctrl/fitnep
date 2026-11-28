@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:fitnep/features/authentication/data/hosted_session_service.dart';
-import 'package:fitnep/core/network/backend_resolver.dart';
+import 'package:fitnep/shared/backend_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _Store implements HostedSessionStore {

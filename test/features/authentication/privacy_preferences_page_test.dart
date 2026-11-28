@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:fitnep/features/authentication/domain/entities/privacy_preferences.dart';
-import 'package:fitnep/features/authentication/domain/repositories/privacy_preferences_repository.dart';
-import 'package:fitnep/features/authentication/presentation/controllers/privacy_preferences_controller.dart';
-import 'package:fitnep/features/authentication/presentation/pages/privacy_preferences_page.dart';
+import 'package:fitnep/features/authentication/data/privacy_preferences.dart';
+import 'package:fitnep/features/authentication/data/privacy_preferences_repository.dart';
+import 'package:fitnep/features/authentication/privacy_preferences_controller.dart';
+import 'package:fitnep/features/authentication/pages/privacy_preferences_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

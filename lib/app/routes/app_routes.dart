@@ -49,7 +49,11 @@ abstract final class AppRoutes {
   static const clientHome = '/client/home';
   static const clientNotifications = '/client/notifications';
   static const clientPrivacyPreferences = '/client/privacy-preferences';
+  static const clientOnboarding = '/client/onboarding';
+  static const clientOnboardingName = 'client-onboarding';
   static const clientPackages = '/client/packages';
+  static const clientCheckout = '/client/checkout/:membershipId';
+  static const clientCheckoutName = 'client-checkout';
   static const clientMembership = '/client/membership';
   static const clientIntake = '/client/intake';
   static const clientIntakeName = 'client-intake';
@@ -77,6 +81,7 @@ abstract final class AppRoutes {
   // Admin
   static const adminClients = '/admin/clients';
   static const clientProfile = '/admin/clients/:id';
+  static const adminClientPlansName = 'admin-client-plans';
   static const auditLog = '/admin/audit-log';
   static const legacyAuditLog = '/admin/audit-log/legacy';
   static const adminPackageApprovals = '/admin/package-approvals';

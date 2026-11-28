@@ -1,7 +1,7 @@
-import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
-import 'package:fitnep/features/admin/domain/repositories/package_repository.dart';
-import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart';
-import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
+import 'package:fitnep/features/admin/data/package_entity.dart';
+import 'package:fitnep/features/admin/data/package_repository.dart';
+import 'package:fitnep/features/admin/package_management_controller.dart';
+import 'package:fitnep/features/packages/membership_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final emptyPackageCatalogOverride = packageRepositoryProvider.overrideWithValue(

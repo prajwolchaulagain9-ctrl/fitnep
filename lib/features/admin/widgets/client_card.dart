@@ -1,0 +1,167 @@
+import 'package:flutter/material.dart';
+
+import '../data/client_entity.dart';
+import '../../../app/theme/app_theme.dart';
+import 'status_badge.dart';
+import 'package_chip.dart';
+
+class ClientCard extends StatelessWidget {
+  final ClientEntity client;
+  final VoidCallback onTap;
+
+  const ClientCard({super.key, required this.client, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(16),
+            splashColor: Theme.of(context).colorScheme.primary
+                .withValues(alpha: 0.06),
+            highlightColor: Theme.of(context).colorScheme.primary
+                .withValues(alpha: 0.04),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _ClientAvatar(client: client),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                client.name,
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            StatusBadge(status: client.status),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            PackageChip(packageName: client.packageName),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.person_outline_rounded,
+                                    size: 13,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      client.assignedDietitianName,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodySmall
+                                          ?.copyWith(
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                            fontSize: 11,
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ClientAvatar extends StatelessWidget {
+  final ClientEntity client;
+  const _ClientAvatar({required this.client});
+
+  static const _colors = [
+    AppColors.primary,
+    AppColors.info,
+    AppColors.actionPackageChange,
+    AppColors.warning,
+    AppColors.error,
+    AppColors.success,
+  ];
+
+  Color get _avatarColor {
+    final hash = client.name.codeUnits.fold(0, (p, e) => p + e);
+    return _colors[hash % _colors.length];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 48,
+      height: 48,
+      decoration: BoxDecoration(
+        color: _avatarColor.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: _avatarColor.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        client.initials,
+        style: TextStyle(
+          color: _avatarColor,
+          fontWeight: FontWeight.w700,
+          fontSize: 16,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}

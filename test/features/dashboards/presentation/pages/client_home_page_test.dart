@@ -1,22 +1,24 @@
+import 'package:fitnep/features/onboarding/data/client_onboarding_status.dart';
+
 import '../../../../support/offline_hosted_session.dart';
 
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
 import 'package:fitnep/features/authentication/data/registration_privacy.dart';
-import 'package:fitnep/features/dashboards/presentation/pages/client_home_page.dart';
-import 'package:fitnep/features/health_assessment/data/datasources/client_intake_remote_datasource.dart';
-import 'package:fitnep/features/health_assessment/data/repositories/intake_workspace_repository.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
-import 'package:fitnep/features/health_assessment/presentation/controllers/client_intake_controller.dart';
-import 'package:fitnep/features/notifications/domain/entities/notification_entity.dart';
-import 'package:fitnep/features/notifications/domain/repositories/notification_repository.dart';
-import 'package:fitnep/features/notifications/presentation/controllers/notification_controller.dart';
-import 'package:fitnep/features/notifications/presentation/pages/notifications_page.dart';
-import 'package:fitnep/features/purchases/domain/entities/package_purchase_entity.dart';
-import 'package:fitnep/features/purchases/domain/repositories/package_purchase_repository.dart';
-import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
+import 'package:fitnep/features/client/pages/client_home_page.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_remote_datasource.dart';
+import 'package:fitnep/features/health_assessment/data/intake_workspace_repository.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_form.dart';
+import 'package:fitnep/features/health_assessment/client_intake_controller.dart';
+import 'package:fitnep/features/notifications/data/notification_entity.dart';
+import 'package:fitnep/features/notifications/data/notification_repository.dart';
+import 'package:fitnep/features/notifications/notification_controller.dart';
+import 'package:fitnep/features/notifications/pages/notifications_page.dart';
+import 'package:fitnep/features/packages/data/package_purchase_entity.dart';
+import 'package:fitnep/features/packages/data/package_purchase_repository.dart';
+import 'package:fitnep/features/packages/membership_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,12 +31,18 @@ void main() {
       final container = ProviderContainer(
         overrides: [
           offlineHostedSessionOverride,
+          clientOnboardingProgressProvider.overrideWith(
+            (ref, uid) async => const ClientOnboardingProgress(
+              status: ClientOnboardingStatus.completed,
+            ),
+          ),
           registrationAcceptedProvider.overrideWith((ref, uid) async => true),
           routeSessionProvider.overrideWith(
             (ref) async => (
               uid: 'authenticated-client',
               role: FitNepRole.client,
               auditRead: false,
+              paymentsVerify: false,
             ),
           ),
           notificationRepositoryProvider.overrideWithValue(
@@ -106,12 +114,18 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         offlineHostedSessionOverride,
+        clientOnboardingProgressProvider.overrideWith(
+          (ref, uid) async => const ClientOnboardingProgress(
+            status: ClientOnboardingStatus.completed,
+          ),
+        ),
         registrationAcceptedProvider.overrideWith((ref, uid) async => true),
         routeSessionProvider.overrideWith(
           (ref) async => (
             uid: 'authenticated-client',
             role: FitNepRole.client,
             auditRead: false,
+            paymentsVerify: false,
           ),
         ),
         notificationRepositoryProvider.overrideWithValue(repository),

@@ -2,18 +2,14 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fitnep/app/theme/app_theme.dart';
-import 'package:fitnep/features/admin/domain/entities/package_entity.dart';
-import 'package:fitnep/features/admin/presentation/controllers/package_management_controller.dart'
-    show activePackagesProvider;
+import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/features/packages/data/package_repository.dart';
-import 'package:fitnep/features/packages/domain/package_models.dart';
-import 'package:fitnep/features/packages/presentation/pages/package_selection_page.dart';
-import 'package:fitnep/features/packages/presentation/pages/packages_page.dart';
-import 'package:fitnep/features/purchases/domain/entities/package_purchase_entity.dart';
-import 'package:fitnep/features/purchases/presentation/controllers/membership_controller.dart';
+import 'package:fitnep/features/packages/data/package_models.dart';
+import 'package:fitnep/features/packages/pages/packages_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 const basic = PackageOption(
   id: 'basic',
@@ -33,22 +29,6 @@ class _User extends Fake implements User {
   _User(this.uid);
   @override
   final String uid;
-}
-
-class _BasicMembership extends MembershipController {
-  @override
-  MembershipState build() => const MembershipState(
-    purchase: PackagePurchaseEntity(
-      id: 'membership-basic',
-      packageId: 'Basic',
-      packageName: 'Basic',
-      pricePaid: 2500,
-      durationMonths: 1,
-      featureDescription: 'Nutrition support',
-      purchasedAt: null,
-      expiresAt: null,
-    ),
-  );
 }
 
 class _Repository extends Fake implements PackageRepository {
@@ -72,7 +52,12 @@ class _Repository extends Fake implements PackageRepository {
   }
 
   @override
-  Future<PackageMembership> select(String packageId, String requestId) async {
+  Future<PackageMembership> select(
+    String packageId,
+    String requestId, {
+    String? clientId,
+  }) async {
+    expect(clientId, 'client-a');
     requests.add(requestId);
     if (selecting != null) await selecting!.future;
     if (selectionError != null) throw selectionError!;
@@ -85,7 +70,21 @@ Future<void> _open(
   WidgetTester tester,
   _Repository repository, {
   Stream<User?>? accounts,
+  ThemeData? theme,
 }) async {
+  final router = GoRouter(
+    routes: [
+      GoRoute(path: '/', builder: (_, _) => const PackagesPage()),
+      GoRoute(
+        path: AppRoutes.clientCheckout,
+        name: AppRoutes.clientCheckoutName,
+        builder: (context, state) => Scaffold(
+          body: Text('Checkout ${state.pathParameters['membershipId']}'),
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -94,7 +93,10 @@ Future<void> _open(
         ),
         packageRepositoryProvider.overrideWithValue(repository),
       ],
-      child: MaterialApp(theme: AppTheme.light, home: const PackagesPage()),
+      child: MaterialApp.router(
+        theme: theme ?? AppTheme.light,
+        routerConfig: router,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -109,7 +111,7 @@ Future<void> choose(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('each package keeps its tier icon when selected', (tester) async {
+  testWidgets('each package keeps its tier icon', (tester) async {
     const tiers = {
       'Basic': Icons.spa_outlined,
       'Standard': Icons.insights_rounded,
@@ -121,32 +123,21 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          activePackagesProvider.overrideWith(
-            (ref) async => [
-              for (final name in tiers.keys)
-                PackageEntity(
-                  id: name,
-                  name: name,
-                  durationMonths: 1,
-                  price: 2500,
-                  featureDescription: 'Nutrition support',
-                  isActive: true,
-                  createdAt: DateTime.utc(2026),
-                ),
-            ],
-          ),
-          membershipControllerProvider.overrideWith(_BasicMembership.new),
+    await _open(
+      tester,
+      _Repository()
+        ..items = [
+          for (final name in tiers.keys)
+            PackageOption(
+              id: name,
+              name: name,
+              durationDays: 30,
+              priceNpr: 2500,
+              features: const ['Nutrition support'],
+            ),
         ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const PackageSelectionPage(),
-        ),
-      ),
+      theme: AppTheme.dark,
     );
-    await tester.pumpAndSettle();
 
     for (final entry in tiers.entries) {
       final card = find.ancestor(
@@ -158,17 +149,6 @@ void main() {
         findsOneWidget,
       );
     }
-    final selectedCard = find.ancestor(
-      of: find.text('Selected'),
-      matching: find.byType(Card),
-    );
-    expect(
-      find.descendant(
-        of: selectedCard,
-        matching: find.byIcon(Icons.check_circle_rounded),
-      ),
-      findsOneWidget,
-    );
   });
 
   testWidgets(
@@ -189,6 +169,9 @@ void main() {
       await tester.pump();
       expect(repository.requests, hasLength(1));
       repository.selecting!.complete();
+      await tester.pumpAndSettle();
+      expect(find.text('Checkout membership-a'), findsOneWidget);
+      GoRouter.of(tester.element(find.text('Checkout membership-a'))).pop();
       await tester.pumpAndSettle();
       expect(find.text('Pending'), findsOneWidget);
       expect(
@@ -228,7 +211,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repository.requests, hasLength(2));
     expect(repository.requests[0], repository.requests[1]);
-    expect(find.text('Pending'), findsOneWidget);
+    expect(find.text('Checkout membership-a'), findsOneWidget);
   });
 
   testWidgets(
@@ -255,6 +238,7 @@ void main() {
       expect(find.text('Starts: 19 Nov 2026, 11:45'), findsOneWidget);
       expect(find.text('Ends: 19 Dec 2026, 11:45'), findsOneWidget);
       expect(find.text('7 days remaining'), findsOneWidget);
+      expect(find.textContaining('full listed price'), findsOneWidget);
       await tester.ensureVisible(find.text('Choose Basic'));
       expect(tester.takeException(), isNull);
     },

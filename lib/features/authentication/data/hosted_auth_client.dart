@@ -2,7 +2,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client_provider.dart';
+import '../../../shared/api_client_provider.dart';
 
 typedef HostedAuthRequest = Future<Map<String, dynamic>> Function(
   String path,

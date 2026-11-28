@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:fitnep/core/network/backend_resolver.dart';
+import 'package:fitnep/shared/backend_resolver.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

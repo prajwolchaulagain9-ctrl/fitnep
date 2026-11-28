@@ -4,8 +4,8 @@ import 'package:dio/dio.dart';
 import 'package:fitnep/app/routes/app_router.dart';
 import 'package:fitnep/app/routes/app_routes.dart';
 import 'package:fitnep/app/routes/route_access_gate.dart';
-import 'package:fitnep/features/admin/data/repositories/staff_account_repository.dart';
-import 'package:fitnep/features/admin/presentation/widgets/staff_records_list.dart';
+import 'package:fitnep/features/admin/data/staff_account_repository.dart';
+import 'package:fitnep/features/admin/widgets/staff_records_list.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,8 +19,12 @@ void main() {
       overrides: [
         offlineHostedSessionOverride,
         routeSessionProvider.overrideWith(
-          (ref) async =>
-              (uid: 'admin-1', role: FitNepRole.admin, auditRead: false),
+          (ref) async => (
+            uid: 'admin-1',
+            role: FitNepRole.admin,
+            auditRead: false,
+            paymentsVerify: false,
+          ),
         ),
         staffAccountRepositoryProvider('admin-1')
             .overrideWithValue(StaffAccountRepository(api.dio)),

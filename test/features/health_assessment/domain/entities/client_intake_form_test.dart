@@ -1,5 +1,5 @@
-import 'package:fitnep/features/authorization/domain/profile_age.dart';
-import 'package:fitnep/features/health_assessment/domain/entities/client_intake_form.dart';
+import 'package:fitnep/features/authorization/data/profile_age.dart';
+import 'package:fitnep/features/health_assessment/data/client_intake_form.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

@@ -3,7 +3,7 @@ import '../support/offline_hosted_session.dart';
 import 'dart:async';
 
 import 'package:fitnep/app/app.dart';
-import 'package:fitnep/core/services/firebase_providers.dart';
+import 'package:fitnep/shared/firebase_providers.dart';
 import 'package:fitnep/shared/widgets/fitnep_wordmark.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

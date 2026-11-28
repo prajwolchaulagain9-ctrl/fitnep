@@ -2,11 +2,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/config/app_config.dart';
-import '../../../core/network/api_client_provider.dart';
-import '../../../core/services/firebase_providers.dart';
-import '../domain/account.dart';
-import '../domain/assigned_client.dart';
+import '../../../shared/app_config.dart';
+import '../../../shared/api_client_provider.dart';
+import '../../../shared/firebase_providers.dart';
+import 'account.dart';
+import 'assigned_client.dart';
 
 final authorizationRepositoryProvider = Provider<AuthorizationRepository>(
   (ref) => AuthorizationRepository(

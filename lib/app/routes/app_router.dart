@@ -1,58 +1,60 @@
-import '../../features/health_assessment/presentation/pages/client_intake_page.dart';
-import '../../features/health_assessment/presentation/pages/intake_editor_page.dart';
-import '../../features/health_assessment/presentation/pages/intake_history_page.dart';
+import '../../features/health_assessment/pages/client_intake_page.dart';
+import '../../features/health_assessment/pages/intake_editor_page.dart';
+import '../../features/health_assessment/pages/intake_history_page.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/authentication/presentation/pages/password_recovery_pages.dart';
-import '../../features/authentication/presentation/pages/login_page.dart';
-import '../../features/authentication/presentation/pages/signup_page.dart';
-import '../../features/authentication/presentation/pages/verify_email_page.dart';
-import '../../features/authentication/presentation/pages/change_staff_password_page.dart';
-import '../../features/admin/presentation/pages/staff_accounts_page.dart';
-import '../../features/admin/presentation/pages/staff_account_history_page.dart';
-import '../../features/authentication/presentation/controllers/authentication_controller.dart';
-import '../../features/authorization/presentation/role_home_page.dart';
-import '../../features/authorization/presentation/profile_page.dart';
-import '../../features/authorization/presentation/user_management_page.dart';
-import '../../features/authorization/presentation/assigned_clients_page.dart';
-import '../../features/authorization/presentation/client_records_page.dart';
-import '../../features/authentication/presentation/pages/privacy_policy_page.dart';
-import '../../features/authentication/presentation/pages/terms_and_conditions_page.dart';
-import '../../features/authentication/presentation/pages/privacy_preferences_page.dart';
-import '../../features/onboarding/presentation/pages/about_page.dart';
-import '../../features/onboarding/presentation/pages/welcome_page.dart';
+import '../../features/authentication/pages/password_recovery_pages.dart';
+import '../../features/authentication/pages/login_page.dart';
+import '../../features/authentication/pages/signup_page.dart';
+import '../../features/authentication/pages/verify_email_page.dart';
+import '../../features/authentication/pages/change_staff_password_page.dart';
+import '../../features/admin/pages/staff_accounts_page.dart';
+import '../../features/admin/pages/staff_account_history_page.dart';
+import '../../features/authentication/authentication_controller.dart';
+import '../../features/authorization/role_home_page.dart';
+import '../../features/authorization/profile_page.dart';
+import '../../features/authorization/user_management_page.dart';
+import '../../features/authorization/assigned_clients_page.dart';
+import '../../features/authorization/client_records_page.dart';
+import '../../features/authentication/pages/privacy_policy_page.dart';
+import '../../features/authentication/pages/terms_and_conditions_page.dart';
+import '../../features/authentication/pages/privacy_preferences_page.dart';
+import '../../features/onboarding/pages/about_page.dart';
+import '../../features/onboarding/pages/client_onboarding_page.dart';
+import '../../features/onboarding/pages/welcome_page.dart';
 import '../../shared/widgets/app_page.dart';
-import '../../features/packages/presentation/pages/packages_page.dart';
-import '../../features/packages/presentation/pages/package_approvals_page.dart';
-import '../../features/onboarding/presentation/pages/demo_entry_page.dart';
-import '../../core/config/app_config.dart';
-import '../../features/admin/presentation/pages/client_list_page.dart';
-import '../../features/admin/presentation/pages/client_profile_page.dart';
-import '../../features/admin/presentation/pages/audit_log_page.dart';
-import '../../features/admin/presentation/pages/create_package_page.dart';
-import '../../features/admin/presentation/pages/edit_package_page.dart';
-import '../../features/admin/presentation/pages/package_management_page.dart';
-import '../../features/admin/presentation/pages/package_history_page.dart';
-import '../../features/admin/domain/entities/package_entity.dart';
-import '../../features/dashboards/presentation/pages/client_home_page.dart';
-import '../../features/notifications/presentation/pages/notifications_page.dart';
-import '../../features/notifications/domain/entities/notification_entity.dart';
-import '../../features/notifications/presentation/pages/notification_destination_page.dart';
-import '../../features/packages/presentation/pages/package_selection_page.dart';
-import '../../features/purchases/presentation/pages/membership_page.dart';
+import '../../features/packages/pages/packages_page.dart';
+import '../../features/packages/pages/package_approvals_page.dart';
+import '../../features/onboarding/pages/demo_entry_page.dart';
+import '../../shared/app_config.dart';
+import '../../features/admin/pages/client_list_page.dart';
+import '../../features/admin/pages/client_profile_page.dart';
+import '../../features/admin/pages/audit_log_page.dart';
+import '../../features/admin/pages/create_package_page.dart';
+import '../../features/admin/pages/edit_package_page.dart';
+import '../../features/admin/pages/package_management_page.dart';
+import '../../features/admin/pages/package_history_page.dart';
+import '../../features/admin/data/package_entity.dart';
+import '../../features/client/pages/client_home_page.dart';
+import '../../features/notifications/pages/notifications_page.dart';
+import '../../features/notifications/data/notification_entity.dart';
+import '../../features/notifications/pages/notification_destination_page.dart';
+import '../../features/packages/pages/checkout_page.dart';
+import '../../features/packages/pages/payment_details_page.dart';
+import '../../features/packages/pages/membership_page.dart';
 import 'app_routes.dart';
 import 'route_access_gate.dart';
-import '../../features/notifications/presentation/controllers/notification_controller.dart';
-import '../../features/notifications/presentation/controllers/notification_destination_controller.dart';
-import '../../features/purchases/presentation/controllers/membership_controller.dart';
-import '../../features/authentication/presentation/controllers/privacy_preferences_controller.dart';
-import '../../features/admin/presentation/controllers/client_list_controller.dart';
-import '../../features/admin/presentation/controllers/client_profile_controller.dart';
-import '../../features/admin/presentation/controllers/audit_log_controller.dart';
-import '../../features/admin/presentation/controllers/package_management_controller.dart';
+import '../../features/notifications/notification_controller.dart';
+import '../../features/notifications/notification_destination_controller.dart';
+import '../../features/packages/membership_controller.dart';
+import '../../features/authentication/privacy_preferences_controller.dart';
+import '../../features/admin/client_list_controller.dart';
+import '../../features/admin/client_profile_controller.dart';
+import '../../features/admin/audit_log_controller.dart';
+import '../../features/admin/package_management_controller.dart';
 
 final _routerRefreshProvider = Provider<_RouterRefreshNotifier>((ref) {
   final notifier = _RouterRefreshNotifier();
@@ -108,12 +110,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
       final isAuthenticated = authentication.value != null;
       final path = state.uri.path;
-      if (!isAuthenticated) {
-        refreshNotifier.intakeSetupUid = null;
-      } else if (path == AppRoutes.signupPath ||
-          path == AppRoutes.verifyEmailPath) {
-        refreshNotifier.intakeSetupUid = authentication.value!.uid;
-      }
       final isPublicRoute = const {
         AppRoutes.welcomePath,
         AppRoutes.aboutPath,
@@ -179,16 +175,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         }
         if (path == AppRoutes.dashboard ||
             path == AppRoutes.appUnderDevelopmentPath) {
-          final startsIntake =
-              !AppConfig.useFirebaseEmulators &&
-              session.role == FitNepRole.client &&
-              (refreshNotifier.intakeSetupUid == session.uid ||
-                  state.uri.queryParameters['setup'] == 'intake');
-          refreshNotifier.intakeSetupUid = null;
-          if (startsIntake) return '${AppRoutes.ownProfile}?onboarding=1';
-          return session.role == FitNepRole.client
-              ? AppRoutes.clientPackages
-              : home;
+          return home;
         }
         if (permission != null &&
             !session.authorization.hasPermission(permission)) {
@@ -233,7 +220,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           requiredPermission: 'view_own_client_records',
           builder: (_) => IntakeEditorPage(
             clientId: ref.read(routeSessionProvider).requireValue!.uid,
-            onboarding: state.uri.queryParameters['onboarding'] == '1',
           ),
         ),
       ),
@@ -334,12 +320,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: AppRoutes.ownProfile,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: 'view_own_profile',
-          builder: (_) => ProfilePage(
-            onboarding:
-                state.uri.queryParameters['onboarding'] == '1' &&
-                ref.read(routeSessionProvider).requireValue!.role ==
-                    FitNepRole.client,
-          ),
+          builder: (_) => const ProfilePage(),
         ),
       ),
       GoRoute(
@@ -452,7 +433,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.clientHomeName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: permissionForRoute(state.uri.path)!,
+          requiresClientOnboarding: true,
           builder: (_) => ClientHomePage(
+            clientId: ref.read(routeSessionProvider).requireValue!.uid,
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.clientOnboarding,
+        name: AppRoutes.clientOnboardingName,
+        builder: (context, state) => RouteAccessGate(
+          requiredPermission: permissionForRoute(state.uri.path)!,
+          builder: (_) => ClientOnboardingPage(
             clientId: ref.read(routeSessionProvider).requireValue!.uid,
           ),
         ),
@@ -471,9 +463,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.clientPackagesName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: permissionForRoute(state.uri.path)!,
-          builder: (_) => AppConfig.useFirebaseEmulators
-              ? const PackagesPage()
-              : const PackageSelectionPage(),
+          requiresClientOnboarding: true,
+          builder: (_) => const PackagesPage(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.clientCheckout,
+        name: AppRoutes.clientCheckoutName,
+        builder: (context, state) => RouteAccessGate(
+          requiredPermission: permissionForRoute(state.uri.path)!,
+          requiresClientOnboarding: true,
+          builder: (_) =>
+              CheckoutPage(membershipId: state.pathParameters['membershipId']!),
         ),
       ),
       GoRoute(
@@ -538,10 +539,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: AppRoutes.paymentDetailsName,
         builder: (context, state) => RouteAccessGate(
           requiredPermission: permissionForRoute(state.uri.path)!,
-          builder: (_) => NotificationDestinationPage(
-            type: NotificationType.payment,
-            referenceId: state.pathParameters['id']!,
-          ),
+          builder: (_) =>
+              PaymentDetailsPage(paymentId: state.pathParameters['id']!),
         ),
       ),
       GoRoute(
@@ -574,6 +573,17 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 builder: (_) => ClientProfilePage(clientId: clientId),
               );
             },
+          ),
+          GoRoute(
+            path: ':id/plans',
+            name: AppRoutes.adminClientPlansName,
+            builder: (context, state) => RouteAccessGate(
+              requiredPermission: 'manage_client_assignments',
+              builder: (_) => ClientRecordsPage(
+                clientId: state.pathParameters['id']!,
+                plansOnly: true,
+              ),
+            ),
           ),
         ],
       ),
@@ -676,7 +686,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 class _RouterRefreshNotifier extends ChangeNotifier {
   final navigatorKey = GlobalKey<NavigatorState>();
   RouteSession? lastSession;
-  String? intakeSetupUid;
   bool roleChanged = false;
   void refresh() => notifyListeners();
 }

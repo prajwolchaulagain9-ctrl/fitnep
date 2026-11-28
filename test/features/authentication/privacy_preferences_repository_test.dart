@@ -1,9 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fitnep/core/network/api_client.dart';
-import 'package:fitnep/core/storage/token_storage.dart';
-import 'package:fitnep/features/authentication/data/repositories/privacy_preferences_repository_impl.dart';
-import 'package:fitnep/features/authentication/domain/entities/privacy_preferences.dart';
+import 'package:fitnep/shared/api_client.dart';
+import 'package:fitnep/shared/token_storage.dart';
+import 'package:fitnep/features/authentication/data/privacy_preferences_repository_impl.dart';
+import 'package:fitnep/features/authentication/data/privacy_preferences.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

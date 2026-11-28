@@ -8,7 +8,7 @@ Development automatically uses a healthy local backend and falls back to Render;
 see [team backend selection](docs/backend-selection.md). Confirmed OTP and Google
 temporary-password delivery is documented in [signup email fixes](docs/signup-email-fixes.md).
 See [the navigation audit](docs/app-navigation-audit.md) for unused UI and all
-current entry points. Age and goal onboarding are deferred.
+current entry points. See the [Sprint 2 recheck](docs/sprint2-recheck.md) for the updated client journey, acceptance evidence, and Android debug setup.
 
 ## Current implementation
 
@@ -23,9 +23,10 @@ recovery screens follow the supplied auth screenshots. Email/password login now
 uses Firebase Auth with Riverpod state, protected GoRouter routes, remembered-session
 policy and logout. Signup now uses the same authentication UI and shared wordmark,
 with Firebase account creation and Continue with Google on Signup and Login.
-Verified accounts without an assigned role enter as clients, choose a package,
-and reach the temporary client home after saving a Pending selection. Existing
-admin and dietitian roles retain their protected routes.
+New verified clients complete or skip onboarding before choosing a package.
+Checkout uses a temporary QR and a required proof image. The selected package
+stays pending until an authorized reviewer verifies the proof. The client can
+then choose another package at its full price.
 Email signup requires Brevo OTP verification before protected navigation. A local
 USB runtime supports device testing while the existing serverless host is
 configured. Package selection, membership and privacy preferences are integrated.
@@ -133,9 +134,12 @@ package operations.
 - `lib/app/app.dart`: app setup and startup boundary.
 - `lib/app/routes/`: named routes and router lifecycle.
 - `lib/app/theme/`: shared FitNEP theme and palette.
-- `lib/core/services/firebase_providers.dart`: initialization and injectable SDK dependencies.
+- `lib/shared/firebase_providers.dart`: initialization and injectable SDK dependencies.
 - `lib/shared/widgets/`: page layout, branded startup feedback and original logo.
-- `lib/features/`: existing feature folders; use the files needed for each story.
+- `lib/features/`: app code organized by feature, including its screens and data.
+- `lib/shared/assets/`: images, icons, and fonts.
+
+See the [Flutter folder guide](lib/README.md) for where to find and add code.
 
 Read Firebase SDK providers after initialization completes. Override the providers
 in feature tests instead of connecting widget tests to the live project.
