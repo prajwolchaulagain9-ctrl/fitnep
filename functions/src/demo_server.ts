@@ -3,6 +3,8 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { createFitnepDependencies } from "./api_factory";
 import { createNotificationApp } from "./http_app";
+import { startWorkflowRecovery } from "./workflow_delivery";
+import { Timestamp } from "firebase-admin/firestore";
 
 // This runner is deliberately emulator-only: it cannot seed a live project.
 for (const name of ["FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"]) {
@@ -32,12 +34,21 @@ async function main() {
     ["premium", "Premium", 90, 8000, ["Personalized coaching", "Nutrition and workout plans", "Progress reviews", "Priority care team support"]],
   ] as const) {
     await db.collection("package_catalog").doc(id).set({ name, duration_days: days, price_npr: price, features: [...features], active: true });
+    await db.collection("packages").doc(id).set({
+      name, duration_months: days / 30, price, feature_description: features.join("\n"), is_active: true,
+      created_at: Timestamp.now(), created_by: "demo-admin", created_by_name: "Demo Admin",
+      request_id: `demo-catalog-${id}`,
+    });
   }
-  const api = createNotificationApp(dependencies);
+  const recovery = startWorkflowRecovery(db, auth);
+  const api = createNotificationApp({ ...dependencies, recoverCommittedEvents: recovery.drain });
   const server = api.listen(3000, "127.0.0.1", () => {
     console.log("Free FitNEP demo ready at http://127.0.0.1:3000. No real money is processed.");
   });
-  const close = () => server.close(() => { void deleteApp(firebase).finally(() => process.exit(0)); });
+  const close = () => {
+    recovery.stop();
+    server.close(() => { void deleteApp(firebase).finally(() => process.exit(0)); });
+  };
   process.once("SIGINT", close);
   process.once("SIGTERM", close);
 }

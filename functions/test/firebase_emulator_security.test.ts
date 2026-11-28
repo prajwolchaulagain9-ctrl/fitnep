@@ -71,6 +71,7 @@ emulatorDescribe("Firebase Auth and Firestore recipient isolation", () => {
       packageRepository,
       purchaseRepository,
       packageService: new FirestorePackageService(firestore),
+      manualVerificationEnabled: true,
       privacyPreferencesRepository,
       privateRecordsStore: new FirestorePrivateRecordsStore(firestore, privacyPreferencesRepository, auditWriter),
       auditWriter,

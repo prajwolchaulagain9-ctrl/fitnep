@@ -14,6 +14,7 @@ export interface Account {
   account_status: "active" | "inactive"; created_at: string; updated_at: string;
   deactivated_at?: string | null; deactivation_reason?: string | null;
   audit_read?: true;
+  payments_verify?: true;
 }
 export class AccountInputError extends Error {}
 
@@ -50,6 +51,8 @@ export function accountFrom(id: string, data: Record<string, unknown> | undefine
         email: typeof data.email === "string" ? data.email : "", role: data.role,
         ...(data.role === "staff" && (data.permissions as { audit_read?: unknown } | undefined)?.audit_read === true
           ? { audit_read: true as const } : {}),
+        ...(data.role === "staff" && (data.permissions as { payments_verify?: unknown } | undefined)?.payments_verify === true
+          ? { payments_verify: true as const } : {}),
     role_revision: typeof data.role_revision === "number" ? data.role_revision : 0,
     account_status: data.account_status as Account["account_status"],
     created_at: data.created_at.toDate().toISOString(), updated_at: data.updated_at.toDate().toISOString(),
@@ -282,11 +285,12 @@ export class FirestoreAccountService {
   async change(actor: AuthenticatedUser, uid: string, body: Record<string, unknown>): Promise<Account> {
     identifier(uid);
     if (actor.uid === uid) throw new PermissionDeniedError("Administrators cannot change their own role or status.");
-    if (Object.hasOwn(body, "audit_read")) {
-      if (Object.keys(body).length !== 1 || typeof body.audit_read !== "boolean") {
-        throw new AccountInputError("Supply one boolean audit_read permission.");
+    const grant = (["audit_read", "payments_verify"] as const).find(key => Object.hasOwn(body, key));
+    if (grant) {
+      if (Object.keys(body).length !== 1 || typeof body[grant] !== "boolean") {
+        throw new AccountInputError("Supply one boolean staff permission.");
       }
-      return this.changeAuditRead(actor, uid, body.audit_read);
+      return this.changeStaffGrant(actor, uid, grant, body[grant]);
     }
     const isRole = Object.hasOwn(body, "role");
     if (Object.keys(body).some(key => ![isRole ? "role" : "account_status", "reason"].includes(key)) ||
@@ -312,6 +316,8 @@ export class FirestoreAccountService {
       transaction.update(targetRef, { role, account_status: status, role_revision: target.role_revision + 1,
         ...(target.audit_read && (role !== target.role || status === "inactive")
           ? { "permissions.audit_read": FieldValue.delete() } : {}),
+        ...(target.payments_verify && (role !== target.role || status === "inactive")
+          ? { "permissions.payments_verify": FieldValue.delete() } : {}),
         ...(!isRole ? { deactivated_at: status === "inactive" ? FieldValue.serverTimestamp() : FieldValue.delete(),
           deactivation_reason: status === "inactive" && typeof body.reason === "string" ? body.reason.trim() : FieldValue.delete() } : {}),
         updated_at: FieldValue.serverTimestamp() });
@@ -340,7 +346,8 @@ export class FirestoreAccountService {
     // Old ID tokens cannot retain privileges: requests always reread users/{uid}.
     return this.get(uid);
   }
-  private async changeAuditRead(actor: AuthenticatedUser, uid: string, enabled: boolean): Promise<Account> {
+  private async changeStaffGrant(actor: AuthenticatedUser, uid: string,
+    grant: "audit_read" | "payments_verify", enabled: boolean): Promise<Account> {
     await this.firestore.runTransaction(async transaction => {
       const targetRef = this.firestore.collection("users").doc(uid);
       const [admin, staff] = await Promise.all([
@@ -353,15 +360,15 @@ export class FirestoreAccountService {
         throw new PermissionDeniedError();
       }
       requirePermission(operator.role, "manage_user_roles");
-      if ((target.audit_read === true) === enabled) return;
-      transaction.update(targetRef, { "permissions.audit_read": enabled, updated_at: FieldValue.serverTimestamp() });
+      if ((target[grant] === true) === enabled) return;
+      transaction.update(targetRef, { [`permissions.${grant}`]: enabled, updated_at: FieldValue.serverTimestamp() });
       transaction.set(this.firestore.collection("account_access").doc(uid), {
         revision: target.role_revision, updated_at: FieldValue.serverTimestamp(),
       });
       new FirestoreAuditWriter(this.firestore).appendInTransaction(transaction, {
         actor: { uid: operator.id, role: operator.role, displayName: operator.full_name || operator.id },
         action: "account.updated", targetType: "account", targetId: uid,
-        status: enabled ? "audit_read_granted" : "audit_read_revoked",
+        status: `${grant}_${enabled ? "granted" : "revoked"}`,
         outcome: "succeeded", correlationId: randomUUID(),
       });
     });
@@ -414,9 +421,13 @@ export class FirestoreAccountService {
       const client = accountFrom(clientId, (await transaction.get(this.firestore.collection("users").doc(identifier(clientId)))).data());
       if (client.role !== "client" || client.account_status !== "active") throw new AccountInputError("An active client is required.");
       const revisions: Record<string, number> = {};
-      for (const [id, role] of [...staff.map(id => [id, "staff"] as const), ...(dietitian ? [[dietitian, "dietitian"] as const] : [])]) {
+      for (const id of [...staff, ...(dietitian ? [dietitian] : [])]) {
         const account = accountFrom(id, (await transaction.get(this.firestore.collection("users").doc(id))).data());
-        if (account.role !== role || account.account_status !== "active") throw new AccountInputError("Assignments require active accounts with the matching role.");
+        const validRole = id === dietitian ? account.role === "dietitian" :
+          account.role === "staff" || account.role === "admin";
+        if (!validRole || account.account_status !== "active" || (id === dietitian && staff.includes(id))) {
+          throw new AccountInputError("Assignments require active accounts with the matching role.");
+        }
         revisions[id] = account.role_revision;
       }
       const ref = this.firestore.collection("client_assignments").doc(clientId);
@@ -456,5 +467,6 @@ export function accountManagementPermission(role: UserRole): Permission {
 export function sessionPayload(account: Account) {
   const permissions: Permission[] = [...rolePermissions[account.role]];
   if (account.role === "staff" && account.audit_read) permissions.push("view_audit_logs");
+  if (account.role === "staff" && account.payments_verify) permissions.push("verify_payments");
   return { account, permissions };
 }

@@ -11,13 +11,14 @@ export const rolePermissions = {
     "view_assigned_client_records", "view_meal_records", "manage_diet_plans", "view_own_diet_plans"],
   admin: [...own, "view_admin_dashboard", "view_packages", "manage_staff_accounts", "manage_dietitian_accounts",
     "manage_client_accounts", "manage_user_roles", "manage_business_settings",
-    "view_audit_logs", "manage_client_assignments", "view_client_records", "view_own_diet_plans"],
+    "view_audit_logs", "manage_client_assignments", "view_client_records", "view_own_diet_plans", "verify_payments"],
 } as const satisfies Record<UserRole, readonly string[]>;
 export type Permission = typeof rolePermissions[UserRole][number];
 export const permissions = [...new Set(Object.values(rolePermissions).flat())] as Permission[];
-export function hasPermission(role: UserRole, permission: string, auditRead = false): boolean {
+export function hasPermission(role: UserRole, permission: string, auditRead = false, paymentsVerify = false): boolean {
   return (rolePermissions[role] as readonly string[]).includes(permission) ||
-    (role === "staff" && permission === "view_audit_logs" && auditRead);
+    (role === "staff" && ((permission === "view_audit_logs" && auditRead) ||
+      (permission === "verify_payments" && paymentsVerify)));
 }
 export class PermissionDeniedError extends Error {
   readonly code = "permission-denied";
@@ -25,8 +26,8 @@ export class PermissionDeniedError extends Error {
     super("You do not have permission to access this feature.");
   }
 }
-export function requirePermission(role: UserRole, permission: Permission, auditRead = false): void {
-  if (!hasPermission(role, permission, auditRead)) throw new PermissionDeniedError();
+export function requirePermission(role: UserRole, permission: Permission, auditRead = false, paymentsVerify = false): void {
+  if (!hasPermission(role, permission, auditRead, paymentsVerify)) throw new PermissionDeniedError();
 }
 
 export function canReadWorkflowRecord(actor: AuthenticatedUser,

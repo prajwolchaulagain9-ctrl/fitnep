@@ -12,6 +12,7 @@ const resources: Partial<Record<Permission, string>> = {
   update_own_notifications: "own_notifications", manage_own_privacy: "privacy_preferences",
   view_packages: "package_catalog", manage_business_settings: "business_management",
   manage_own_membership: "own_membership", view_own_workflow: "workflow_records",
+  verify_payments: "payment_review",
 };
 const endpoints: [string, RegExp, Permission][] = [
   ["GET", /^\/session$/, "view_dashboard"],
@@ -23,6 +24,7 @@ const endpoints: [string, RegExp, Permission][] = [
   ["PATCH", /^\/admin\/staff-accounts\/([^/]+)(?:\/active)?$/, "manage_staff_accounts"],
   ["GET", /^\/profile\/me$/, "view_own_profile"],
   ["PATCH", /^\/profile\/me$/, "edit_own_profile"],
+  ["PUT", /^\/profile\/me\/onboarding$/, "manage_own_membership"],
   ["GET", /^\/admin\/users$/, "manage_user_roles"],
   ["GET", /^\/admin\/users\/([^/]+)$/, "manage_user_roles"],
   ["PATCH", /^\/admin\/users\/([^/]+)$/, "manage_user_roles"],
@@ -35,8 +37,9 @@ const endpoints: [string, RegExp, Permission][] = [
   ["GET", /^\/clients\/assigned$/, "view_assigned_clients"],
   ["GET", /^\/clients\/([^/]+)\/profile$/, "view_assigned_clients"],
   ["GET", /^\/clients\/([^/]+)\/diet-plans$/, "view_own_diet_plans"],
+  ["GET", /^\/clients\/([^/]+)\/weight-history$/, "view_client_records"],
   ["POST", /^\/clients\/([^/]+)\/diet-plans$/, "manage_diet_plans"],
-  ["PATCH", /^\/clients\/([^/]+)\/diet-plans\/([^/]+)$/, "manage_diet_plans"],
+  ["PATCH", /^\/clients\/([^/]+)\/diet-plans\/([^/]+)$/, "view_own_diet_plans"],
   ["GET", /^\/clients\/([^/]+)\/records\/[^/]+(?:\/([^/]+)(?:\/photo)?)?$/, "view_client_records"],
   ["GET", /^\/admin\/client-assignments\/dietitian-counts$/, "manage_client_assignments"],
   ["GET", /^\/admin\/client-assignments\/([^/]+)\/eligibility$/, "manage_client_assignments"],
@@ -61,6 +64,12 @@ const endpoints: [string, RegExp, Permission][] = [
   ["PATCH", /^\/packages\/([^/]+)(?:\/active)?$/, "manage_business_settings"],
   ["GET", /^\/(?:memberships\/me|purchases\/current)$/, "manage_own_membership"],
   ["POST", /^\/(?:memberships|purchases)$/, "manage_own_membership"],
+  ["GET", /^\/payments\/(?:me|checkout)$/, "manage_own_membership"],
+  ["GET", /^\/payments\/([^/]+)\/proof$/, "view_own_workflow"],
+  ["POST", /^\/payments\/([^/]+)\/proof$/, "manage_own_membership"],
+  ["GET", /^\/admin\/payments(?:\/([^/]+))?$/, "verify_payments"],
+  ["POST", /^\/admin\/payments\/([^/]+)\/(?:verify|reject)$/, "verify_payments"],
+  ["POST", /^\/admin\/payments\/([^/]+)\/adjustments$/, "manage_business_settings"],
   ["GET", /^\/(diet-plans|conversations|messages|tasks|payments)\/([^/]+)$/, "view_own_workflow"],
 ];
 // Express routes are case-insensitive, accept one trailing slash, and use GET

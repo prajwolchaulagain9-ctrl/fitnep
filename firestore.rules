@@ -28,7 +28,7 @@ service cloud.firestore {
     match /package_memberships/{id} {
       allow read, write: if false;
     }
-    match /package_membership_guards/{id} {
+    match /package_membership_guards/{document=**} {
       allow read, write: if false;
     }
     // Notification data is accessed only through authenticated Cloud Functions.
@@ -49,6 +49,15 @@ service cloud.firestore {
       allow read, write: if false;
     }
     match /payments/{document=**} {
+      allow read, write: if false;
+    }
+    match /payment_proof_digests/{id} {
+      allow read, write: if false;
+    }
+    match /payment_proof_uploads/{id} {
+      allow read, write: if false;
+    }
+    match /emulator_payment_proofs/{id} {
       allow read, write: if false;
     }
 

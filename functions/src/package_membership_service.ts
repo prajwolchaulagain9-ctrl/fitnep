@@ -1,7 +1,8 @@
 import { requirePermission } from "./authorization_policy";
-import { createHash } from "node:crypto";
-import { Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
+import { createHash, randomUUID } from "node:crypto";
+import { DocumentData, Firestore, Timestamp, Transaction } from "firebase-admin/firestore";
 import { AuthenticatedUser } from "./domain";
+import { FirestoreAuditWriter } from "./audit";
 
 const day = 86_400_000;
 export const inactivePackageAssignmentMessage = "Only clients with an active package can be assigned.";
@@ -28,6 +29,9 @@ export interface MembershipRecord {
   start_at?: string;
   end_at?: string;
   payment_id?: string;
+  checkout_token?: string;
+  checkout_payment_id?: string;
+  checkout_revision?: number;
 }
 
 export type EffectiveMembershipStatus =
@@ -53,6 +57,33 @@ export class FirestorePackageService {
     const snapshot = transaction ? await transaction.get(query) : await query.get();
     return snapshot.docs.map(doc => this.toApi(doc.data() as MembershipRecord))
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  async membershipsWithLegacy(uid: string) {
+    const [current, legacy] = await Promise.all([
+      this.memberships(uid),
+      this.db.collection("customer_purchases").doc(uid).collection("purchases").get(),
+    ]);
+    const historical = legacy.docs.flatMap(doc => {
+      if (doc.get("is_active") === false) return [];
+      const start = doc.get("purchased_at");
+      const end = doc.get("expires_at");
+      const packageId = doc.get("package_id");
+      const name = doc.get("package_name");
+      const price = doc.get("price_paid");
+      const months = doc.get("duration_months");
+      const features = doc.get("feature_description");
+      if (!(start instanceof Timestamp) || !(end instanceof Timestamp) || end.toMillis() <= start.toMillis() ||
+          typeof packageId !== "string" || typeof name !== "string" || typeof price !== "number" ||
+          !Number.isSafeInteger(months) || months < 1 || typeof features !== "string") return [];
+      return [this.toApi({
+        id: doc.id, client_id: uid, status: "active", created_at: start.toDate().toISOString(),
+        start_at: start.toDate().toISOString(), end_at: end.toDate().toISOString(),
+        package: { id: packageId, name, price_npr: price, duration_days: Math.ceil((end.toMillis() - start.toMillis()) / day),
+          duration_months: months, features: [features] },
+      })];
+    });
+    return [...current, ...historical].sort((a, b) => b.created_at.localeCompare(a.created_at));
   }
 
   /** Effective status used by assignment, including retained legacy purchases. */
@@ -112,7 +143,7 @@ export class FirestorePackageService {
     return this.activate(`manual_${membershipId}`, { membershipId, adminId: actor.uid, reference: reference.trim() });
   }
 
-  async select(uid: string, packageId: string, requestId: string) {
+  async select(uid: string, packageId: string, requestId: string, auditActor?: AuthenticatedUser, correlationId = randomUUID()) {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(packageId) || !/^[A-Za-z0-9_-]{16,128}$/.test(requestId)) {
       throw new PackageError(400, "A valid package and request ID are required.");
     }
@@ -121,14 +152,36 @@ export class FirestorePackageService {
     const catalogRef = this.db.collection("package_catalog").doc(packageId);
     const managedCatalogRef = this.db.collection("packages").doc(packageId);
     const guardRef = this.db.collection("package_membership_guards").doc(uid);
+    const retryRef = guardRef.collection("requests").doc(id);
     const record = await this.db.runTransaction(async tx => {
-      const [existing, catalog, managedCatalog, guard] = await Promise.all([tx.get(membershipRef), tx.get(catalogRef), tx.get(managedCatalogRef), tx.get(guardRef)]);
+      const [existing, catalog, managedCatalog, guard, retry] = await Promise.all([
+        tx.get(membershipRef), tx.get(catalogRef), tx.get(managedCatalogRef), tx.get(guardRef), tx.get(retryRef),
+      ]);
       if (existing.exists) {
         const member = existing.data() as MembershipRecord;
         if (member.client_id !== uid || member.package.id !== packageId) {
           throw new PackageError(409, "This request ID was already used for another selection.");
         }
         return member;
+      }
+      if (retry.exists) {
+        const member = (await tx.get(this.db.collection("package_memberships").doc(retry.get("membership_id")))).data() as MembershipRecord | undefined;
+        if (!member || member.client_id !== uid || member.package.id !== packageId) {
+          throw new PackageError(409, "This request ID was already used for another selection.");
+        }
+        return member;
+      }
+      const pendingId = guard.get("pending_id") as string | undefined;
+      if (pendingId) {
+        const pending = await tx.get(this.db.collection("package_memberships").doc(pendingId));
+        if (pending.exists && pending.get("status") === "pending") {
+          const member = pending.data() as MembershipRecord;
+          if (member.package.id === packageId) {
+            tx.create(retryRef, { membership_id: member.id });
+            return member;
+          }
+          throw new PackageError(409, "You already have a package awaiting payment verification.");
+        }
       }
       const selectedCatalog = managedCatalog.exists ? managedCatalog : catalog;
       if (!selectedCatalog.exists || selectedCatalog.get(managedCatalog.exists ? "is_active" : "active") !== true) {
@@ -137,18 +190,14 @@ export class FirestorePackageService {
       const item = managedCatalog.exists
         ? parseManagedPackage(managedCatalog.id, managedCatalog.data()!)
         : parsePackage(catalog.id, catalog.data()!);
-      const pendingId = guard.get("pending_id") as string | undefined;
-      if (pendingId) {
-        const pending = await tx.get(this.db.collection("package_memberships").doc(pendingId));
-        if (pending.exists && pending.get("status") === "pending") {
-          const member = pending.data() as MembershipRecord;
-          if (member.package.id === packageId) return member;
-          throw new PackageError(409, "You already have a package awaiting payment verification.");
-        }
-      }
-      const member: MembershipRecord = { id, client_id: uid, package: item, status: "pending", created_at: this.now().toISOString() };
+      const member: MembershipRecord = { id, client_id: uid, package: item, status: "pending",
+        checkout_token: randomUUID(), created_at: this.now().toISOString() };
       tx.create(membershipRef, member);
       tx.set(guardRef, { pending_id: id, updated_at: member.created_at }, { merge: true });
+      new FirestoreAuditWriter(this.db).appendInTransaction(tx, {
+        actor: auditActor ?? { uid, role: "client" }, action: "membership.selected", targetType: "membership", targetId: id,
+        clientId: uid, status: "pending", outcome: "succeeded", correlationId, operationId: requestId,
+      });
       return member;
     });
     return this.toApi(record);
@@ -172,7 +221,6 @@ export class FirestorePackageService {
       const snapshot = await tx.get(membershipRef);
       if (!snapshot.exists) throw new PackageError(404, "Membership not found.");
       const member = snapshot.data() as MembershipRecord;
-      parsePackage(member.package.id, member.package as unknown as Record<string, unknown>);
       if (manual) {
         if (data && (data.method !== "manual" || data.membership_id !== membershipId || data.verification_reference !== manual.reference)) {
           throw new PackageError(409, "This membership already has a different manual verification record.");
@@ -184,57 +232,78 @@ export class FirestorePackageService {
           verified_at: this.now().toISOString(),
         };
       }
-      if (!data || data.verified !== true || !["paid", "confirmed", "succeeded"].includes(data.status)) {
-        throw new PackageError(409, "Payment has not been verified.");
-      }
-      if (data.recipient_id !== member.client_id || data.amount_npr !== member.package.price_npr || data.currency !== "NPR") {
-        throw new PackageError(409, "Payment does not match the selected package.");
-      }
-      if (member.status === "active" && member.payment_id === paymentId) return this.toApi(member);
-      if (member.status !== "pending") throw new PackageError(409, "Membership is already activated.");
-      const guardRef = this.db.collection("package_membership_guards").doc(member.client_id);
-      const [guard, active, historical] = await Promise.all([
-        tx.get(guardRef),
-        tx.get(this.db.collection("package_memberships").where("client_id", "==", member.client_id).where("status", "==", "active")),
-        tx.get(this.db.collection("customer_purchases").doc(member.client_id).collection("purchases")),
-      ]);
-      const start = data.membership_start_at === undefined ? this.now() : new Date(data.membership_start_at);
-      if (!Number.isFinite(start.getTime()) || (data.membership_start_at !== undefined && start.getTime() < this.now().getTime())) {
-        throw new PackageError(400, "The membership start must be a valid current or future date.");
-      }
-      const end = member.package.duration_months === undefined
-        ? new Date(start.getTime() + member.package.duration_days * day)
-        : addCalendarMonths(start, member.package.duration_months);
-      const overlaps = active.docs.some(doc => {
-        const other = doc.data() as MembershipRecord;
-        if (!Number.isFinite(Date.parse(other.start_at!)) || !Number.isFinite(Date.parse(other.end_at!)) || Date.parse(other.end_at!) <= Date.parse(other.start_at!)) {
-          throw new PackageError(503, "An existing membership needs attention before activation.");
-        }
-        return start.getTime() < Date.parse(other.end_at!) && Date.parse(other.start_at!) < end.getTime();
-      });
-      const overlapsHistorical = historical.docs.some(doc => {
-        const otherStart = doc.get("purchased_at");
-        const otherEnd = doc.get("expires_at");
-        if (!(otherStart instanceof Timestamp) || !(otherEnd instanceof Timestamp) || otherEnd.toMillis() <= otherStart.toMillis()) {
-          throw new PackageError(503, "An existing membership needs attention before activation.");
-        }
-        return start.getTime() < otherEnd.toMillis() && otherStart.toMillis() < end.getTime();
-      });
-      if (overlaps || overlapsHistorical) throw new PackageError(409, "An active package already covers these dates.");
-      const activated: MembershipRecord = { ...member, status: "active", start_at: start.toISOString(), end_at: end.toISOString(), payment_id: paymentId };
-      if (manual && !payment.exists) tx.create(paymentRef, data);
-      tx.set(membershipRef, activated);
-      tx.set(guardRef, { pending_id: guard.get("pending_id") === member.id ? null : (guard.get("pending_id") ?? null), updated_at: this.now().toISOString() }, { merge: true });
-      return this.toApi(activated);
+      const activated = await this.activateInTransaction(tx, member, paymentId, data);
+      if (manual && !payment.exists) tx.create(paymentRef, data!);
+      return activated;
     });
   }
 
+  // Checkout calls this in the same transaction as the recorded review decision.
+  async activateInTransaction(tx: Transaction, member: MembershipRecord, paymentId: string,
+    data: DocumentData | undefined, queueAfterPaid = false) {
+    parsePackage(member.package.id, member.package as unknown as Record<string, unknown>);
+    if (!data || data.verified !== true || !["paid", "confirmed", "succeeded", "verified"].includes(data.status)) {
+      throw new PackageError(409, "Payment has not been verified.");
+    }
+    if (data.recipient_id !== member.client_id || data.amount_npr !== member.package.price_npr || data.currency !== "NPR") {
+      throw new PackageError(409, "Payment does not match the selected package.");
+    }
+    if (member.status === "active" && member.payment_id === paymentId) return this.toApi(member);
+    if (member.status !== "pending") throw new PackageError(409, "Membership is already activated.");
+    const guardRef = this.db.collection("package_membership_guards").doc(member.client_id);
+    const [guard, active, historical] = await Promise.all([
+      tx.get(guardRef),
+      tx.get(this.db.collection("package_memberships").where("client_id", "==", member.client_id).where("status", "==", "active")),
+      tx.get(this.db.collection("customer_purchases").doc(member.client_id).collection("purchases")),
+    ]);
+    if (queueAfterPaid && guard.get("pending_id") !== member.id) {
+      throw new PackageError(409, "This payment no longer matches the current checkout.");
+    }
+    const now = this.now();
+    const inputStart = data.membership_start_at === undefined ? now : new Date(data.membership_start_at);
+    if (!Number.isFinite(inputStart.getTime()) || inputStart < now) {
+      throw new PackageError(400, "The membership start must be a valid current or future date.");
+    }
+    const intervals = active.docs.map(doc => {
+      const other = doc.data() as MembershipRecord;
+      const start = Date.parse(other.start_at!);
+      const end = Date.parse(other.end_at!);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        throw new PackageError(503, "An existing membership needs attention before activation.");
+      }
+      return { start, end };
+    });
+    for (const doc of historical.docs) {
+      if (doc.get("is_active") === false) continue;
+      const otherStart = doc.get("purchased_at");
+      const otherEnd = doc.get("expires_at");
+      if (!(otherStart instanceof Timestamp) || !(otherEnd instanceof Timestamp) || otherEnd.toMillis() <= otherStart.toMillis()) {
+        throw new PackageError(503, "An existing membership needs attention before activation.");
+      }
+      intervals.push({ start: otherStart.toMillis(), end: otherEnd.toMillis() });
+    }
+    const start = new Date(queueAfterPaid
+      ? intervals.reduce((latest, interval) => Math.max(latest, interval.end), inputStart.getTime())
+      : inputStart.getTime());
+    const end = member.package.duration_months === undefined
+      ? new Date(start.getTime() + member.package.duration_days * day)
+      : addCalendarMonths(start, member.package.duration_months);
+    if (intervals.some(interval => start.getTime() < interval.end && interval.start < end.getTime())) {
+      throw new PackageError(409, "An active package already covers these dates.");
+    }
+    const activated: MembershipRecord = { ...member, status: "active", start_at: start.toISOString(), end_at: end.toISOString(), payment_id: paymentId };
+    tx.set(this.db.collection("package_memberships").doc(member.id), activated);
+    tx.set(guardRef, { pending_id: guard.get("pending_id") === member.id ? null : (guard.get("pending_id") ?? null), updated_at: now.toISOString() }, { merge: true });
+    return this.toApi(activated);
+  }
+
   private toApi(member: MembershipRecord) {
+    const { checkout_token: _token, checkout_payment_id: _payment, checkout_revision: _revision, ...summary } = member;
     if (typeof member.created_at !== "string" || !Number.isFinite(Date.parse(member.created_at))) {
       throw new PackageError(503, "An existing membership needs attention.");
     }
     if (member.status === "pending") {
-      return { ...member, status: "pending" as const, days_remaining: 0 };
+      return { ...summary, status: "pending" as const, days_remaining: 0 };
     }
 
     const start = Date.parse(member.start_at ?? "");
@@ -247,8 +316,8 @@ export class FirestorePackageService {
     const now = this.now().getTime();
     const status = now >= end ? "expired" : now < start ? "scheduled" : "active";
     const daysRemaining = status === "active" ? Math.ceil((end - now) / day)
-      : status === "scheduled" ? member.package.duration_days : 0;
-    return { ...member, status, days_remaining: daysRemaining };
+      : status === "scheduled" ? Math.ceil((end - start) / day) : 0;
+    return { ...summary, status, days_remaining: daysRemaining };
   }
 }
 

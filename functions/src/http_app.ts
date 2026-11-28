@@ -29,6 +29,8 @@ import {
   PurchaseRecord,
 } from "./domain";
 import { FirestorePackageService, PackageError } from "./package_membership_service";
+import { CheckoutPayments } from "./checkout_payments";
+import { onboardingReady } from "./onboarding";
 import {
   NotificationRepository,
   NotificationStorageNotConfiguredError,
@@ -107,6 +109,7 @@ export interface NotificationAppDependencies {
   privacyPreferencesRepository?: PrivacyPreferencesRepository;
   privateRecordsStore?: PrivateRecordsStore;
   packageService?: FirestorePackageService;
+  checkoutPayments?: CheckoutPayments;
   packageRepository?: PackageRepository;
   purchaseRepository?: PurchaseRepository;
   clientIntakeService?: ClientIntakeService;
@@ -136,7 +139,11 @@ export function createNotificationApp(
     response.once("finish", dependencies.recoverCommittedEvents!);
     next();
   });
-  app.use(express.json({ limit: "32kb" }));
+  const json = express.json({ limit: "32kb" });
+  app.use((request, response, next) => {
+    if (request.method === "POST" && /^\/payments\/[^/]+\/proof\/?$/i.test(request.path)) next();
+    else json(request, response, next);
+  });
   app.use((_request, response, next) => {
     response.setHeader("Cache-Control", "no-store");
     next();
@@ -177,7 +184,7 @@ export function createNotificationApp(
     response.locals.access = access;
     if (access) {
       const user = currentUser(response);
-      requirePermission(user.role, access.permission, user.permissions?.auditRead);
+      requirePermission(user.role, access.permission, user.permissions?.auditRead, user.permissions?.paymentsVerify);
       if (user.emailVerified === false &&
           !["view_dashboard", "view_own_profile", "edit_own_profile"].includes(access.permission)) {
         throw new PermissionDeniedError("Email verification is required.");
@@ -185,7 +192,48 @@ export function createNotificationApp(
     }
     next();
   }));
-  app.use(createRbacRouter(dependencies.accounts, dependencies.audit, dependencies.privateRecordsStore));
+  const checkout = () => {
+    if (!dependencies.checkoutPayments) throw new PackageError(503, "Checkout is temporarily unavailable.");
+    return dependencies.checkoutPayments;
+  };
+  app.get("/payments/checkout", asyncRoute(async (request, response) => {
+    response.json({ data: { checkout: await checkout().checkout(currentUser(response), request.query.membership_id) } });
+  }));
+  app.get("/payments/me", asyncRoute(async (_request, response) => {
+    response.json({ data: { payments: await checkout().listOwn(currentUser(response)) } });
+  }));
+  app.get("/payments/:id/proof", asyncRoute(async (request, response) => {
+    const proof = await checkout().proof(currentUser(response), request.params.id!);
+    response.set("X-Content-Type-Options", "nosniff").type(proof.contentType).send(proof.bytes);
+  }));
+  app.post("/payments/:id/proof", express.json({ limit: "700kb" }), asyncRoute(async (request, response) => {
+    const payment = await checkout().submit(currentUser(response), request.params.id!, request.body, response.locals.correlationId);
+    response.json({ data: { payment } });
+  }));
+  app.get("/payments/:id", asyncRoute(async (request, response, next) => {
+    const detail = await dependencies.checkoutPayments?.detail(currentUser(response), request.params.id!);
+    if (detail) response.json({ data: detail });
+    else next(); // Existing payment notifications still use the generic workflow record route.
+  }));
+  app.get("/admin/payments", asyncRoute(async (request, response) => {
+    response.json({ data: { payments: await checkout().listReview(currentUser(response), request.query.status) } });
+  }));
+  app.get("/admin/payments/:id", asyncRoute(async (request, response) => {
+    const detail = await checkout().detail(currentUser(response), request.params.id!, true);
+    if (!detail) throw new PackageError(404, "Payment not found.");
+    response.json({ data: detail });
+  }));
+  for (const [action, status] of [["verify", "verified"], ["reject", "rejected"]] as const) {
+    app.post(`/admin/payments/:id/${action}`, asyncRoute(async (request, response) => {
+      const data = await checkout().decide(currentUser(response), request.params.id!, status, request.body, response.locals.correlationId);
+      response.json({ data });
+    }));
+  }
+  app.post("/admin/payments/:id/adjustments", asyncRoute(async (request, response) => {
+    const adjustment = await checkout().adjust(currentUser(response), request.params.id!, request.body, response.locals.correlationId);
+    response.json({ data: { adjustment } });
+  }));
+  app.use(createRbacRouter(dependencies.accounts, dependencies.audit, dependencies.privateRecordsStore, dependencies.checkoutPayments));
   app.use(rejectRecipientOverrides);
 
   app.get(
@@ -438,7 +486,7 @@ export function createNotificationApp(
     admin(response);
     response.json({ data: { memberships: await packages().pendingMemberships() } });
   }));
-  if (dependencies.manualVerificationEnabled !== false) app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
+  if (dependencies.manualVerificationEnabled === true) app.post("/admin/memberships/:id/verify-payment", asyncRoute(async (request, response) => {
     const actor = admin(response);
     const body = isObject(request.body) ? request.body : {};
     if (Object.keys(body).some(key => key !== "reference") || typeof body.reference !== "string") {
@@ -448,17 +496,25 @@ export function createNotificationApp(
     response.json({ data: { membership } });
   }));
   app.get("/memberships/me", asyncRoute(async (_request, response) => {
-    response.json({ data: { memberships: await packages().memberships(client(response)) } });
+    response.json({ data: { memberships: await packages().membershipsWithLegacy(client(response)) } });
   }));
   app.post("/memberships", asyncRoute(async (request, response) => {
     const uid = client(response);
     const body = isObject(request.body) ? request.body : {};
-    if (Object.keys(body).some(key => !["package_id", "request_id"].includes(key)) || typeof body.package_id !== "string" || typeof body.request_id !== "string") {
-      throw new PackageError(400, "Only package_id and request_id may be supplied.");
+    if (Object.keys(body).some(key => !["package_id", "request_id", "expected_client_id"].includes(key)) || typeof body.package_id !== "string" || typeof body.request_id !== "string") {
+      throw new PackageError(400, "A package ID and request ID are required.");
     }
-    const membership = await packages().select(uid, body.package_id, body.request_id);
+    if (body.expected_client_id !== undefined && uid !== body.expected_client_id) throw new PermissionDeniedError();
+    await requireOnboarding(uid);
+    const membership = await packages().select(uid, body.package_id, body.request_id, currentUser(response), response.locals.correlationId);
     response.json({ data: { membership } });
   }));
+  const requireOnboarding = async (uid: string) => {
+    // Production and demo both provide the account store; HTTP-only test adapters may omit it.
+    if (!dependencies.accounts) return;
+    const profile = await dependencies.accounts.firestore.doc(`users/${uid}`).get();
+    if (!onboardingReady(profile.get("onboarding"))) throw new PackageError(409, "Complete or skip onboarding before choosing a package.");
+  };
 
   app.get(
     "/privacy/preferences",
@@ -685,6 +741,7 @@ export function createNotificationApp(
       if (Object.keys(body).some(key => !["package_id", "request_id"].includes(key))) {
         throw new InvalidPurchaseError("Only package_id and request_id may be supplied.");
       }
+      await requireOnboarding(currentUser(response).uid);
       const purchase = await purchaseService.create(currentUser(response), {
         packageId: body.package_id,
         requestId: body.request_id,

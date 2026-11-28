@@ -25,6 +25,7 @@ export function createNotificationWorkflowTriggers(
         if (snapshot === undefined) return;
         await runWorkflow("diet plan assignment", async () => {
           const data = snapshot.data();
+          if (data.version !== undefined) return; // Versioned publication uses the durable outbox.
           await workflows.dietPlanAssigned(actorFrom(data), {
             planId: event.params.planId,
             clientId: requiredField(data, ["client_id", "clientId"]),

@@ -6,9 +6,11 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp } from "firebase-admin/firestore";
 import request from "supertest";
 import { FirebaseAuthVerifier } from "../src/auth";
+import { createFitnepDependencies } from "../src/api_factory";
 import { FirestoreNotificationRepository } from "../src/firestore_notification_repository";
 import { createNotificationApp } from "../src/http_app";
 import { FirestorePackageService, PackageError } from "../src/package_membership_service";
+import { HostedWorkflowDelivery } from "../src/workflow_delivery";
 
 const projectId = "demo-fitnep";
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -21,17 +23,21 @@ suite("US 9 package catalog, selection and verified activation", () => {
   const auth = getAuth(app);
   let now = new Date("2026-11-19T06:00:00.000Z");
   const service = new FirestorePackageService(db, () => now);
-  const api = createNotificationApp({ authVerifier: new FirebaseAuthVerifier(), notificationRepository: new FirestoreNotificationRepository(db), packageService: service });
+  const api = createNotificationApp({
+    authVerifier: new FirebaseAuthVerifier(), notificationRepository: new FirestoreNotificationRepository(db),
+    packageService: service, manualVerificationEnabled: true,
+  });
   const basic = { active: true, name: "Basic", duration_days: 30, price_npr: 2500, features: ["Personalized nutrition plan", "Weekly check-ins"] };
   let a: string;
   let b: string;
   let admin: string;
+  let staff: string;
   before(async () => {
-    for (const [uid, role] of [["package-a", "client"], ["package-b", "client"], ["package-admin", "admin"]] as const) {
-      await auth.createUser({ uid, email: `${uid}@example.test`, password: "Password123!", emailVerified: true });
+    for (const [uid, role] of [["package-a", "client"], ["package-b", "client"], ["package-admin", "admin"], ["package-staff", "staff"]] as const) {
+      await auth.createUser({ uid, email: `${uid}@example.test`, password: "Password123!", emailVerified: true, displayName: uid });
       await auth.setCustomUserClaims(uid, { role });
     }
-    [a, b, admin] = await Promise.all([token("package-a"), token("package-b"), token("package-admin")]);
+    [a, b, admin, staff] = await Promise.all([token("package-a"), token("package-b"), token("package-admin"), token("package-staff")]);
   });
   beforeEach(async () => {
     now = new Date("2026-11-19T06:00:00.000Z");
@@ -114,6 +120,118 @@ suite("US 9 package catalog, selection and verified activation", () => {
     assert.equal(members.find(member => member.id === first.id)?.days_remaining, 30);
     assert.equal(members.find(member => member.id === second.id)?.status, "scheduled");
   });
+  it("US10/US11: onboarding gates real checkout and immutable proofs, decisions and adjustments survive retries", async () => {
+    const dependencies = createFitnepDependencies(auth, db);
+    let checkoutApi = createNotificationApp(dependencies);
+    const apiFor = () => request(checkoutApi);
+    const select = (requestId = "checkout-selection-01", packageId = "basic") =>
+      apiFor().post("/memberships").set(bearer(a)).send({ package_id: packageId, request_id: requestId });
+    const updateOnboarding = (body: object) => apiFor().put("/profile/me/onboarding").set(bearer(a)).send(body);
+    const getCheckout = () => apiFor().get("/payments/checkout").set(bearer(a)).expect(200);
+    const profile = await apiFor().get("/profile/me").set(bearer(a)).expect(200);
+    assert.equal(profile.body.data.onboarding.status, "required");
+    await select().expect(409);
+    await apiFor().post("/purchases").set(bearer(a)).send({ package_id: "basic", request_id: "checkout-old-purchase" }).expect(409);
+    await updateOnboarding({ status: "completed", heightCm: 170, weightKg: 71, expected_client_id: "package-b" }).expect(403);
+    await updateOnboarding({ status: "completed", heightCm: 170, weightKg: 501 }).expect(400);
+    await updateOnboarding({ status: "draft", heightCm: 170 }).expect(200);
+    await select().expect(409);
+    const completed = await updateOnboarding({ status: "completed", weightKg: 71 }).expect(200);
+    assert.deepEqual(completed.body.data.onboarding, { status: "completed", heightCm: 170, weightKg: 71, bmi: 24.6 });
+    const skipped = await apiFor().put("/profile/me/onboarding").set(bearer(b)).send({ status: "skipped" }).expect(200);
+    assert.equal(skipped.body.data.onboarding.status, "skipped");
+    assert.equal((await getCheckout()).body.data.checkout, null);
+    const selected = (await select().expect(200)).body.data.membership;
+    const alias = await select("checkout-retry-00001").expect(200);
+    assert.equal(alias.body.data.membership.id, selected.id);
+    await apiFor().post(`/admin/memberships/${selected.id}/verify-payment`).set(bearer(admin)).send({ reference: "BYPASS" }).expect(404);
+    const first = (await getCheckout()).body.data.checkout;
+    assert.equal(first.amount_npr, 2500);
+    assert.match(first.qr_payload, /^FITNEP-TEST-NOT-PAYABLE:/);
+    assert.equal((await getCheckout()).body.data.checkout.qr_payload, first.qr_payload);
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jPZkAAAAASUVORK5CYII=", "base64");
+    const sendProof = (photo: Buffer, request_id: string, expected_reference: string, membershipId = selected.id) =>
+      apiFor().post(`/payments/${membershipId}/proof`).set(bearer(a)).send({
+        proof_base64: photo.toString("base64"), content_type: "image/png", request_id, expected_reference,
+      });
+    await sendProof(Buffer.from("invalid"), "checkout-proof-00001", first.reference).expect(400);
+    await sendProof(png, "checkout-proof-00001", "STALE").expect(409);
+    const firstProofResponses = await Promise.all([1, 2].map(() => sendProof(png, "checkout-proof-00001", first.reference).expect(200)));
+    const firstPayment = firstProofResponses[0]!.body.data.payment;
+    assert.deepEqual(firstPayment, firstProofResponses[1]!.body.data.payment);
+    assert.equal(firstPayment.status, "pending");
+    assert.equal(firstPayment.qr_payload, first.qr_payload);
+    assert.equal(firstPayment.proof_digest, undefined);
+    await db.doc("package_catalog/premium").set({ ...basic, name: "Premium", price_npr: 6250 });
+    await select("checkout-selection-02", "premium").expect(409);
+    await apiFor().get("/admin/payments").set(bearer(staff)).expect(403);
+    const adminFirst = await apiFor().get("/admin/payments").set(bearer(admin)).expect(200);
+    assert.equal(adminFirst.body.data.payments[0].id, firstPayment.id);
+    await apiFor().patch("/admin/users/package-staff").set(bearer(admin)).send({ payments_verify: true }).expect(200);
+    const staffSession = await apiFor().get("/session").set(bearer(staff)).expect(200);
+    assert.equal(staffSession.body.data.account.payments_verify, true);
+    await apiFor().get("/admin/payments").set(bearer(staff)).expect(200);
+    const photoPath = `/payments/${firstPayment.id}/proof`;
+    await apiFor().get(photoPath).expect(401);
+    await apiFor().get(photoPath).set(bearer(b)).expect(403);
+    const reviewerPhoto = await apiFor().get(photoPath).set(bearer(staff)).expect(200);
+    assert.deepEqual(reviewerPhoto.body, png);
+    assert.equal(reviewerPhoto.headers["cache-control"], "no-store");
+    const rejectPath = `/admin/payments/${firstPayment.id}/reject`;
+    await apiFor().post(rejectPath).set(bearer(staff)).send({ revision: 1, reason: " " }).expect(400);
+    await apiFor().post(rejectPath).set(bearer(staff)).send({ revision: 1, reason: "Please use a clear proof photo." }).expect(200);
+    await select("checkout-selection-02", "premium").expect(409);
+    const second = (await getCheckout()).body.data.checkout;
+    assert.equal(second.payment_status, "rejected");
+    assert.notEqual(second.qr_payload, first.qr_payload);
+    await sendProof(png, "checkout-proof-00002", second.reference).expect(409);
+    const replacement = Buffer.concat([png, Buffer.alloc(36_000, 7)]);
+    const paid = (await sendProof(replacement, "checkout-proof-00002", second.reference).expect(200)).body.data.payment;
+    await apiFor().post(`/admin/payments/${paid.id}/verify`).set(bearer(staff)).send({ revision: 2 }).expect(400);
+    await apiFor().post(`/admin/payments/${firstPayment.id}/verify`).set(bearer(staff))
+      .send({ revision: 1, proof_reviewed: true }).expect(409);
+    const verify = (id: string, revision: number) => apiFor().post(`/admin/payments/${id}/verify`).set(bearer(staff))
+      .send({ revision, proof_reviewed: true });
+    const decisions = await Promise.all([1, 2].map(() => verify(paid.id, 2).expect(200)));
+    assert.deepEqual(decisions[0]!.body.data, decisions[1]!.body.data);
+    const active = decisions[0]!.body.data.membership;
+    assert.equal(active.status, "active");
+    assert.equal(decisions[0]!.body.data.payment.reviewed_by_name, "package-staff");
+    assert.equal((await select("checkout-retry-00001").expect(200)).body.data.membership.id, selected.id);
+    const saved = (await db.doc(`payments/${paid.id}`).get()).data();
+    const adjustPath = `/admin/payments/${paid.id}/adjustments`;
+    const adjustment = { amount_delta_npr: -10.50, reason: "Accounting correction", request_id: "checkout-adjustment-1" };
+    await apiFor().post(adjustPath).set(bearer(staff)).send(adjustment).expect(403);
+    for (let retry = 0; retry < 2; retry++) await apiFor().post(adjustPath).set(bearer(admin)).send(adjustment).expect(200);
+    assert.deepEqual((await db.doc(`payments/${paid.id}`).get()).data(), saved);
+    const detail = await apiFor().get(`/payments/${paid.id}`).set(bearer(a)).expect(200);
+    assert.equal(detail.body.data.adjustments.length, 1);
+    assert.equal(detail.body.data.payment.qr_payload, second.qr_payload);
+    const rejected = await apiFor().get(`/payments/${firstPayment.id}`).set(bearer(a)).expect(200);
+    assert.equal(rejected.body.data.payment.rejection_reason, "Please use a clear proof photo.");
+    const upgrade = (await select("checkout-selection-02", "premium").expect(200)).body.data.membership;
+    const upgradeCheckout = (await getCheckout()).body.data.checkout;
+    const upgradePayment = (await sendProof(Buffer.concat([png, Buffer.of(8)]), "checkout-proof-00003", upgradeCheckout.reference, upgrade.id)
+      .expect(200)).body.data.payment;
+    assert.equal(upgradePayment.amount_npr, 6250);
+    const scheduled = (await verify(upgradePayment.id, 1).expect(200)).body.data.membership;
+    assert.equal(scheduled.status, "scheduled");
+    assert.equal(scheduled.start_at, active.end_at);
+    await apiFor().patch("/admin/users/package-staff").set(bearer(admin)).send({ payments_verify: false }).expect(200);
+    await apiFor().get(photoPath).set(bearer(staff)).expect(403);
+    checkoutApi = createNotificationApp(createFitnepDependencies(auth, db));
+    await apiFor().get(photoPath).set(bearer(admin)).expect(200);
+    const history = await apiFor().get("/payments/me").set(bearer(a)).expect(200);
+    assert.equal(history.body.data.payments.length, 3);
+    assert.equal(await new HostedWorkflowDelivery(db).drain(), 5);
+    assert.equal(await new HostedWorkflowDelivery(db).drain(), 0);
+    assert.equal((await db.collection("notifications").where("recipient_id", "==", "package-a").get()).size, 5);
+    assert.equal((await db.collection("audit_events").where("action", "==", "payment.verified").get()).size, 2);
+    assert.equal((await db.collection("audit_events").where("action", "==", "payment.adjusted").get()).size, 1);
+    const paymentUrl = `http://${firestoreHost}/v1/projects/${projectId}/databases/(default)/documents/payments/${paid.id}`;
+    assert.equal((await fetch(paymentUrl, { headers: bearer(a) })).status, 403);
+    assert.equal((await fetch(paymentUrl, { method: "DELETE", headers: bearer(admin) })).status, 403);
+  });
   it("rejects malformed catalogs and revoked Firebase session tokens", async () => {
     await db.collection("package_catalog").doc("basic").update({ price_npr: -1 });
     assert.equal((await request(api).get("/packages").auth(a, { type: "bearer" })).status, 503);
@@ -195,6 +313,8 @@ suite("US 9 package catalog, selection and verified activation", () => {
   function choose(token: string, id: string, extra = {}) { return request(api).post("/memberships").auth(token, { type: "bearer" }).send({ package_id: "basic", request_id: id, ...extra }); }
   async function payment(id: string, membership: string, extra = {}) { await db.collection("payments").doc(id).set({ membership_id: membership, recipient_id: "package-a", amount_npr: 2500, currency: "NPR", status: "paid", verified: true, ...extra }); }
 });
+
+function bearer(token: string) { return { Authorization: "Bearer " + token }; }
 
 async function token(uid: string): Promise<string> {
   const response = await fetch(`http://${authHost}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=fake-api-key`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: `${uid}@example.test`, password: "Password123!", returnSecureToken: true }) });

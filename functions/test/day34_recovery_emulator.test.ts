@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { App, deleteApp, initializeApp } from "firebase-admin/app";
 import { Auth, getAuth } from "firebase-admin/auth";
@@ -244,6 +245,7 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
       authVerifier: new FirebaseAuthVerifier(accounts),
       notificationRepository: new InMemoryNotificationRepository(),
       clientIntakeService: new ClientIntakeService(new FirestoreClientIntakeRepository(db)),
+      privateRecordsStore: new FirestorePrivateRecordsStore(db, new FirestorePrivacyPreferencesRepository(db)),
     }));
     await new FirestorePrivacyAcceptanceStore(db).recordForClient("client", {
       age: 21, privacy_policy_accepted: true, privacy_policy_version: privacyPolicyVersion,
@@ -350,6 +352,15 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     await index(unrelated).expect(403);
     await review({ action: "reviewed", expected_version: 2, expected_review_revision: 1 }).expect(409);
     assert.deepEqual(revised.body.data.latest.allergies, []);
+    const weightHistory = (token: string) =>
+      api.get("/clients/client/weight-history").auth(token, { type: "bearer" });
+    const history = await weightHistory(owner).expect(200);
+    assert.deepEqual(history.body.data.records.map((row: { details: { weight_kg: number } }) => row.details.weight_kg), [71, 70]);
+    await weightHistory(unrelated).expect(403);
+    await weightHistory(dietitian).expect(200);
+    await sharing.updateSharing("client", { shareNutritionRecords: false });
+    await weightHistory(dietitian).expect(403);
+    await sharing.updateSharing("client", { shareNutritionRecords: true });
     assert.deepEqual((await preserved.get()).data(), original);
     assert.deepEqual((await v2.get()).data(), frozen);
     const olderRetry = await submit(input).expect(200);
@@ -610,6 +621,21 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
     const newPlan = await api.post("/clients/other-client/diet-plans").auth(dietitian, { type: "bearer" })
       .send({ title: "Training plan", description: "Synthetic plan details" }).expect(201);
     const planId = newPlan.body.data.plan.id;
+    const expectPlanNotice = async (version: number) => {
+      await new HostedWorkflowDelivery(db, () => Date.now() + 1000).drain();
+      const query = db.collection("notifications").where("event_key", "==", `plan:${planId}:published:v${version}`);
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const notices = await query.get();
+        if (!notices.empty) {
+          assert.equal(notices.size, 1);
+          assert.equal(notices.docs[0]!.get("recipient_id"), "other-client");
+          return;
+        }
+        await delay(200);
+      }
+      assert.fail(`Published plan version ${version} did not notify the client.`);
+    };
+    await expectPlanNotice(1);
     const otherPlan = await api.get(`/diet-plans/${planId}`).auth(await intakeTestToken(auth, "other-client"), { type: "bearer" }).expect(200);
     assert.equal(otherPlan.body.data.diet_plan.title, "Training plan");
     const newlyPublished = await list(dietitian).query({ search: "Asha", plan_status: "published" }).expect(200);
@@ -623,12 +649,40 @@ const firestoreHost = process.env.FIRESTORE_EMULATOR_HOST;
       client_id: "other-client", status: "active", created_at: time.toDate().toISOString(),
       package: { duration_days: 30 },
     });
-    await db.doc(`diet_plans/${planId}`).update({ status: "draft" });
     await api.patch(`/clients/other-client/diet-plans/${planId}`).auth(dietitian, { type: "bearer" })
-      .send({ title: "Updated training plan", description: "Synthetic plan details" }).expect(200);
+      .send({ title: "Updated training plan", description: "Synthetic plan details", draft: true, version: 1 }).expect(200);
     const supportedDraft = await list(dietitian).query({ search: "Asha", plan_status: "draft" }).expect(200);
     assert.equal(supportedDraft.body.data.clients[0].plan_status, "draft");
     assert.equal(supportedDraft.body.data.clients[0].package_status, "unavailable");
+    const planPath = `/clients/other-client/diet-plans/${planId}`;
+    const adminToken = await intakeTestToken(auth, "admin");
+    const clientToken = await intakeTestToken(auth, "other-client");
+    const act = (token: string, action: string, version: number, reason?: string) =>
+      api.patch(planPath).auth(token, { type: "bearer" }).send({ action, version, ...(reason ? { reason } : {}) });
+    await act(dietitian, "submit", 2).expect(200);
+    await act(adminToken, "approve", 2).expect(403);
+    await db.doc("client_assignments/other-client").update({
+      team_member_ids: ["admin"], team_member_role_revisions: { admin: 0 },
+    });
+    await act(adminToken, "return", 2, "Add the client's requested foods.").expect(200);
+    const beforePublish = await api.get(`/diet-plans/${planId}`).auth(clientToken, { type: "bearer" }).expect(200);
+    assert.equal(beforePublish.body.data.diet_plan.title, "Training plan");
+    await api.patch(planPath).auth(dietitian, { type: "bearer" })
+      .send({ title: "Revised training plan", description: "New synthetic details", draft: true, version: 2 }).expect(200);
+    await act(dietitian, "submit", 3).expect(200);
+    await act(adminToken, "approve", 2).expect(400);
+    await act(adminToken, "approve", 3).expect(200);
+    await act(dietitian, "publish", 3).expect(200);
+    await expectPlanNotice(3);
+    const published = await api.get(`/diet-plans/${planId}`).auth(clientToken, { type: "bearer" }).expect(200);
+    assert.equal(published.body.data.diet_plan.title, "Revised training plan");
+    assert.equal((await db.doc(`diet_plans/${planId}/versions/2`).get()).get("status"), "returned");
+    const planTrail = await db.collection("audit_events").where("target_id", "==", planId).get();
+    const planActions = planTrail.docs.filter(doc => String(doc.get("action")).startsWith("plan."));
+    assert.deepEqual(new Set(planActions.map(doc => doc.get("action"))), new Set([
+      "plan.created", "plan.submitted", "plan.returned", "plan.approved", "plan.published", "plan.revised",
+    ]));
+    assert(planActions.every(doc => doc.get("version") > 0 && doc.get("actor_id") && doc.get("occurred_at")));
   });
 
   it("accepts unpaid intake submissions and sends one notice after assignment", async () => {

@@ -414,6 +414,7 @@ emulatorDescribe("Day 1 persisted audit and platform sessions", () => {
       created_by: "day1-admin", request_id: "day1-catalog-0001",
     });
     const client = await start();
+    await request(api).put("/profile/me/onboarding").set(client.headers).send({ status: "skipped" }).expect(200);
     const selected = await request(api).post("/purchases").set(client.headers)
       .send({ package_id: "day1-basic", request_id: "day1-purchase-0001" }).expect(201);
     const id = selected.body.data.purchase.id;

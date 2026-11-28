@@ -49,15 +49,16 @@ export class HostedWorkflowDelivery {
   private running = false;
   constructor(private readonly db: Firestore, private readonly now = Date.now) {}
 
-  async drain(): Promise<number> {
+  async drain(eventId?: string): Promise<number> {
     if (this.running) return 0;
     this.running = true;
     let delivered = 0;
     try {
-      const due = await this.db.collection("outbox_deliveries")
+      const states = this.db.collection("outbox_deliveries");
+      const due = eventId ? [await states.doc(eventId).get()] : (await states
         .where("next_attempt_at", "<=", Timestamp.fromMillis(this.now()))
-        .orderBy("next_attempt_at").limit(25).get();
-      for (const document of due.docs) {
+        .orderBy("next_attempt_at").limit(25).get()).docs;
+      for (const document of due) {
         const lease = randomUUID();
         const claimed = await this.db.runTransaction(async tx => {
           const current = (await tx.get(document.ref)).data();
@@ -100,8 +101,8 @@ export class HostedWorkflowDelivery {
       if (!receipt.exists) {
         const notifications: NewNotification[] = [];
         const base = { id, createdAt: event.occurred_at.toDate().toISOString() };
-        const assignment = await getCurrentAssignment(this.db, event.client_id, tx);
         if (event.event_type === "client.assigned" || event.event_type === "client.reassigned") {
+          const assignment = await getCurrentAssignment(this.db, event.client_id, tx);
           // Replays cannot notify the former team or expose medical content.
           if (assignment && assignment.data.version === event.version && assignment.team.dietitianId === event.dietitian_id) {
             const recipientId = assignment.team.dietitianId;
@@ -116,6 +117,7 @@ export class HostedWorkflowDelivery {
             }
           }
         } else if (event.event_type.startsWith("intake.")) {
+          const assignment = await getCurrentAssignment(this.db, event.client_id, tx);
           const intakeRef = this.db.doc(`client_intakes/${event.client_id}`);
           const intake = await tx.get(intakeRef);
           const latestVersion = intake.get("version") ?? 1;
@@ -151,11 +153,21 @@ export class HostedWorkflowDelivery {
               }
             }
           }
+        } else if (event.event_type === "plan.published") {
+          const plan = await tx.get(this.db.doc(`diet_plans/${event.target_id}`));
+          const version = plan.get("published.version");
+          if (plan.get("client_id") === event.client_id && version === event.version) notifications.push({
+            ...base, recipientId: event.client_id, type: "diet_plan", referenceId: event.target_id,
+            eventKey: `plan:${event.target_id}:published:v${event.version}`,
+            title: "Diet plan ready", message: "Open your diet plan to view the latest published version.",
+          });
         } else if (event.event_type === "membership.activated") {
           const membership = await tx.get(this.db.doc(`package_memberships/${event.target_id}`));
+          const scheduled = Date.parse(membership.get("start_at")) > this.now();
           if (membership.get("client_id") === event.client_id && membership.get("status") === "active") notifications.push({ ...base,
             recipientId: event.client_id, type: "membership", referenceId: event.target_id,
-            eventKey: `outbox:${id}:${event.client_id}`, title: "Membership active", message: "Your membership is now active. View its dates and details." });
+            eventKey: `outbox:${id}:${event.client_id}`, title: scheduled ? "Membership scheduled" : "Membership active",
+            message: scheduled ? "Your membership is scheduled. View its dates and details." : "Your membership is now active. View its dates and details." });
         } else {
           const payment = await tx.get(this.db.doc(`payments/${event.target_id}`));
           const owner = payment.get("recipient_id") ?? payment.get("client_id");

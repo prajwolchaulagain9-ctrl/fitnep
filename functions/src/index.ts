@@ -3,13 +3,15 @@ import { getFirestore } from "firebase-admin/firestore";
 import { getAuth } from "firebase-admin/auth";
 import { createFitnepDependencies } from "./api_factory";
 import { onRequest } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
 
 import { createNotificationApp } from "./http_app";
 import { NotificationWorkflowService } from "./notification_service";
 import { createNotificationWorkflowTriggers } from "./workflow_triggers";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import { PackageError } from "./package_membership_service";
+import { HostedWorkflowDelivery } from "./workflow_delivery";
 
 if (getApps().length === 0) initializeApp();
 
@@ -18,9 +20,12 @@ export const checkSession = require("../src/index.cjs").checkSession;
 export { registrationPrivacy } from "./registration_privacy";
 export { sendSignupEmailCode, verifySignupEmailCode } from "./signup_email_codes";
 
-const dependencies = createFitnepDependencies(getAuth(), getFirestore());
+const db = getFirestore();
+const dependencies = createFitnepDependencies(getAuth(), db);
 const packageService = dependencies.packageService;
-const notificationApp = createNotificationApp(dependencies);
+const cloudinaryUrl = defineSecret("CLOUDINARY_URL");
+let notificationApp: ReturnType<typeof createNotificationApp> | undefined;
+const delivery = new HostedWorkflowDelivery(db);
 const workflowTriggers = createNotificationWorkflowTriggers(
   new NotificationWorkflowService(dependencies.notificationRepository),
 );
@@ -30,14 +35,30 @@ export const api = onRequest(
     region: "asia-south1",
     invoker: "public",
     maxInstances: 10,
+    secrets: [cloudinaryUrl],
   },
-  notificationApp,
+  (request, response) => {
+    notificationApp ??= createNotificationApp(createFitnepDependencies(getAuth(), db));
+    notificationApp(request, response);
+  },
 );
 
 export const onDietPlanAssigned = workflowTriggers.dietPlanAssigned;
 export const onMessageReceived = workflowTriggers.messageReceived;
 export const onTaskAssigned = workflowTriggers.taskAssigned;
 export const onPaymentConfirmed = workflowTriggers.paymentConfirmed;
+
+export const deliverWorkflowOutbox = onDocumentCreated(
+  { document: "workflow_outbox/{id}", region: "asia-south1", retry: true },
+  async event => {
+    const kind = event.data?.get("event_type");
+    if (!["payment.verified", "payment.rejected", "membership.activated", "plan.published"].includes(kind)) return;
+    await delivery.drain(event.params.id);
+    const state = await db.doc(`outbox_deliveries/${event.params.id}`).get();
+    // The shared delivery worker persists its lease and retry schedule.
+    if (state.exists && state.get("state") !== "delivered") throw new Error("Workflow delivery will retry.");
+  },
+);
 
 export const onPackagePaymentVerified = onDocumentWritten(
   { document: "payments/{paymentId}", region: "asia-south1", retry: true },

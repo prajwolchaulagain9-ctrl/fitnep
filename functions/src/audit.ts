@@ -20,7 +20,7 @@ export type AuditAction = (typeof auditActions)[number];
 export const workflowEventTypes = [
   "payment.verified", "payment.rejected", "membership.activated",
   "client.assigned", "client.reassigned", "intake.submitted", "intake.revised",
-  "intake.information_requested",
+  "intake.information_requested", "plan.published",
 ] as const;
 export type WorkflowEventType = (typeof workflowEventTypes)[number];
 

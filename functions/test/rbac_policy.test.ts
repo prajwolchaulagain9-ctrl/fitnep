@@ -24,7 +24,7 @@ it("each of the four roles has a distinct dashboard and least-privilege permissi
   assert.equal(hasPermission("staff", "view_client_records"), true);
 });
 it("Flutter and backend permission maps agree", () => {
-  const dart = readFileSync("../lib/core/authorization/role_permissions.dart", "utf8");
+  const dart = readFileSync("../lib/shared/role_permissions.dart", "utf8");
   const quoted = (text: string) => [...text.matchAll(/'([a-z_]+)'/g)].map(match => match[1]!);
   const own = quoted(/static const own = \{([\s\S]*?)\};/.exec(dart)![1]!);
   for (const role of userRoles) {

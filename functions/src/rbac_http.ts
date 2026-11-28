@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { FieldPath, FieldValue, Timestamp, Transaction } from "firebase-admin/firestore";
-import { PrivateRecordsStore } from "./private_records";
+import { FieldPath, Timestamp, Transaction } from "firebase-admin/firestore";
+import { PrivateRecordsError, PrivateRecordsStore } from "./private_records";
 import { HealthReadTarget, healthAuditTarget } from "./audited_health_reads";
 import { AuthenticatedUser, isUserRole } from "./domain";
 import { Account, AccountInputError, FirestoreAccountService, FirestoreAuditStore, identifier, accountFrom,
@@ -9,9 +9,14 @@ import { canReadWorkflowRecord, permissions, PermissionDeniedError, requirePermi
 import { endpointAccess } from "./endpoint_access";
 import { listAssignedDietitianClients } from "./assigned_clients";
 import { listAuditEvents } from "./audit_reader";
+import { onboarding, saveOnboarding } from "./onboarding";
+import { publicDietPlan, writeDietPlan } from "./diet_plan_workflow";
+import { FirestorePackageService, PackageError } from "./package_membership_service";
+import type { CheckoutPayments } from "./checkout_payments";
 
 export class BackendUnavailableError extends Error {}
-export function createRbacRouter(accounts?: FirestoreAccountService, audit?: FirestoreAuditStore, healthReads?: PrivateRecordsStore): Router {
+export function createRbacRouter(accounts?: FirestoreAccountService, audit?: FirestoreAuditStore,
+  healthReads?: PrivateRecordsStore, payments?: Pick<CheckoutPayments, "listClientPayments">): Router {
   const router = Router();
   const store = () => { if (!accounts) throw new BackendUnavailableError(); return accounts; };
   const actor = (response: Response) => response.locals.user as AuthenticatedUser;
@@ -38,11 +43,22 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
     }
     response.locals.access = { permission: submitted.permission, resource: "feature:" + submitted.permission };
     const user = actor(response);
-    requirePermission(user.role, submitted.permission as typeof permissions[number], user.permissions?.auditRead);
+    requirePermission(user.role, submitted.permission as typeof permissions[number], user.permissions?.auditRead, user.permissions?.paymentsVerify);
     response.json({ data: { allowed: true } });
   }));
   router.get("/profile/me", wrap(async (_request, response) => {
-    response.json({ data: { account: await store().ownProfile(actor(response)) } });
+    const user = actor(response);
+    const account = await store().ownProfile(user);
+    if (account.role !== "client") {
+      response.json({ data: { account } });
+      return;
+    }
+    const profile = await store().firestore.doc(`users/${user.uid}`).get();
+    response.json({ data: { account, onboarding: onboarding(profile.get("onboarding")) } });
+  }));
+  router.put("/profile/me/onboarding", wrap(async (request, response) => {
+    const value = await saveOnboarding(store().firestore, actor(response), body(request));
+    response.json({ data: { onboarding: value } });
   }));
   router.patch("/profile/me", wrap(async (request, response) => {
     if (["role", "permissions", "account_status"].some(key => Object.hasOwn(body(request), key))) {
@@ -69,7 +85,7 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
   router.get("/admin/clients/:id", wrap(async (request, response) => {
     const client = await store().get(identifier(request.params.id));
     if (client.role !== "client") throw new AccountInputError("Client account not found.");
-    response.json({ data: { client: await clientView(store(), client) } });
+    response.json({ data: { client: await clientView(store(), client, payments) } });
   }));
   router.patch("/admin/clients/:id/status", wrap(async (request, response) => {
     const id = identifier(request.params.id);
@@ -120,42 +136,46 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
       let query = store().firestore.collection("diet_plans").where("client_id", "==", id).orderBy(FieldPath.documentId());
       if (after) query = query.startAfter(after);
       const rows = await transaction.get(query.limit(50));
-      return { data: { plans: rows.docs.map(doc => publicPlan(doc.id, doc.data())),
-        next_cursor: rows.size === 50 ? rows.docs.at(-1)!.id : null }, recordIds: rows.docs.map(doc => doc.id) };
+      const plans = rows.docs.flatMap(doc => {
+        const plan = publicDietPlan(doc.id, doc.data(), actor(response).role === "client");
+        return plan ? [plan] : [];
+      });
+      return { data: { plans, next_cursor: rows.size === 50 ? rows.docs.at(-1)!.id : null },
+        recordIds: plans.map(plan => plan.id) };
+    });
+    response.json({ data });
+  }));
+  router.get("/clients/:id/weight-history", wrap(async (request, response) => {
+    const clientId = identifier(request.params.id);
+    const after = cursor(request);
+    const data = await readHealth(response, { clientId, category: "weight-history" }, async transaction => {
+      const versions = store().firestore.collection(`client_intakes/${clientId}/versions`);
+      let query = versions.orderBy("submitted_at", "desc");
+      if (after) {
+        const previous = await transaction.get(versions.doc(after));
+        if (!previous.exists || previous.get("client_id") !== clientId) {
+          throw new PrivateRecordsError(400, "Invalid weight history cursor.");
+        }
+        query = query.startAfter(previous);
+      }
+      const rows = await transaction.get(query.limit(50));
+      const records = rows.docs.flatMap(doc => {
+        const weight = doc.get("health_information.weight_kg");
+        const recordedAt = doc.get("submitted_at");
+        return doc.get("client_id") === clientId && Number.isFinite(weight) && weight >= 1 && weight <= 500 &&
+          recordedAt instanceof Timestamp
+          ? [{ id: doc.id, details: { weight_kg: weight }, recorded_at: recordedAt.toDate().toISOString() }] : [];
+      });
+      return { data: { records, next_cursor: rows.size === 50 ? rows.docs.at(-1)!.id : null },
+        recordIds: records.map(record => record.id) };
     });
     response.json({ data });
   }));
   const savePlan = async (request: Request, response: Response) => {
-    const user = actor(response); const clientId = identifier(request.params.id);
-    const submitted = body(request);
-    if (Object.keys(submitted).some(key => !["title", "description"].includes(key)) ||
-        typeof submitted.title !== "string" || !submitted.title.trim() || submitted.title.length > 120 ||
-        typeof submitted.description !== "string" || !submitted.description.trim() || submitted.description.length > 10000) {
-      throw new AccountInputError("Supply a title and a diet plan description.");
-    }
-    const db = store().firestore;
-    const reference = request.params.planId ? db.collection("diet_plans").doc(identifier(request.params.planId)) : db.collection("diet_plans").doc();
-    await db.runTransaction(async transaction => {
-      const latest = accountFrom(user.uid, (await transaction.get(db.collection("users").doc(user.uid))).data());
-      requirePermission(latest.role, "manage_diet_plans");
-      if (latest.account_status !== "active") throw new PermissionDeniedError();
-      await store().assertAssigned({ ...user, role: latest.role, roleRevision: latest.role_revision }, clientId, transaction);
-      const client = accountFrom(clientId, (await transaction.get(db.collection("users").doc(clientId))).data());
-      if (client.role !== "client" || client.account_status !== "active") throw new PermissionDeniedError();
-      const current = await transaction.get(reference);
-      if (request.params.planId && (!current.exists || current.get("client_id") !== clientId)) throw new PermissionDeniedError();
-      const fields = { client_id: clientId, title: submitted.title!.toString().trim(),
-        description: submitted.description!.toString().trim(), assigned_by_id: user.uid,
-        assigned_by_role: latest.role, dietitian_name: latest.full_name, updated_at: FieldValue.serverTimestamp() };
-      if (current.exists) transaction.update(reference, fields);
-      else transaction.create(reference, {
-        ...fields,
-        // New plans from this endpoint are available to the client immediately.
-        status: "published",
-        created_at: FieldValue.serverTimestamp(),
-      });
-    });
-    response.status(request.params.planId ? 200 : 201).json({ data: { plan: publicPlan(reference.id, (await reference.get()).data()!) } });
+    const planId = request.params.planId === undefined ? undefined : identifier(request.params.planId);
+    const plan = await writeDietPlan(store().firestore, actor(response), identifier(request.params.id), planId,
+      body(request), response.locals.correlationId);
+    response.status(planId ? 200 : 201).json({ data: { plan } });
   };
   router.post("/clients/:id/diet-plans", wrap(savePlan));
   router.patch("/clients/:id/diet-plans/:planId", wrap(savePlan));
@@ -166,7 +186,9 @@ export function createRbacRouter(accounts?: FirestoreAccountService, audit?: Fir
     const plan = await readHealth(response, { clientId, category: "diet-plans", recordId: doc.id }, async transaction => {
       const current = await transaction.get(doc.ref);
       if (!current.exists || current.get("client_id") !== clientId) throw new PermissionDeniedError();
-      return { data: publicPlan(current.id, current.data()!) };
+      const visible = publicDietPlan(current.id, current.data()!, actor(response).role === "client");
+      if (!visible) throw new PermissionDeniedError("The requested plan is unavailable to this account.");
+      return { data: visible };
     });
     response.json({ data: { diet_plan: plan } });
   }));
@@ -226,25 +248,59 @@ function wrap(fn: (request: Request, response: Response) => Promise<void>) {
       const access = endpointAccess(request.method, request.route.path);
       if (!access) throw new PermissionDeniedError("The endpoint has no authorization policy.");
       const user = response.locals.user as AuthenticatedUser;
-      requirePermission(user.role, access.permission, user.permissions?.auditRead);
+      requirePermission(user.role, access.permission, user.permissions?.auditRead, user.permissions?.paymentsVerify);
       await fn(request, response);
     })().catch(next);
   };
 }
-function publicPlan(id: string, data: Record<string, unknown>) {
-  return { id, title: data.title, description: data.description, dietitian_name: data.dietitian_name,
-    created_at: data.created_at instanceof Timestamp ? data.created_at.toDate().toISOString() : null };
-}
-async function clientView(store: FirestoreAccountService, account: Account) {
-  // Optional existing business profile fields remain separate from identity/roles.
-  const profile = (await store.firestore.collection("client_profiles").doc(account.id).get()).data() ?? {};
-  const assignment = await getCurrentAssignment(store.firestore, account.id);
+async function clientView(store: FirestoreAccountService, account: Account,
+  payments?: Pick<CheckoutPayments, "listClientPayments">) {
+  const db = store.firestore;
+  const [profileSnapshot, assignment, memberships, receipts] = await Promise.all([
+    db.doc(`client_profiles/${account.id}`).get(),
+    getCurrentAssignment(db, account.id),
+    new FirestorePackageService(db).membershipsWithLegacy(account.id).catch(error => {
+      if (error instanceof PackageError && error.statusCode === 503) return [];
+      throw error;
+    }),
+    payments?.listClientPayments(account.id) ?? [],
+  ]);
+  const profile = profileSnapshot.data() ?? {};
   const businessProfile: Record<string, unknown> = {};
   for (const field of ["phone", "gender", "dateOfBirth", "address", "packageId", "packageName",
     "deactivatedAt", "deactivationReason", "totalAmountPaid", "outstandingAmount",
     "lastPaymentDate", "paymentHistory", "packageHistory"]) {
     if (profile[field] !== undefined) businessProfile[field] =
       profile[field] instanceof Timestamp ? profile[field].toDate().toISOString() : profile[field];
+  }
+  const current = memberships.find(member => member.status === "active") ??
+    memberships.find(member => member.status === "scheduled") ??
+    memberships.find(member => member.status === "pending");
+  if (memberships.length) {
+    businessProfile.packageId = current?.package.id ?? "";
+    businessProfile.packageName = current?.package.name ?? "No current package";
+    businessProfile.packageStatus = current?.status ?? "expired";
+  }
+  if (receipts.length) {
+    const receiptIds = new Set(receipts.map(receipt => receipt.id));
+    const legacy = Array.isArray(profile.paymentHistory) ? profile.paymentHistory : [];
+    businessProfile.paymentHistory = [
+      ...receipts.map(receipt => ({
+        id: receipt.id, date: receipt.created_at, amount: receipt.amount_npr,
+        status: receipt.status === "verified" ? "paid" : receipt.status, description: receipt.package.name,
+      })),
+      ...legacy.filter(entry => !receiptIds.has(entry?.id)),
+    ];
+  }
+  if (payments && memberships.length) {
+    const terms = memberships.flatMap(member => member.start_at && member.end_at ? [{
+      packageId: member.package.id, packageName: member.package.name, startDate: member.start_at, endDate: member.end_at,
+    }] : []);
+    const legacy = Array.isArray(profile.packageHistory) ? profile.packageHistory : [];
+    businessProfile.packageHistory = [
+      ...terms,
+      ...legacy.filter(entry => !terms.some(term => term.packageId === entry?.packageId && term.startDate === entry?.startDate)),
+    ];
   }
   return { ...businessProfile, id: account.id, name: account.full_name, email: account.email,
     status: account.account_status, joinDate: account.created_at,
